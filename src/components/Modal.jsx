@@ -1,9 +1,15 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
 
+const SIZES = {
+  md: 'max-w-md',
+  lg: 'max-w-2xl',
+}
+
 // Reusable centered modal with a dimmed backdrop. Closes on Escape or
-// backdrop click.
-export default function Modal({ open, onClose, title, children }) {
+// backdrop click. The panel caps its height and lets children manage their
+// own scrolling.
+export default function Modal({ open, onClose, title, size = 'md', children }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => {
@@ -22,8 +28,13 @@ export default function Modal({ open, onClose, title, children }) {
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <div
+        className={[
+          'relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl',
+          SIZES[size] ?? SIZES.md,
+        ].join(' ')}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
           <h3 className="text-base font-semibold text-slate-900">{title}</h3>
           <button
             type="button"

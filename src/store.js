@@ -57,6 +57,42 @@ function slugify(name) {
   )
 }
 
+// Default chip colors cycled through for newly created bookings.
+const BOOKING_COLORS = [
+  '#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6',
+  '#14b8a6', '#f43f5e', '#06b6d4', '#6366f1', '#f97316',
+]
+
+// Map each reserved unit id -> the location label of the (first) active
+// booking that reserves it.
+function reservationMap(bookings) {
+  const map = new Map()
+  for (const b of bookings) {
+    if (b.status !== 'active') continue
+    const location = `${b.title} — ${studioLabel(b.studioId)}`
+    for (const uid of b.unitIds) if (!map.has(uid)) map.set(uid, location)
+  }
+  return map
+}
+
+// Recompute every unit's status/location from the active bookings. Units not
+// reserved by any active booking are freed. Ownership is left untouched.
+function withReservations(inventory, bookings) {
+  const map = reservationMap(bookings)
+  return inventory.map((item) => ({
+    ...item,
+    units: item.units.map((u) => {
+      const location = map.get(u.id)
+      if (location) {
+        if (u.status === 'checked_out' && u.location === location) return u
+        return { ...u, status: 'checked_out', location }
+      }
+      if (u.status === 'available' && u.location === 'Available') return u
+      return { ...u, status: 'available', location: 'Available' }
+    }),
+  }))
+}
+
 export const useStore = create(
   persist(
     (set, get) => ({
@@ -68,9 +104,15 @@ export const useStore = create(
       // --- seeded, mutable data ---
       ...buildSeedData(),
 
-      // --- UI state ---
+      // --- UI state (not persisted — always starts on the current week) ---
       activeView: 'calendar', // 'calendar' | 'inventory'
       setActiveView: (view) => set({ activeView: view }),
+
+      calendarMode: 'week', // 'week' | 'month'
+      setCalendarMode: (mode) => set({ calendarMode: mode }),
+
+      selectedDate: format(new Date(), 'yyyy-MM-dd'),
+      setSelectedDate: (date) => set({ selectedDate: date }),
 
       // Clears the persisted demo state and reloads the original seeds.
       resetDemoData: () => set({ ...buildSeedData(), activeView: 'calendar' }),
@@ -123,6 +165,37 @@ export const useStore = create(
         }
         set({ inventory: [item, ...state.inventory] })
         return id
+      },
+
+      // Create a booking and reserve its selected units.
+      createBooking: (data) => {
+        const state = get()
+        const booking = {
+          id: `set-${Date.now().toString(36)}`,
+          status: 'active',
+          color: data.color || BOOKING_COLORS[state.bookings.length % BOOKING_COLORS.length],
+          unitIds: [],
+          ...data,
+        }
+        const bookings = [...state.bookings, booking]
+        set({ bookings, inventory: withReservations(state.inventory, bookings) })
+        return booking.id
+      },
+
+      // Update a booking and re-reserve units to match its new unit list.
+      updateBooking: (id, changes) => {
+        const state = get()
+        const bookings = state.bookings.map((b) =>
+          b.id === id ? { ...b, ...changes } : b,
+        )
+        set({ bookings, inventory: withReservations(state.inventory, bookings) })
+      },
+
+      // Delete a booking and free its reserved units.
+      deleteBooking: (id) => {
+        const state = get()
+        const bookings = state.bookings.filter((b) => b.id !== id)
+        set({ bookings, inventory: withReservations(state.inventory, bookings) })
       },
     }),
     {
