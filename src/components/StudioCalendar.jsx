@@ -21,13 +21,26 @@ import BookingModal from './BookingModal'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-// Light tint + solid accent for a booking chip, derived from a hex color.
-function chipStyle(color) {
-  return {
-    backgroundColor: `${color}1a`,
-    color,
-    borderLeft: `3px solid ${color}`,
+// Relative luminance (WCAG) of a #rrggbb color.
+function luminance(hex) {
+  const chan = (i) => {
+    const v = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
   }
+  return 0.2126 * chan(0) + 0.7152 * chan(1) + 0.0722 * chan(2)
+}
+
+// Pick white or near-black text — whichever contrasts better on a solid fill.
+function readableText(hex) {
+  const L = luminance(hex)
+  const onWhite = 1.05 / (L + 0.05)
+  const onDark = (L + 0.05) / (0.0181 + 0.05) // ~ #0f172a
+  return onWhite >= onDark ? '#ffffff' : '#0f172a'
+}
+
+// Solid, high-visibility booking chip derived from a hex color.
+function chipStyle(color) {
+  return { backgroundColor: color, color: readableText(color) }
 }
 
 export default function StudioCalendar() {
@@ -287,7 +300,7 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
                   onOpenEdit(b)
                 }}
                 style={chipStyle(b.color)}
-                className="cursor-pointer rounded-md px-1.5 py-1 transition hover:brightness-95"
+                className="cursor-pointer rounded-md px-1.5 py-1 shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
               >
                 <div className="truncate text-xs font-semibold leading-tight">
                   {b.title}
@@ -407,7 +420,7 @@ function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek }) {
               onOpenEdit(b)
             }}
             style={chipStyle(studioColor(b.studioId))}
-            className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-[10px] leading-tight transition hover:brightness-95"
+            className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-[10px] leading-tight shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
           >
             <span className="font-bold">{b.studioId}</span>
             <span className="truncate">{b.title}</span>
