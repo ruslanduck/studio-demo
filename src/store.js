@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { startOfWeek, addDays, format } from 'date-fns'
 import { STUDIOS, studioLabel } from './data/studios'
-import { INVENTORY_SEED } from './data/inventory'
+import { INVENTORY_SEED, createUnits } from './data/inventory'
 import { BOOKING_TEMPLATES } from './data/bookings'
 import { PHOTOGRAPHERS, MODELS } from './data/contacts'
 
@@ -48,9 +48,18 @@ function buildSeedData() {
   return { inventory, bookings }
 }
 
+function slugify(name) {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'item'
+  )
+}
+
 export const useStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       // --- static reference data ---
       studios: STUDIOS,
       photographers: PHOTOGRAPHERS,
@@ -65,6 +74,56 @@ export const useStore = create(
 
       // Clears the persisted demo state and reloads the original seeds.
       resetDemoData: () => set({ ...buildSeedData(), activeView: 'calendar' }),
+
+      // Flip a single unit between owned and sub-rental (manual marking).
+      toggleOwnership: (itemId, unitId) =>
+        set((state) => ({
+          inventory: state.inventory.map((item) =>
+            item.id !== itemId
+              ? item
+              : {
+                  ...item,
+                  units: item.units.map((u) =>
+                    u.id !== unitId
+                      ? u
+                      : {
+                          ...u,
+                          ownership:
+                            u.ownership === 'owned' ? 'sub_rental' : 'owned',
+                        },
+                  ),
+                },
+          ),
+        })),
+
+      // Create a new inventory item with `quantity` freshly generated units.
+      // Barcodes start past every existing one so ids never collide. Returns
+      // the new item's id so the UI can select it.
+      addInventoryItem: ({ name, category, quantity }) => {
+        const state = get()
+        const existingIds = new Set(state.inventory.map((i) => i.id))
+        const base = slugify(name)
+        let id = base
+        let n = 2
+        while (existingIds.has(id)) id = `${base}-${n++}`
+
+        let maxBarcode = 0
+        for (const item of state.inventory) {
+          for (const u of item.units) {
+            const num = parseInt(u.barcode, 10)
+            if (Number.isFinite(num) && num > maxBarcode) maxBarcode = num
+          }
+        }
+
+        const item = {
+          id,
+          name: name.trim(),
+          category,
+          units: createUnits(id, quantity, maxBarcode + 1),
+        }
+        set({ inventory: [item, ...state.inventory] })
+        return id
+      },
     }),
     {
       name: STORAGE_KEY,

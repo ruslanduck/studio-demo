@@ -16,17 +16,8 @@ export const CATEGORIES = [
 
 const SERIAL_CHARS = 'ABCDEFGHIJKLMNPQRSTUVWXYZ0123456789'
 
-// Monotonic barcode sequence with small deterministic gaps so the numbers
-// look organic (0703, 0705, 0708, ...) while staying unique.
-let barcodeSeq = 703
-function nextBarcode() {
-  const code = String(barcodeSeq).padStart(4, '0')
-  barcodeSeq += 1 + ((barcodeSeq * 13) % 3)
-  return code
-}
-
 // Deterministic serial derived from a seed string (FNV-1a hash + xorshift).
-function serialFor(seed) {
+export function serialFor(seed) {
   let h = 2166136261
   for (let i = 0; i < seed.length; i++) {
     h ^= seed.charCodeAt(i)
@@ -42,18 +33,21 @@ function serialFor(seed) {
   return out
 }
 
-function makeUnits(itemId, count) {
+// Create `count` units for an item, with sequential 4-digit barcodes starting
+// at `startBarcode`. Units default to available / owned; callers (the store's
+// add-inventory action) pass a start barcode past every existing one so ids
+// never collide.
+export function createUnits(itemId, count, startBarcode) {
   const units = []
   for (let i = 0; i < count; i++) {
-    const barcode = nextBarcode()
+    const barcode = String(startBarcode + i).padStart(4, '0')
     units.push({
       id: `u-${barcode}`,
       barcode,
       serial: serialFor(`${itemId}-${i}`),
       status: 'available', // "available" | "checked_out"
       location: 'Available', // "Available" OR a set name
-      // Sprinkle a few sub-rentals into larger stocks for realism.
-      ownership: i % 7 === 6 ? 'sub_rental' : 'owned', // "owned" | "sub_rental"
+      ownership: 'owned', // "owned" | "sub_rental"
     })
   }
   return units
@@ -116,9 +110,14 @@ const CATALOG = [
   ['mixpre-6', 'Sound Devices MixPre-6', 'Audio', 2],
 ]
 
-export const INVENTORY_SEED = CATALOG.map(([id, name, category, qty]) => ({
-  id,
-  name,
-  category,
-  units: makeUnits(id, qty),
-}))
+// Build the seed inventory with sequential barcodes across all items, then
+// sprinkle a few sub-rentals into each stock for realism.
+let seedBarcode = 703
+export const INVENTORY_SEED = CATALOG.map(([id, name, category, qty]) => {
+  const units = createUnits(id, qty, seedBarcode)
+  seedBarcode += qty
+  units.forEach((u, i) => {
+    if (i % 7 === 6) u.ownership = 'sub_rental'
+  })
+  return { id, name, category, units }
+})
