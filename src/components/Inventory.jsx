@@ -103,7 +103,7 @@ export default function Inventory() {
       {/* Body: list + detail */}
       <div className="flex min-h-0 flex-1 gap-4">
         {/* List pane */}
-        <div className="flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="space-y-2 border-b border-slate-200 p-3">
             <div className="relative">
               <Search
@@ -186,7 +186,7 @@ export default function Inventory() {
         </div>
 
         {/* Detail pane */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           {selected ? (
             <UnitDetail
               item={selected}
