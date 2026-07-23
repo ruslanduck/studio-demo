@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.8",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
@@ -22,6 +23,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
+    "supabase": "^2.109.1",
     "tailwindcss": "^4.3.2",
     "vite": "^8.1.1"
   }
