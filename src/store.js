@@ -10,6 +10,7 @@ import {
   getInventory as sbGetInventory,
   getBookings as sbGetBookings,
 } from './data/repository'
+import { ensureSession } from './lib/auth'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
 
@@ -118,6 +119,8 @@ export const useStore = create(
         if (!usingSupabase) return
         set({ loading: true })
         try {
+          // Authenticated (anonymous) session → roster/PII + writes under RLS.
+          await ensureSession()
           const [inventory, bookings] = await Promise.all([
             sbGetInventory(),
             sbGetBookings(),
