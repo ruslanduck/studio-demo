@@ -353,6 +353,12 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
               className={fieldClass + ' resize-none'}
             />
           </div>
+
+          {isEdit && booking?.createdBy && (
+            <p className="text-xs text-slate-400">
+              Created by {booking.createdBy}
+            </p>
+          )}
         </div>
 
         {/* Footer */}

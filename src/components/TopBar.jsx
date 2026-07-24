@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { ChevronDown, RotateCcw } from 'lucide-react'
+import { ChevronDown, RotateCcw, LogOut } from 'lucide-react'
 import { useStore } from '../store'
+import { usingSupabase } from '../data/repository'
 
 const MENUS = ['Admin', 'View', 'Generate', 'Inventory']
 
 export default function TopBar() {
   const [openMenu, setOpenMenu] = useState(null)
   const resetDemoData = useStore((s) => s.resetDemoData)
+  const profile = useStore((s) => s.profile)
+  const signOut = useStore((s) => s.signOut)
 
   function handleReset() {
     setOpenMenu(null)
@@ -25,6 +28,7 @@ export default function TopBar() {
         AnnTaylor Rental System
       </h1>
 
+      <div className="flex items-center gap-3">
       <nav className="flex items-center gap-0.5 text-sm">
         {MENUS.map((menu) => (
           <div key={menu} className="relative">
@@ -63,6 +67,28 @@ export default function TopBar() {
           </div>
         ))}
       </nav>
+
+        {usingSupabase && profile && (
+          <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
+            <div className="text-right leading-tight">
+              <div className="text-sm font-medium text-slate-800">
+                {profile.full_name}
+              </div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                {profile.role}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              title="Sign out"
+              className="grid h-8 w-8 place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
+      </div>
 
       {openMenu && (
         <div

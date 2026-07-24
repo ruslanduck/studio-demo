@@ -15,7 +15,7 @@ import {
   toggleOwnership as sbToggleOwnership,
   addInventoryItem as sbAddInventoryItem,
 } from './data/repository'
-import { ensureSession } from './lib/auth'
+import { supabase } from './lib/supabase'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
 
@@ -124,8 +124,6 @@ export const useStore = create(
         if (!usingSupabase) return
         set({ loading: true })
         try {
-          // Authenticated (anonymous) session → roster/PII + writes under RLS.
-          await ensureSession()
           const [inventory, bookings] = await Promise.all([
             sbGetInventory(),
             sbGetBookings(),
@@ -146,6 +144,49 @@ export const useStore = create(
 
       selectedDate: format(new Date(), 'yyyy-MM-dd'),
       setSelectedDate: (date) => set({ selectedDate: date }),
+
+      // --- auth (supabase mode only; local mode has no login) ---
+      session: null,
+      profile: null,
+      authReady: !usingSupabase,
+
+      // Subscribe to auth changes; load profile + hydrate data when signed in.
+      initAuth: () => {
+        if (!usingSupabase) return
+        supabase.auth.onAuthStateChange((_event, session) => {
+          set({ session })
+          // Defer supabase calls out of the auth callback (avoids a lock deadlock).
+          setTimeout(async () => {
+            if (session) {
+              const { data } = await supabase
+                .from('profiles')
+                .select('id, full_name, role')
+                .eq('id', session.user.id)
+                .maybeSingle()
+              if (!data) {
+                // Session without a team profile (e.g. a stale anonymous
+                // session) — reject and fall back to the login screen.
+                await supabase.auth.signOut()
+                set({ authReady: true })
+                return
+              }
+              set({ profile: data })
+              await get().hydrate()
+            } else {
+              set({ profile: null, inventory: [], bookings: [] })
+            }
+            set({ authReady: true })
+          }, 0)
+        })
+      },
+
+      signIn: async (email, password) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) throw error
+      },
+      signOut: async () => {
+        await supabase.auth.signOut()
+      },
 
       // Reload data: re-fetch from Supabase, or rebuild the local seeds.
       resetDemoData: () =>

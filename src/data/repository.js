@@ -69,6 +69,7 @@ export async function getBookings() {
     .from('sets')
     .select(
       `id, title, studio_id, date, start_time, end_time, status, color, notes,
+       created_by, creator:profiles!created_by ( full_name ),
        set_units ( unit_id ),
        roster_entries ( role, contact:contacts ( full_name ) )`,
     )
@@ -91,6 +92,7 @@ export async function getBookings() {
       unitIds: (s.set_units || []).map((su) => su.unit_id),
       photographer: byRole('photographer'),
       model: byRole('model'),
+      createdBy: s.creator?.full_name || null,
     }
   })
 }
@@ -130,8 +132,8 @@ export async function getUnitHistory(unitId) {
 }
 
 // -------------------------------------------------------------- writes ----
-// RLS write policies are `to authenticated`, so these need a session (the app
-// gets one via anonymous sign-in — see src/lib/auth.js).
+// RLS write policies are `to authenticated`, so these need a signed-in user
+// (the app requires email/password login in supabase mode).
 
 // Find a contact by name, creating it if absent (supports free-text entry).
 async function resolveContactId(fullName) {
