@@ -184,6 +184,18 @@ export const useStore = create(
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
       },
+      // Register a new team member. Returns the session (null if the project
+      // requires email confirmation — the UI then shows a "check your email"
+      // message). New users get a 'crew' profile via the DB trigger.
+      signUp: async ({ email, password, fullName }) => {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: fullName } },
+        })
+        if (error) throw error
+        return data.session
+      },
       signOut: async () => {
         await supabase.auth.signOut()
       },
