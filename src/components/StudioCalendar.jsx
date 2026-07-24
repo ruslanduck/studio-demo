@@ -40,7 +40,8 @@ function readableText(hex) {
 
 // Solid, high-visibility booking chip derived from a hex color.
 function chipStyle(color) {
-  return { backgroundColor: color, color: readableText(color) }
+  const c = color || '#64748b'
+  return { backgroundColor: c, color: readableText(c) }
 }
 
 export default function StudioCalendar() {

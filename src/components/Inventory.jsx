@@ -73,8 +73,8 @@ export default function Inventory() {
 
   const totalUnits = inventory.reduce((n, i) => n + i.units.length, 0)
 
-  function handleCreate(fields) {
-    const newId = addInventoryItem(fields)
+  async function handleCreate(fields) {
+    const newId = await addInventoryItem(fields)
     setSearch('')
     setCategory('All')
     setSelectedId(newId)

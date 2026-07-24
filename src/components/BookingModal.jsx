@@ -125,22 +125,22 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
     return ids
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     if (!form.title.trim()) return
     const payload = { ...form, title: form.title.trim(), unitIds: resolveUnitIds() }
-    if (isEdit) updateBooking(booking.id, payload)
-    else createBooking(payload)
+    if (isEdit) await updateBooking(booking.id, payload)
+    else await createBooking(payload)
     onClose()
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (
       window.confirm(
         `Delete "${booking.title}"? This frees its reserved inventory units.`,
       )
     ) {
-      deleteBooking(booking.id)
+      await deleteBooking(booking.id)
       onClose()
     }
   }

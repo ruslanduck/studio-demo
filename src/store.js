@@ -9,6 +9,11 @@ import {
   usingSupabase,
   getInventory as sbGetInventory,
   getBookings as sbGetBookings,
+  createBooking as sbCreateBooking,
+  updateBooking as sbUpdateBooking,
+  deleteBooking as sbDeleteBooking,
+  toggleOwnership as sbToggleOwnership,
+  addInventoryItem as sbAddInventoryItem,
 } from './data/repository'
 import { ensureSession } from './lib/auth'
 
@@ -149,30 +154,39 @@ export const useStore = create(
           : set({ ...buildSeedData(), activeView: 'calendar' }),
 
       // Flip a single unit between owned and sub-rental (manual marking).
-      toggleOwnership: (itemId, unitId) =>
-        set((state) => ({
-          inventory: state.inventory.map((item) =>
-            item.id !== itemId
-              ? item
-              : {
-                  ...item,
-                  units: item.units.map((u) =>
-                    u.id !== unitId
-                      ? u
-                      : {
-                          ...u,
-                          ownership:
-                            u.ownership === 'owned' ? 'sub_rental' : 'owned',
-                        },
-                  ),
-                },
-          ),
-        })),
+      // Optimistic in both modes; persisted to Supabase in the background.
+      toggleOwnership: (itemId, unitId) => {
+        const state = get()
+        let next = 'owned'
+        const inventory = state.inventory.map((item) =>
+          item.id !== itemId
+            ? item
+            : {
+                ...item,
+                units: item.units.map((u) => {
+                  if (u.id !== unitId) return u
+                  next = u.ownership === 'owned' ? 'sub_rental' : 'owned'
+                  return { ...u, ownership: next }
+                }),
+              },
+        )
+        set({ inventory })
+        if (usingSupabase) {
+          sbToggleOwnership(unitId, next).catch((e) =>
+            console.error('toggleOwnership failed:', e),
+          )
+        }
+      },
 
       // Create a new inventory item with `quantity` freshly generated units.
       // Barcodes start past every existing one so ids never collide. Returns
       // the new item's id so the UI can select it.
-      addInventoryItem: ({ name, category, quantity }) => {
+      addInventoryItem: async ({ name, category, quantity }) => {
+        if (usingSupabase) {
+          const id = await sbAddInventoryItem({ name, category, quantity })
+          await get().hydrate()
+          return id
+        }
         const state = get()
         const existingIds = new Set(state.inventory.map((i) => i.id))
         const base = slugify(name)
@@ -199,7 +213,12 @@ export const useStore = create(
       },
 
       // Create a booking and reserve its selected units.
-      createBooking: (data) => {
+      createBooking: async (data) => {
+        if (usingSupabase) {
+          const id = await sbCreateBooking(data)
+          await get().hydrate()
+          return id
+        }
         const state = get()
         const booking = {
           id: `set-${Date.now().toString(36)}`,
@@ -214,7 +233,12 @@ export const useStore = create(
       },
 
       // Update a booking and re-reserve units to match its new unit list.
-      updateBooking: (id, changes) => {
+      updateBooking: async (id, changes) => {
+        if (usingSupabase) {
+          await sbUpdateBooking(id, changes)
+          await get().hydrate()
+          return
+        }
         const state = get()
         const bookings = state.bookings.map((b) =>
           b.id === id ? { ...b, ...changes } : b,
@@ -223,7 +247,12 @@ export const useStore = create(
       },
 
       // Delete a booking and free its reserved units.
-      deleteBooking: (id) => {
+      deleteBooking: async (id) => {
+        if (usingSupabase) {
+          await sbDeleteBooking(id)
+          await get().hydrate()
+          return
+        }
         const state = get()
         const bookings = state.bookings.filter((b) => b.id !== id)
         set({ bookings, inventory: withReservations(state.inventory, bookings) })

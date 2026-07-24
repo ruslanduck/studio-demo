@@ -8,7 +8,8 @@
 // Shapes returned here match what the UI already expects (see CLAUDE.md data
 // models), so switching the source is transparent to components.
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
-import { studioLabel } from './studios'
+import { studioLabel, studioColor } from './studios'
+import { createUnits } from './inventory'
 
 export const DATA_SOURCE = (import.meta.env.VITE_DATA_SOURCE || 'local').toLowerCase()
 export const usingSupabase = DATA_SOURCE === 'supabase' && isSupabaseConfigured
@@ -82,10 +83,10 @@ export async function getBookings() {
       title: s.title,
       studioId: s.studio_id,
       date: s.date,
-      startTime: s.start_time,
-      endTime: s.end_time,
+      startTime: s.start_time?.slice(0, 5),
+      endTime: s.end_time?.slice(0, 5),
       status: s.status,
-      color: s.color,
+      color: s.color || studioColor(s.studio_id),
       notes: s.notes,
       unitIds: (s.set_units || []).map((su) => su.unit_id),
       photographer: byRole('photographer'),
@@ -129,23 +130,80 @@ export async function getUnitHistory(unitId) {
 }
 
 // -------------------------------------------------------------- writes ----
-// RLS write policies are `to authenticated`, so these require Supabase Auth.
-// Until login is wired, anonymous writes are (correctly) rejected by the DB.
-// Kept here so the migration path is obvious.
+// RLS write policies are `to authenticated`, so these need a session (the app
+// gets one via anonymous sign-in — see src/lib/auth.js).
 
-export async function createBooking({ title, studioId, date, startTime, endTime, color, notes, unitIds = [] }) {
+// Find a contact by name, creating it if absent (supports free-text entry).
+async function resolveContactId(fullName) {
+  const name = (fullName || '').trim()
+  if (!name) return null
+  const { data: found, error } = await supabase
+    .from('contacts').select('id').eq('full_name', name).limit(1)
+  if (error) throw error
+  if (found && found.length) return found[0].id
+  const { data: created, error: cErr } = await supabase
+    .from('contacts').insert({ full_name: name }).select('id').single()
+  if (cErr) throw cErr
+  return created.id
+}
+
+// Replace a set's roster with the given photographer/model.
+async function replaceRoster(setId, photographer, model) {
+  await supabase.from('roster_entries').delete().eq('set_id', setId)
+  const rows = []
+  const pId = await resolveContactId(photographer)
+  if (pId) rows.push({ set_id: setId, contact_id: pId, role: 'photographer' })
+  const mId = await resolveContactId(model)
+  if (mId) rows.push({ set_id: setId, contact_id: mId, role: 'model' })
+  if (rows.length) {
+    const { error } = await supabase.from('roster_entries').insert(rows)
+    if (error) throw error
+  }
+}
+
+// Replace a set's reserved units.
+async function replaceUnits(setId, unitIds = []) {
+  await supabase.from('set_units').delete().eq('set_id', setId)
+  if (unitIds.length) {
+    const rows = unitIds.map((unit_id) => ({ set_id: setId, unit_id, status: 'reserved' }))
+    const { error } = await supabase.from('set_units').insert(rows)
+    if (error) throw error
+  }
+}
+
+export async function createBooking(b) {
   const { data: set, error } = await supabase
     .from('sets')
-    .insert({ title, studio_id: studioId, date, start_time: startTime, end_time: endTime, color, notes })
+    .insert({
+      title: b.title, studio_id: b.studioId, date: b.date,
+      start_time: b.startTime, end_time: b.endTime,
+      color: b.color || studioColor(b.studioId), notes: b.notes, status: 'active',
+    })
     .select('id')
     .single()
   if (error) throw error
-  if (unitIds.length) {
-    const rows = unitIds.map((unit_id) => ({ set_id: set.id, unit_id }))
-    const { error: suErr } = await supabase.from('set_units').insert(rows)
-    if (suErr) throw suErr
-  }
+  await replaceUnits(set.id, b.unitIds)
+  await replaceRoster(set.id, b.photographer, b.model)
   return set.id
+}
+
+export async function updateBooking(setId, changes) {
+  const patch = {}
+  if ('title' in changes) patch.title = changes.title
+  if ('studioId' in changes) patch.studio_id = changes.studioId
+  if ('date' in changes) patch.date = changes.date
+  if ('startTime' in changes) patch.start_time = changes.startTime
+  if ('endTime' in changes) patch.end_time = changes.endTime
+  if ('notes' in changes) patch.notes = changes.notes
+  if ('color' in changes) patch.color = changes.color
+  if (Object.keys(patch).length) {
+    const { error } = await supabase.from('sets').update(patch).eq('id', setId)
+    if (error) throw error
+  }
+  if ('unitIds' in changes) await replaceUnits(setId, changes.unitIds)
+  if ('photographer' in changes || 'model' in changes) {
+    await replaceRoster(setId, changes.photographer, changes.model)
+  }
 }
 
 export async function deleteBooking(setId) {
@@ -156,4 +214,24 @@ export async function deleteBooking(setId) {
 export async function toggleOwnership(unitId, next) {
   const { error } = await supabase.from('units').update({ ownership: next }).eq('id', unitId)
   if (error) throw error
+}
+
+export async function addInventoryItem({ name, category, quantity }) {
+  const { data: item, error } = await supabase
+    .from('inventory_items').insert({ name: name.trim(), category }).select('id').single()
+  if (error) throw error
+  const { data: rows } = await supabase.from('units').select('barcode')
+  let maxB = 0
+  for (const r of rows || []) {
+    const n = parseInt(r.barcode, 10)
+    if (Number.isFinite(n) && n > maxB) maxB = n
+  }
+  const units = createUnits(item.id, quantity, maxB + 1)
+  const { error: uErr } = await supabase.from('units').insert(
+    units.map((u) => ({
+      inventory_item_id: item.id, barcode: u.barcode, serial: u.serial, ownership: u.ownership,
+    })),
+  )
+  if (uErr) throw uErr
+  return item.id
 }
