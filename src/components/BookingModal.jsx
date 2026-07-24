@@ -169,7 +169,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={labelClass}>Studio</label>
               <select
@@ -213,7 +213,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={labelClass}>Photographer</label>
               <input

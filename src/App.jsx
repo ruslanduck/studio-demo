@@ -41,7 +41,7 @@ export default function App() {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <main className="min-h-0 flex-1 overflow-auto p-6">
+        <main className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-6">
           {loading ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400">
               <Loader2 size={28} className="animate-spin" />

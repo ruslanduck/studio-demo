@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES } from '../data/inventory'
 import { useCan } from '../lib/useCan'
@@ -71,6 +71,8 @@ export default function Inventory() {
   )
   const [showAdd, setShowAdd] = useState(false)
   const [historyUnit, setHistoryUnit] = useState(null)
+  // On phone/tablet-portrait the list and detail are separate screens.
+  const [showDetailMobile, setShowDetailMobile] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -91,6 +93,7 @@ export default function Inventory() {
     setSearch('')
     setCategory('All')
     setSelectedId(newId)
+    setShowDetailMobile(true)
     setShowAdd(false)
   }
 
@@ -118,10 +121,16 @@ export default function Inventory() {
         )}
       </div>
 
-      {/* Body: list + detail */}
+      {/* Body: list + detail (side-by-side on desktop; separate screens on
+          phone / tablet-portrait) */}
       <div className="flex min-h-0 flex-1 gap-4">
         {/* List pane */}
-        <div className="flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div
+          className={[
+            showDetailMobile ? 'hidden lg:flex' : 'flex',
+            'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:w-80',
+          ].join(' ')}
+        >
           <div className="space-y-2 border-b border-slate-200 p-3">
             <div className="relative">
               <Search
@@ -163,9 +172,12 @@ export default function Inventory() {
                     <li key={item.id}>
                       <button
                         type="button"
-                        onClick={() => setSelectedId(item.id)}
+                        onClick={() => {
+                          setSelectedId(item.id)
+                          setShowDetailMobile(true)
+                        }}
                         className={[
-                          'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition',
+                          'flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition',
                           active
                             ? 'bg-violet-50 ring-1 ring-violet-200'
                             : 'hover:bg-slate-50',
@@ -204,14 +216,29 @@ export default function Inventory() {
         </div>
 
         {/* Detail pane */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div
+          className={[
+            showDetailMobile ? 'flex' : 'hidden lg:flex',
+            'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm',
+          ].join(' ')}
+        >
           {selected ? (
-            <UnitDetail
-              item={selected}
-              canToggleOwnership={can(CAP.UNIT_OWNERSHIP_TOGGLE)}
-              onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
-              onShowHistory={(unit) => setHistoryUnit(unit)}
-            />
+            <>
+              <button
+                type="button"
+                onClick={() => setShowDetailMobile(false)}
+                className="flex shrink-0 items-center gap-1 border-b border-slate-200 px-3 py-2 text-sm font-medium text-violet-600 lg:hidden"
+              >
+                <ChevronLeft size={16} />
+                Back to items
+              </button>
+              <UnitDetail
+                item={selected}
+                canToggleOwnership={can(CAP.UNIT_OWNERSHIP_TOGGLE)}
+                onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
+                onShowHistory={(unit) => setHistoryUnit(unit)}
+              />
+            </>
           ) : (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <PackageOpen size={36} className="mb-3 text-slate-300" />

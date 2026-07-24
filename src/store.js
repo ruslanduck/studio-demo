@@ -139,6 +139,10 @@ export const useStore = create(
       activeView: 'calendar', // 'calendar' | 'inventory'
       setActiveView: (view) => set({ activeView: view }),
 
+      // Mobile/tablet off-canvas sidebar drawer.
+      sidebarOpen: false,
+      setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
       calendarMode: 'week', // 'week' | 'month'
       setCalendarMode: (mode) => set({ calendarMode: mode }),
 
