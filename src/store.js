@@ -5,6 +5,11 @@ import { STUDIOS, studioLabel } from './data/studios'
 import { INVENTORY_SEED, createUnits } from './data/inventory'
 import { BOOKING_TEMPLATES } from './data/bookings'
 import { PHOTOGRAPHERS, MODELS } from './data/contacts'
+import {
+  usingSupabase,
+  getInventory as sbGetInventory,
+  getBookings as sbGetBookings,
+} from './data/repository'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
 
@@ -101,8 +106,28 @@ export const useStore = create(
       photographers: PHOTOGRAPHERS,
       models: MODELS,
 
-      // --- seeded, mutable data ---
-      ...buildSeedData(),
+      // --- data ---
+      // Local mode: seeded synchronously. Supabase mode: starts empty and is
+      // filled by hydrate() when the app mounts.
+      ...(usingSupabase
+        ? { inventory: [], bookings: [], loading: true }
+        : { ...buildSeedData(), loading: false }),
+
+      // Fetch inventory + bookings from Supabase (no-op in local mode).
+      hydrate: async () => {
+        if (!usingSupabase) return
+        set({ loading: true })
+        try {
+          const [inventory, bookings] = await Promise.all([
+            sbGetInventory(),
+            sbGetBookings(),
+          ])
+          set({ inventory, bookings, loading: false })
+        } catch (e) {
+          console.error('Supabase hydrate failed:', e)
+          set({ loading: false })
+        }
+      },
 
       // --- UI state (not persisted — always starts on the current week) ---
       activeView: 'calendar', // 'calendar' | 'inventory'
@@ -114,8 +139,11 @@ export const useStore = create(
       selectedDate: format(new Date(), 'yyyy-MM-dd'),
       setSelectedDate: (date) => set({ selectedDate: date }),
 
-      // Clears the persisted demo state and reloads the original seeds.
-      resetDemoData: () => set({ ...buildSeedData(), activeView: 'calendar' }),
+      // Reload data: re-fetch from Supabase, or rebuild the local seeds.
+      resetDemoData: () =>
+        usingSupabase
+          ? get().hydrate()
+          : set({ ...buildSeedData(), activeView: 'calendar' }),
 
       // Flip a single unit between owned and sub-rental (manual marking).
       toggleOwnership: (itemId, unitId) =>
@@ -201,13 +229,16 @@ export const useStore = create(
     {
       name: STORAGE_KEY,
       version: 1,
-      // Persist only the mutable data + view; static reference lists are
-      // re-supplied from source on every load.
-      partialize: (state) => ({
-        inventory: state.inventory,
-        bookings: state.bookings,
-        activeView: state.activeView,
-      }),
+      // Local mode persists data to localStorage. Supabase mode persists only
+      // UI state — data always comes fresh from the database.
+      partialize: (state) =>
+        usingSupabase
+          ? { activeView: state.activeView }
+          : {
+              inventory: state.inventory,
+              bookings: state.bookings,
+              activeView: state.activeView,
+            },
     },
   ),
 )

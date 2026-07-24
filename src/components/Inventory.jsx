@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES } from '../data/inventory'
 import AddInventoryModal from './AddInventoryModal'
+import UnitHistoryModal from './UnitHistoryModal'
 
 function StatusBadge({ status }) {
   const available = status === 'available'
@@ -56,6 +57,7 @@ export default function Inventory() {
     () => inventory.find((i) => i.id === 'kbd-magic')?.id ?? inventory[0]?.id ?? null,
   )
   const [showAdd, setShowAdd] = useState(false)
+  const [historyUnit, setHistoryUnit] = useState(null)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -66,7 +68,8 @@ export default function Inventory() {
     )
   }, [inventory, search, category])
 
-  const selected = inventory.find((i) => i.id === selectedId) ?? null
+  const selected =
+    inventory.find((i) => i.id === selectedId) ?? inventory[0] ?? null
 
   const totalUnits = inventory.reduce((n, i) => n + i.units.length, 0)
 
@@ -191,6 +194,7 @@ export default function Inventory() {
             <UnitDetail
               item={selected}
               onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
+              onShowHistory={(unit) => setHistoryUnit(unit)}
             />
           ) : (
             <div className="flex h-full flex-col items-center justify-center text-center">
@@ -208,11 +212,18 @@ export default function Inventory() {
         onClose={() => setShowAdd(false)}
         onCreate={handleCreate}
       />
+
+      <UnitHistoryModal
+        open={!!historyUnit}
+        unit={historyUnit}
+        itemName={selected?.name}
+        onClose={() => setHistoryUnit(null)}
+      />
     </div>
   )
 }
 
-function UnitDetail({ item, onToggleOwnership }) {
+function UnitDetail({ item, onToggleOwnership, onShowHistory }) {
   const available = item.units.filter((u) => u.status === 'available').length
   const checkedOut = item.units.length - available
 
@@ -246,7 +257,8 @@ function UnitDetail({ item, onToggleOwnership }) {
               <th className="px-3 py-2.5 font-medium">Serial</th>
               <th className="px-3 py-2.5 font-medium">Status</th>
               <th className="px-3 py-2.5 font-medium">Location</th>
-              <th className="px-5 py-2.5 font-medium">Ownership</th>
+              <th className="px-3 py-2.5 font-medium">Ownership</th>
+              <th className="px-5 py-2.5 font-medium">History</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -269,11 +281,22 @@ function UnitDetail({ item, onToggleOwnership }) {
                     <span className="text-slate-700">{unit.location}</span>
                   )}
                 </td>
-                <td className="px-5 py-2.5">
+                <td className="px-3 py-2.5">
                   <OwnershipBadge
                     ownership={unit.ownership}
                     onToggle={() => onToggleOwnership(unit.id)}
                   />
+                </td>
+                <td className="px-5 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onShowHistory(unit)}
+                    title="Show every set this unit was in"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-violet-600 transition hover:bg-violet-50"
+                  >
+                    <History size={14} />
+                    Sets
+                  </button>
                 </td>
               </tr>
             ))}
