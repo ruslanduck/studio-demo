@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Search, Plus, Boxes, PackageOpen, History } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES } from '../data/inventory'
+import { useCan } from '../lib/useCan'
+import { CAP } from '../lib/permissions'
 import AddInventoryModal from './AddInventoryModal'
 import UnitHistoryModal from './UnitHistoryModal'
 
@@ -27,21 +29,31 @@ function StatusBadge({ status }) {
   )
 }
 
-function OwnershipBadge({ ownership, onToggle }) {
+function OwnershipBadge({ ownership, onToggle, disabled }) {
   const owned = ownership === 'owned'
+  const base =
+    'inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1'
+  const tone = owned
+    ? 'bg-slate-100 text-slate-600 ring-slate-200'
+    : 'bg-indigo-50 text-indigo-700 ring-indigo-200'
+  const label = owned ? 'Owned' : 'Sub-rental'
+
+  if (disabled) {
+    return <span className={[base, tone].join(' ')}>{label}</span>
+  }
   return (
     <button
       type="button"
       onClick={onToggle}
       title="Click to toggle owned / sub-rental"
       className={[
-        'inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 transition hover:ring-2',
-        owned
-          ? 'bg-slate-100 text-slate-600 ring-slate-200 hover:ring-slate-300'
-          : 'bg-indigo-50 text-indigo-700 ring-indigo-200 hover:ring-indigo-300',
+        base,
+        tone,
+        'transition hover:ring-2',
+        owned ? 'hover:ring-slate-300' : 'hover:ring-indigo-300',
       ].join(' ')}
     >
-      {owned ? 'Owned' : 'Sub-rental'}
+      {label}
     </button>
   )
 }
@@ -50,6 +62,7 @@ export default function Inventory() {
   const inventory = useStore((s) => s.inventory)
   const toggleOwnership = useStore((s) => s.toggleOwnership)
   const addInventoryItem = useStore((s) => s.addInventoryItem)
+  const can = useCan()
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
@@ -93,14 +106,16 @@ export default function Inventory() {
             {inventory.length} items · {totalUnits} units
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
-        >
-          <Plus size={16} />
-          Add inventory
-        </button>
+        {can(CAP.INVENTORY_ADD) && (
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+          >
+            <Plus size={16} />
+            Add inventory
+          </button>
+        )}
       </div>
 
       {/* Body: list + detail */}
@@ -193,6 +208,7 @@ export default function Inventory() {
           {selected ? (
             <UnitDetail
               item={selected}
+              canToggleOwnership={can(CAP.UNIT_OWNERSHIP_TOGGLE)}
               onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
               onShowHistory={(unit) => setHistoryUnit(unit)}
             />
@@ -223,7 +239,7 @@ export default function Inventory() {
   )
 }
 
-function UnitDetail({ item, onToggleOwnership, onShowHistory }) {
+function UnitDetail({ item, canToggleOwnership, onToggleOwnership, onShowHistory }) {
   const available = item.units.filter((u) => u.status === 'available').length
   const checkedOut = item.units.length - available
 
@@ -284,6 +300,7 @@ function UnitDetail({ item, onToggleOwnership, onShowHistory }) {
                 <td className="px-3 py-2.5">
                   <OwnershipBadge
                     ownership={unit.ownership}
+                    disabled={!canToggleOwnership}
                     onToggle={() => onToggleOwnership(unit.id)}
                   />
                 </td>

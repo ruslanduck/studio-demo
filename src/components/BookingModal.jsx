@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Trash2, Search, Minus, Plus, X } from 'lucide-react'
 import { useStore } from '../store'
 import { studioLabel } from '../data/studios'
+import { useCan } from '../lib/useCan'
+import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 
 const fieldClass =
@@ -30,6 +32,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   const updateBooking = useStore((s) => s.updateBooking)
   const deleteBooking = useStore((s) => s.deleteBooking)
 
+  const can = useCan()
   const isEdit = !!booking
 
   const [form, setForm] = useState(() => blankForm(prefill))
@@ -363,7 +366,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
 
         {/* Footer */}
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 py-3">
-          {isEdit ? (
+          {isEdit && can(CAP.BOOKING_DELETE) ? (
             <button
               type="button"
               onClick={handleDelete}

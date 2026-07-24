@@ -15,10 +15,11 @@ const PASSWORD = process.env.DEMO_USER_PASSWORD || 'StudioDemo!2026'
 
 const db = createClient(url, key, { auth: { persistSession: false } })
 
+// One flat role for now — see src/lib/permissions.js.
 const USERS = [
-  { email: 'ann.taylor@anntaylor.demo', full_name: 'Ann Taylor', role: 'admin' },
-  { email: 'marcus.reed@anntaylor.demo', full_name: 'Marcus Reed', role: 'crew' },
-  { email: 'sofia.ventura@anntaylor.demo', full_name: 'Sofia Ventura', role: 'crew' },
+  { email: 'ann.taylor@anntaylor.demo', full_name: 'Ann Taylor', role: 'equipment_team' },
+  { email: 'marcus.reed@anntaylor.demo', full_name: 'Marcus Reed', role: 'equipment_team' },
+  { email: 'sofia.ventura@anntaylor.demo', full_name: 'Sofia Ventura', role: 'equipment_team' },
 ]
 
 async function findUserByEmail(email) {

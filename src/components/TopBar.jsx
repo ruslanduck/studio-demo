@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, RotateCcw, LogOut } from 'lucide-react'
 import { useStore } from '../store'
 import { usingSupabase } from '../data/repository'
+import { roleLabel } from '../lib/permissions'
 
 const MENUS = ['Admin', 'View', 'Generate', 'Inventory']
 
@@ -75,7 +76,7 @@ export default function TopBar() {
                 {profile.full_name}
               </div>
               <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                {profile.role}
+                {roleLabel(profile.role)}
               </div>
             </div>
             <button
