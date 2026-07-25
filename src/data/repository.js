@@ -27,8 +27,33 @@ export async function getStudios() {
   return data
 }
 
+// Repairs grouped by unit id, newest first. Fetched separately (not embedded)
+// so a project that hasn't run the 2.6 migration yet still loads inventory —
+// a missing `repairs` relation degrades to "no repairs" rather than failing
+// the whole query.
+async function getRepairsByUnit() {
+  const { data, error } = await supabase
+    .from('repairs')
+    .select('id, unit_id, vendor, issue, sent_at, returned_at, resolution')
+    .order('sent_at', { ascending: false })
+  if (error) return {} // table absent / not yet migrated → no repairs
+  const map = {}
+  for (const r of data || []) {
+    ;(map[r.unit_id] ||= []).push({
+      id: r.id,
+      vendor: r.vendor,
+      issue: r.issue,
+      sentAt: r.sent_at,
+      returnedAt: r.returned_at,
+      resolution: r.resolution,
+    })
+  }
+  return map
+}
+
 // Inventory items with their units. `status`/`location` are derived from the
-// active reservations in set_units (the DB keeps no denormalized copy).
+// active reservations in set_units + any open repair (the DB keeps no
+// denormalized copy). An open repair takes precedence: the unit is unavailable.
 export async function getInventory() {
   const { data, error } = await supabase
     .from('inventory_items')
@@ -43,6 +68,8 @@ export async function getInventory() {
     .order('name')
   if (error) throw error
 
+  const repairsByUnit = await getRepairsByUnit()
+
   return data.map((item) => ({
     id: item.id,
     name: item.name,
@@ -56,16 +83,26 @@ export async function getInventory() {
     purchaseDate: item.purchase_date,
     replacementPrice: item.replacement_price,
     units: (item.units || []).map((u) => {
+      const repairs = repairsByUnit[u.id] || []
+      const openRepair = repairs.find((r) => !r.returnedAt)
       const active = (u.set_units || []).find(occupies)
+      let status = 'available'
+      let location = 'Available'
+      if (openRepair) {
+        status = 'in_repair'
+        location = `In repair — ${openRepair.vendor || 'Vendor'}`
+      } else if (active) {
+        status = 'checked_out'
+        location = `${active.set.title} — ${studioLabel(active.set.studio_id)}`
+      }
       return {
         id: u.id,
         barcode: u.barcode,
         serial: u.serial,
         ownership: u.ownership,
-        status: active ? 'checked_out' : 'available',
-        location: active
-          ? `${active.set.title} — ${studioLabel(active.set.studio_id)}`
-          : 'Available',
+        status,
+        location,
+        repairs,
       }
     }),
   }))
@@ -224,6 +261,24 @@ export async function deleteBooking(setId) {
 
 export async function toggleOwnership(unitId, next) {
   const { error } = await supabase.from('units').update({ ownership: next }).eq('id', unitId)
+  if (error) throw error
+}
+
+// Send a unit out for repair (opens a repair row → unit becomes unavailable).
+export async function sendToRepair(unitId, { vendor, issue, sentAt } = {}) {
+  const row = { unit_id: unitId, vendor: vendor || null, issue: issue || null }
+  if (sentAt) row.sent_at = sentAt // else DB default current_date
+  const { error } = await supabase.from('repairs').insert(row)
+  if (error) throw error
+}
+
+// Close an open repair (returned_at + resolution). returned_by is stamped by a
+// DB trigger. The unit frees up unless another open repair remains.
+export async function returnFromRepair(repairId, { returnedAt, resolution } = {}) {
+  const { error } = await supabase
+    .from('repairs')
+    .update({ returned_at: returnedAt, resolution: resolution || null })
+    .eq('id', repairId)
   if (error) throw error
 }
 

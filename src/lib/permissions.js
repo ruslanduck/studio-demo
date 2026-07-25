@@ -16,6 +16,7 @@ export const CAP = {
   INVENTORY_DELETE: 'inventory.delete',
   UNIT_OWNERSHIP_TOGGLE: 'unit.ownership_toggle',
   UNIT_WRITE_OFF: 'unit.write_off',
+  UNIT_REPAIR: 'unit.repair',
 }
 
 export const ALL_CAPS = Object.values(CAP)

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import { startOfWeek, addDays, format } from 'date-fns'
 import { STUDIOS, studioLabel } from './data/studios'
 import { INVENTORY_SEED, createUnits } from './data/inventory'
+import { REPAIR_TEMPLATES, repairDates } from './data/repairs'
 import { BOOKING_TEMPLATES } from './data/bookings'
 import { PHOTOGRAPHERS, MODELS } from './data/contacts'
 import {
@@ -13,6 +14,8 @@ import {
   updateBooking as sbUpdateBooking,
   deleteBooking as sbDeleteBooking,
   toggleOwnership as sbToggleOwnership,
+  sendToRepair as sbSendToRepair,
+  returnFromRepair as sbReturnFromRepair,
   addInventoryItem as sbAddInventoryItem,
   updateInventoryItem as sbUpdateInventoryItem,
   deleteInventoryItem as sbDeleteInventoryItem,
@@ -26,8 +29,31 @@ const STORAGE_KEY = 'anntaylor-rental-demo'
 // location -> set name) for each booking.
 function buildSeedData() {
   const inventory = structuredClone(INVENTORY_SEED)
+  for (const item of inventory) for (const u of item.units) u.repairs = []
   const byId = Object.fromEntries(inventory.map((item) => [item.id, item]))
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+
+  // Repair-log seeds first: an OPEN repair marks the unit 'in_repair' so the
+  // booking loop below skips it (a unit out for repair can't be reserved).
+  const today = new Date()
+  const isoFor = (d) => format(d, 'yyyy-MM-dd')
+  for (const t of REPAIR_TEMPLATES) {
+    const unit = byId[t.itemId]?.units[t.unitIndex]
+    if (!unit) continue
+    const { sentAt, returnedAt } = repairDates(t, today, isoFor)
+    unit.repairs.unshift({
+      id: `rep-${t.itemId}-${t.unitIndex}`,
+      vendor: t.vendor,
+      issue: t.issue,
+      sentAt,
+      returnedAt,
+      resolution: t.resolution,
+    })
+    if (!returnedAt) {
+      unit.status = 'in_repair'
+      unit.location = `In repair — ${t.vendor || 'Vendor'}`
+    }
+  }
 
   const bookings = BOOKING_TEMPLATES.map((t, idx) => {
     const date = format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd')
@@ -88,13 +114,26 @@ function reservationMap(bookings) {
   return map
 }
 
-// Recompute every unit's status/location from the active bookings. Units not
-// reserved by any active booking are freed. Ownership is left untouched.
+// The unit's currently-open repair (no return date), if any.
+function openRepairOf(unit) {
+  return (unit.repairs || []).find((r) => !r.returnedAt) || null
+}
+
+// Recompute every unit's status/location from the active bookings + repairs.
+// Precedence: an open repair (unbookable) wins over a reservation, which wins
+// over free. Units not reserved by any active booking are freed. Ownership is
+// left untouched.
 function withReservations(inventory, bookings) {
   const map = reservationMap(bookings)
   return inventory.map((item) => ({
     ...item,
     units: item.units.map((u) => {
+      const repair = openRepairOf(u)
+      if (repair) {
+        const location = `In repair — ${repair.vendor || 'Vendor'}`
+        if (u.status === 'in_repair' && u.location === location) return u
+        return { ...u, status: 'in_repair', location }
+      }
       const location = map.get(u.id)
       if (location) {
         if (u.status === 'checked_out' && u.location === location) return u
@@ -235,6 +274,70 @@ export const useStore = create(
             console.error('toggleOwnership failed:', e),
           )
         }
+      },
+
+      // Send a unit out for repair. Opens a repair entry; the unit becomes
+      // 'in_repair' (unavailable) until it's returned.
+      sendToRepair: async (itemId, unitId, details = {}) => {
+        if (usingSupabase) {
+          await sbSendToRepair(unitId, details)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const repair = {
+          id: `rep-${Date.now().toString(36)}`,
+          vendor: details.vendor || null,
+          issue: details.issue || null,
+          sentAt: details.sentAt || format(new Date(), 'yyyy-MM-dd'),
+          returnedAt: null,
+          resolution: null,
+        }
+        const inventory = state.inventory.map((item) =>
+          item.id !== itemId
+            ? item
+            : {
+                ...item,
+                units: item.units.map((u) =>
+                  u.id !== unitId
+                    ? u
+                    : { ...u, repairs: [repair, ...(u.repairs || [])] },
+                ),
+              },
+        )
+        set({ inventory: withReservations(inventory, state.bookings) })
+      },
+
+      // Close a unit's open repair (returned date + resolution). The unit frees
+      // up unless it's still reserved by an active booking.
+      returnFromRepair: async (itemId, unitId, repairId, details = {}) => {
+        if (usingSupabase) {
+          await sbReturnFromRepair(repairId, details)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const returnedAt = details.returnedAt || format(new Date(), 'yyyy-MM-dd')
+        const inventory = state.inventory.map((item) =>
+          item.id !== itemId
+            ? item
+            : {
+                ...item,
+                units: item.units.map((u) =>
+                  u.id !== unitId
+                    ? u
+                    : {
+                        ...u,
+                        repairs: (u.repairs || []).map((r) =>
+                          r.id !== repairId
+                            ? r
+                            : { ...r, returnedAt, resolution: details.resolution || null },
+                        ),
+                      },
+                ),
+              },
+        )
+        set({ inventory: withReservations(inventory, state.bookings) })
       },
 
       // Create a new inventory item with `quantity` freshly generated units.

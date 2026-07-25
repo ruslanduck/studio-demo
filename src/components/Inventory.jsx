@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import AddInventoryModal from './AddInventoryModal'
 import UnitHistoryModal from './UnitHistoryModal'
+import RepairModal from './RepairModal'
 
 // Render `text` with the first occurrence of `query` (already lowercased) wrapped
 // in a highlight. Used to show what a name / barcode / serial search matched.
@@ -25,24 +26,27 @@ function Highlight({ text, query }) {
   )
 }
 
+const STATUS_STYLES = {
+  available: { chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', label: 'Available' },
+  checked_out: { chip: 'bg-orange-50 text-orange-700', dot: 'bg-orange-500', label: 'Checked out' },
+  in_repair: { chip: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500', label: 'In repair' },
+}
+
 function StatusBadge({ status }) {
-  const available = status === 'available'
+  const s = STATUS_STYLES[status] || STATUS_STYLES.available
   return (
     <span
       className={[
         'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium',
-        available
-          ? 'bg-emerald-50 text-emerald-700'
-          : 'bg-orange-50 text-orange-700',
+        s.chip,
       ].join(' ')}
     >
-      <span
-        className={[
-          'h-1.5 w-1.5 rounded-full',
-          available ? 'bg-emerald-500' : 'bg-orange-500',
-        ].join(' ')}
-      />
-      {available ? 'Available' : 'Checked out'}
+      {status === 'in_repair' ? (
+        <Wrench size={11} />
+      ) : (
+        <span className={['h-1.5 w-1.5 rounded-full', s.dot].join(' ')} />
+      )}
+      {s.label}
     </span>
   )
 }
@@ -120,6 +124,8 @@ function ItemRow({ item, active, onSelect, query }) {
 export default function Inventory() {
   const inventory = useStore((s) => s.inventory)
   const toggleOwnership = useStore((s) => s.toggleOwnership)
+  const sendToRepair = useStore((s) => s.sendToRepair)
+  const returnFromRepair = useStore((s) => s.returnFromRepair)
   const addInventoryItem = useStore((s) => s.addInventoryItem)
   const updateInventoryItem = useStore((s) => s.updateInventoryItem)
   const deleteInventoryItem = useStore((s) => s.deleteInventoryItem)
@@ -134,6 +140,7 @@ export default function Inventory() {
   )
   const [itemModal, setItemModal] = useState({ open: false, item: null })
   const [historyUnit, setHistoryUnit] = useState(null)
+  const [repairUnitId, setRepairUnitId] = useState(null)
   // On phone/tablet-portrait the list and detail are separate screens.
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
@@ -212,6 +219,10 @@ export default function Inventory() {
 
   const selected =
     inventory.find((i) => i.id === selectedId) ?? inventory[0] ?? null
+
+  // Live unit for the repair modal — re-derived from the store each render so
+  // it reflects mutations (send / return) without reopening.
+  const repairUnit = selected?.units.find((u) => u.id === repairUnitId) ?? null
 
   const totalUnits = inventory.reduce((n, i) => n + i.units.length, 0)
 
@@ -425,6 +436,7 @@ export default function Inventory() {
                 canToggleOwnership={can(CAP.UNIT_OWNERSHIP_TOGGLE)}
                 onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
                 onShowHistory={(unit) => setHistoryUnit(unit)}
+                onShowRepair={(unit) => setRepairUnitId(unit.id)}
               />
             </>
           ) : (
@@ -453,14 +465,27 @@ export default function Inventory() {
         itemName={selected?.name}
         onClose={() => setHistoryUnit(null)}
       />
+
+      <RepairModal
+        open={!!repairUnit}
+        unit={repairUnit}
+        itemName={selected?.name}
+        canManage={can(CAP.UNIT_REPAIR)}
+        onSend={(details) => sendToRepair(selected.id, repairUnit.id, details)}
+        onReturn={(repairId, details) =>
+          returnFromRepair(selected.id, repairUnit.id, repairId, details)
+        }
+        onClose={() => setRepairUnitId(null)}
+      />
     </div>
   )
 }
 
-function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, onShowHistory }) {
+function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, onShowHistory, onShowRepair }) {
   const isBarcoded = item.kind === 'barcoded'
   const available = item.units.filter((u) => u.status === 'available').length
-  const checkedOut = item.units.length - available
+  const inRepair = item.units.filter((u) => u.status === 'in_repair').length
+  const checkedOut = item.units.length - available - inRepair
 
   // A unit matches the search when its barcode or serial contains the query.
   const unitMatches = (u) =>
@@ -500,6 +525,9 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                 <span>{item.units.length} units</span>
                 <span className="text-emerald-600">{available} available</span>
                 <span className="text-orange-600">{checkedOut} checked out</span>
+                {inRepair > 0 && (
+                  <span className="text-amber-600">{inRepair} in repair</span>
+                )}
               </>
             ) : (
               <span>{itemCount(item)} on hand</span>
@@ -531,7 +559,8 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
               <th className="px-3 py-2.5 font-medium">Status</th>
               <th className="px-3 py-2.5 font-medium">Location</th>
               <th className="px-3 py-2.5 font-medium">Ownership</th>
-              <th className="px-5 py-2.5 font-medium">History</th>
+              <th className="px-3 py-2.5 font-medium">History</th>
+              <th className="px-5 py-2.5 font-medium">Repair</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -567,7 +596,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                     onToggle={() => onToggleOwnership(unit.id)}
                   />
                 </td>
-                <td className="px-5 py-2.5">
+                <td className="px-3 py-2.5">
                   <button
                     type="button"
                     onClick={() => onShowHistory(unit)}
@@ -576,6 +605,26 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                   >
                     <History size={14} />
                     Sets
+                  </button>
+                </td>
+                <td className="px-5 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onShowRepair(unit)}
+                    title="Repair log — send out, mark returned, history"
+                    className={[
+                      'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition',
+                      unit.status === 'in_repair'
+                        ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                        : 'text-slate-500 hover:bg-slate-100',
+                    ].join(' ')}
+                  >
+                    <Wrench size={14} />
+                    {unit.status === 'in_repair'
+                      ? 'In repair'
+                      : unit.repairs?.length
+                        ? `Log (${unit.repairs.length})`
+                        : 'Repair'}
                   </button>
                 </td>
               </tr>

@@ -19,10 +19,13 @@
 > - **Seed:** `npm run seed:supabase` (wipes+reseeds). Demo logins: ann/marcus/sofia @anntaylor.demo, pw `StudioDemo!2026`.
 >
 > **Progress:** Build order #1 (V2 foundation: relational model, logins+attribution, responsive) DONE.
-> Build order #2 (inventory): 2.1 types, 2.2 fields, 2.3 categories, 2.4 CRUD, 2.5 search (name/
-> barcode/serial) + brand & type filters — DONE. Next: **2.6** repair log, then 2.7 work history.
-> Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
-> Note: 2.5 was frontend-only (no migration — fields already loaded). See memory files for more.
+> Build order #2 (inventory): 2.1 types, 2.2 fields, 2.3 categories, 2.4 CRUD, 2.5 search + filters,
+> 2.6 repair log (per-unit send/return + history; open repair → unit unavailable) — DONE. Next: **2.7**
+> work history. Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
+> Note: 2.5 was frontend-only. 2.6 adds a `repairs` table — migration
+> `supabase/migrations/20260725120000_repair_log.sql`; apply with `db push` + `npm run seed:supabase`.
+> The frontend degrades gracefully if the table is absent (repairs fetched in a separate try/caught
+> query), so deploying before the migration never breaks inventory. See memory files for more.
 
 ## What this is
 A **sales demo** of an inventory-tracking + studio-scheduling web app for a photo/film

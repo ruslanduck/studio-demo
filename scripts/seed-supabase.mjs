@@ -8,6 +8,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { startOfWeek, addDays, format } from 'date-fns'
 import { INVENTORY_SEED } from '../src/data/inventory.js'
+import { REPAIR_TEMPLATES, repairDates } from '../src/data/repairs.js'
 import { BOOKING_TEMPLATES } from '../src/data/bookings.js'
 import { PHOTOGRAPHERS, MODELS } from '../src/data/contacts.js'
 import { STUDIOS, studioLabel } from '../src/data/studios.js'
@@ -29,7 +30,7 @@ function must(label, { error }) {
 // trigger writes to events, so events is cleared right after.
 const WIPE_ORDER = [
   'set_units', 'events', 'roster_entries', 'order_lines',
-  'sets', 'orders', 'units', 'kit_items', 'kits',
+  'sets', 'orders', 'repairs', 'units', 'kit_items', 'kits',
   'inventory_items', 'contacts', 'companies',
 ]
 
@@ -99,6 +100,29 @@ async function main() {
     itemUnits[item.id] = item.units.map((u) => byBarcode[u.barcode])
   }
 
+  console.log('Repairs…')
+  const isoFor = (d) => format(d, 'yyyy-MM-dd')
+  const now = new Date()
+  const repairRows = []
+  for (const t of REPAIR_TEMPLATES) {
+    const unitId = (itemUnits[t.itemId] || [])[t.unitIndex]
+    if (!unitId) continue
+    const { sentAt, returnedAt } = repairDates(t, now, isoFor)
+    repairRows.push({
+      unit_id: unitId, vendor: t.vendor, issue: t.issue,
+      sent_at: sentAt, returned_at: returnedAt, resolution: t.resolution,
+    })
+  }
+  let repairs = 0
+  if (repairRows.length) {
+    must('repairs', await db.from('repairs').insert(repairRows))
+    repairs = repairRows.length
+  }
+  // Units with an OPEN repair are unavailable — keep them out of reservations.
+  const openRepairUnits = new Set(
+    repairRows.filter((r) => !r.returned_at).map((r) => r.unit_id),
+  )
+
   console.log('Sets + set_units + roster…')
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   let sets = 0, reservations = 0, rosterCount = 0
@@ -113,7 +137,7 @@ async function main() {
 
     const suRows = []
     for (const [itemLocalId, count] of t.reserve) {
-      const ids = itemUnits[itemLocalId] || []
+      const ids = (itemUnits[itemLocalId] || []).filter((id) => !openRepairUnits.has(id))
       const used = itemUsed[itemLocalId] || 0
       const pick = ids.slice(used, used + count)
       itemUsed[itemLocalId] = used + pick.length
@@ -138,7 +162,7 @@ async function main() {
   const totalUnits = Object.values(itemUnits).reduce((n, a) => n + a.length, 0)
   console.log('\nDone:')
   console.log(`  companies: 1, contacts: ${contactRows.length}`)
-  console.log(`  inventory_items: ${INVENTORY_SEED.length}, units: ${totalUnits}`)
+  console.log(`  inventory_items: ${INVENTORY_SEED.length}, units: ${totalUnits}, repairs: ${repairs}`)
   console.log(`  sets: ${sets}, set_units: ${reservations}, roster_entries: ${rosterCount}`)
 }
 
