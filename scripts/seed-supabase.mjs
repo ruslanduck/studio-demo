@@ -73,6 +73,12 @@ async function main() {
         category: item.category,
         kind,
         quantity: kind === 'barcoded' ? 0 : item.quantity ?? 0,
+        brand: item.brand ?? null,
+        asset_type: item.assetType ?? null,
+        placement: item.placement ?? null,
+        subcategory: item.subcategory ?? null,
+        purchase_date: item.purchaseDate ?? null,
+        replacement_price: item.replacementPrice ?? null,
       })
       .select('id')
       .single()

@@ -304,6 +304,8 @@ function UnitDetail({ item, canToggleOwnership, onToggleOwnership, onShowHistory
         </div>
       </div>
 
+      <ItemDetailsGrid item={item} />
+
       {isBarcoded ? (
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-sm">
@@ -365,6 +367,36 @@ function UnitDetail({ item, canToggleOwnership, onToggleOwnership, onShowHistory
         <NonBarcodedBody item={item} />
       )}
     </>
+  )
+}
+
+function ItemDetailsGrid({ item }) {
+  const price =
+    item.replacementPrice == null
+      ? null
+      : `$${Number(item.replacementPrice).toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`
+  const rows = [
+    ['Brand', item.brand],
+    ['Asset type', item.assetType],
+    ['Placement', item.placement],
+    ['Subcategory', item.subcategory],
+    ['Replacement price', price],
+    ['Purchase date', item.purchaseDate],
+  ]
+  return (
+    <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-2.5 border-b border-slate-200 px-5 py-3 sm:grid-cols-3">
+      {rows.map(([k, v]) => (
+        <div key={k} className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">{k}</div>
+          <div className="truncate text-sm text-slate-700">
+            {v || <span className="text-slate-300">—</span>}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

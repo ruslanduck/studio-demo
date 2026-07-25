@@ -30,6 +30,17 @@ export function itemCount(item) {
   return item.kind === 'barcoded' ? item.units.length : (item.quantity ?? 0)
 }
 
+// Best-effort brand from an item name (for realistic seed data).
+const KNOWN_BRANDS = [
+  'Apple', 'Canon', 'Sony', 'Aputure', 'Arri', 'Anker', 'LG', 'Sandisk',
+  'Sennheiser', 'Rode', 'Zoom', 'Sound Devices', 'Quasar', 'Astera', 'Matthews',
+  'SmallHD', 'Avenger',
+]
+export function brandFor(name) {
+  const n = name.toLowerCase()
+  return KNOWN_BRANDS.find((b) => n.includes(b.toLowerCase())) || null
+}
+
 const SERIAL_CHARS = 'ABCDEFGHIJKLMNPQRSTUVWXYZ0123456789'
 
 // Deterministic serial derived from a seed string (FNV-1a hash + xorshift).
@@ -140,12 +151,12 @@ const CATALOG = [
 let seedBarcode = 703
 export const INVENTORY_SEED = CATALOG.map(([id, name, category, qty, kind = 'barcoded']) => {
   if (kind !== 'barcoded') {
-    return { id, name, category, kind, quantity: qty, units: [] }
+    return { id, name, category, kind, quantity: qty, units: [], brand: brandFor(name) }
   }
   const units = createUnits(id, qty, seedBarcode)
   seedBarcode += qty
   units.forEach((u, i) => {
     if (i % 7 === 6) u.ownership = 'sub_rental'
   })
-  return { id, name, category, kind, quantity: 0, units }
+  return { id, name, category, kind, quantity: 0, units, brand: brandFor(name) }
 })

@@ -34,6 +34,7 @@ export async function getInventory() {
     .from('inventory_items')
     .select(
       `id, name, category, kind, quantity,
+       brand, asset_type, placement, subcategory, purchase_date, replacement_price,
        units (
          id, barcode, serial, ownership,
          set_units ( status, set:sets ( title, studio_id, status ) )
@@ -48,6 +49,12 @@ export async function getInventory() {
     category: item.category,
     kind: item.kind,
     quantity: item.quantity,
+    brand: item.brand,
+    assetType: item.asset_type,
+    placement: item.placement,
+    subcategory: item.subcategory,
+    purchaseDate: item.purchase_date,
+    replacementPrice: item.replacement_price,
     units: (item.units || []).map((u) => {
       const active = (u.set_units || []).find(occupies)
       return {
@@ -220,12 +227,27 @@ export async function toggleOwnership(unitId, next) {
   if (error) throw error
 }
 
-export async function addInventoryItem({ name, category, quantity, kind = 'barcoded' }) {
+// Map the item's optional attribute fields to DB columns (blank → null).
+function itemFieldColumns(f = {}) {
+  const clean = (v) => (v === '' || v == null ? null : v)
+  return {
+    brand: clean(f.brand),
+    asset_type: clean(f.assetType),
+    placement: clean(f.placement),
+    subcategory: clean(f.subcategory),
+    purchase_date: clean(f.purchaseDate),
+    replacement_price: clean(f.replacementPrice),
+  }
+}
+
+export async function addInventoryItem({ name, category, quantity, kind = 'barcoded', ...fields }) {
+  const attrs = itemFieldColumns(fields)
+
   // Non-barcoded / consumable items store a quantity and have no unit rows.
   if (kind !== 'barcoded') {
     const { data: item, error } = await supabase
       .from('inventory_items')
-      .insert({ name: name.trim(), category, kind, quantity })
+      .insert({ name: name.trim(), category, kind, quantity, ...attrs })
       .select('id')
       .single()
     if (error) throw error
@@ -235,7 +257,7 @@ export async function addInventoryItem({ name, category, quantity, kind = 'barco
   // Barcoded: generate `quantity` tracked units with fresh barcodes.
   const { data: item, error } = await supabase
     .from('inventory_items')
-    .insert({ name: name.trim(), category, kind: 'barcoded' })
+    .insert({ name: name.trim(), category, kind: 'barcoded', ...attrs })
     .select('id')
     .single()
   if (error) throw error
