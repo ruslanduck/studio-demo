@@ -1,4 +1,27 @@
-# CLAUDE.md — AnnTaylor Rental System (Demo)
+# CLAUDE.md — AnnTaylor Rental System
+
+> ## ⚠️ Current state (V2 — 2026-07-25). This supersedes the V1 plan below.
+>
+> The app has grown past the V1 localStorage demo into a real product. **Architecture now:**
+> - **Backend:** Supabase (Postgres + Auth). Schema in `supabase/migrations/*`. Apply with
+>   `set -a; . ./.env.local; set +a; echo y | npx supabase db push`. Project ref `bowtxtapuxfohdhhakvg`.
+> - **Data layer:** `src/data/repository.js` is source-agnostic, switched by `VITE_DATA_SOURCE`
+>   (`local` = localStorage seeds; `supabase` = the DB). Zustand `src/store.js` hydrates from it.
+> - **Auth:** individual email/password logins (`src/components/Login.jsx`, store `initAuth/signIn/signUp/signOut`);
+>   every action attributed (`created_by`, etc.). One flat role **Equipment Team** behind a capability
+>   layer — `src/lib/permissions.js` + `useCan()`; **never hardcode role checks**.
+> - **Responsive:** desktop / iPad / iPhone (sidebar→drawer, master-detail inventory).
+> - **English-only UI:** don't use native `<input type=date/time>` (locale-bound); use `DateField`/`TimeField`.
+> - **Secrets:** `.env.local` (gitignored) holds Supabase keys + DB password + service_role. Public
+>   URL+anon are in committed `.env.production` for the prod build. service_role = local seeding only.
+> - **Deploy:** push to `main` → GitHub Pages (~1–2 min). Confirm via the **CDN** (compare the served
+>   `index-*.js` hash to local `dist/`), not the rate-limited GitHub API. Live at duck-agency.com/studio-demo/.
+> - **Seed:** `npm run seed:supabase` (wipes+reseeds). Demo logins: ann/marcus/sofia @anntaylor.demo, pw `StudioDemo!2026`.
+>
+> **Progress:** Build order #1 (V2 foundation: relational model, logins+attribution, responsive) DONE.
+> Build order #2 (inventory): 2.1 types, 2.2 fields, 2.3 categories, 2.4 CRUD — DONE. Next: **2.5**
+> search-by-barcode + filters, then 2.6 repair log, 2.7 work history. Ship each section end-to-end
+> (migration → verify on Supabase → commit → push → confirm prod). See memory files for more.
 
 ## What this is
 A **sales demo** of an inventory-tracking + studio-scheduling web app for a photo/film
