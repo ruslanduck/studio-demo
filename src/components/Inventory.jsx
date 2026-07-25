@@ -1,11 +1,29 @@
-import { useMemo, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X } from 'lucide-react'
 import { useStore } from '../store'
-import { CATEGORIES, itemCount, kindLabel } from '../data/inventory'
+import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import AddInventoryModal from './AddInventoryModal'
 import UnitHistoryModal from './UnitHistoryModal'
+
+// Render `text` with the first occurrence of `query` (already lowercased) wrapped
+// in a highlight. Used to show what a name / barcode / serial search matched.
+function Highlight({ text, query }) {
+  const s = String(text ?? '')
+  if (!query) return s
+  const i = s.toLowerCase().indexOf(query)
+  if (i === -1) return s
+  return (
+    <>
+      {s.slice(0, i)}
+      <mark className="rounded-sm bg-yellow-200 px-0.5 text-slate-900">
+        {s.slice(i, i + query.length)}
+      </mark>
+      {s.slice(i + query.length)}
+    </>
+  )
+}
 
 function StatusBadge({ status }) {
   const available = status === 'available'
@@ -58,7 +76,7 @@ function OwnershipBadge({ ownership, onToggle, disabled }) {
   )
 }
 
-function ItemRow({ item, active, onSelect }) {
+function ItemRow({ item, active, onSelect, query }) {
   const subtitle = [
     item.brand,
     item.kind !== 'barcoded' ? kindLabel(item.kind) : null,
@@ -89,7 +107,7 @@ function ItemRow({ item, active, onSelect }) {
             active ? 'text-violet-900' : 'text-slate-800',
           ].join(' ')}
         >
-          {item.name}
+          <Highlight text={item.name} query={query} />
         </span>
         <span className="block truncate text-xs text-slate-400">
           {subtitle || ' '}
@@ -109,6 +127,8 @@ export default function Inventory() {
 
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
+  const [brand, setBrand] = useState('All')
+  const [kind, setKind] = useState('All')
   const [selectedId, setSelectedId] = useState(
     () => inventory.find((i) => i.id === 'kbd-magic')?.id ?? inventory[0]?.id ?? null,
   )
@@ -117,14 +137,43 @@ export default function Inventory() {
   // On phone/tablet-portrait the list and detail are separate screens.
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
+  // Distinct brands present in the inventory (for the Brand filter).
+  const brands = useMemo(
+    () =>
+      [...new Set(inventory.map((i) => i.brand).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [inventory],
+  )
+
+  const query = search.trim().toLowerCase()
+
+  // Search matches name, barcode, or serial (scan a barcode/serial → find the
+  // item). Category / brand / type narrow the list independently.
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return inventory.filter(
-      (item) =>
-        (category === 'All' || item.category === category) &&
-        (q === '' || item.name.toLowerCase().includes(q)),
-    )
-  }, [inventory, search, category])
+    return inventory.filter((item) => {
+      if (category !== 'All' && item.category !== category) return false
+      if (brand !== 'All' && item.brand !== brand) return false
+      if (kind !== 'All' && item.kind !== kind) return false
+      if (query === '') return true
+      if (item.name.toLowerCase().includes(query)) return true
+      return item.units.some(
+        (u) =>
+          u.barcode.toLowerCase().includes(query) ||
+          u.serial.toLowerCase().includes(query),
+      )
+    })
+  }, [inventory, query, category, brand, kind])
+
+  const filtersActive =
+    query !== '' || category !== 'All' || brand !== 'All' || kind !== 'All'
+
+  function clearFilters() {
+    setSearch('')
+    setCategory('All')
+    setBrand('All')
+    setKind('All')
+  }
 
   // Group the list by category → subcategory in the predefined category order
   // (the same order items appear in an order). Categories are surfaced as
@@ -170,8 +219,7 @@ export default function Inventory() {
 
   async function handleCreate(fields) {
     const newId = await addInventoryItem(fields)
-    setSearch('')
-    setCategory('All')
+    clearFilters()
     setSelectedId(newId)
     setShowDetailMobile(true)
     closeItemModal()
@@ -233,29 +281,87 @@ export default function Inventory() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search items…"
-                className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                placeholder="Search name, barcode, or serial…"
+                className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-9 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
               />
+              {search !== '' && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  title="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-            >
-              <option value="All">All categories</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+              >
+                <option value="All">All categories</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+                className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+              >
+                <option value="All">All brands</option>
+                {brands.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+                className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+              >
+                <option value="All">All types</option>
+                {ITEM_KINDS.map((k) => (
+                  <option key={k.value} value={k.value}>
+                    {k.label}
+                  </option>
+                ))}
+              </select>
+              {filtersActive && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                >
+                  <X size={14} />
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {filtered.length === 0 ? (
-              <p className="px-3 py-8 text-center text-sm text-slate-400">
-                No items match your filters.
-              </p>
+              <div className="px-3 py-10 text-center">
+                <p className="text-sm text-slate-400">
+                  No items match your filters.
+                </p>
+                {filtersActive && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-violet-600 transition hover:bg-violet-50"
+                  >
+                    <X size={14} />
+                    Clear filters
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="space-y-1">
                 {groups.map((g) => (
@@ -276,6 +382,7 @@ export default function Inventory() {
                               <ItemRow
                                 item={item}
                                 active={item.id === selectedId}
+                                query={query}
                                 onSelect={() => {
                                   setSelectedId(item.id)
                                   setShowDetailMobile(true)
@@ -312,6 +419,7 @@ export default function Inventory() {
               </button>
               <UnitDetail
                 item={selected}
+                query={query}
                 canEdit={can(CAP.INVENTORY_EDIT)}
                 onEdit={() => setItemModal({ open: true, item: selected })}
                 canToggleOwnership={can(CAP.UNIT_OWNERSHIP_TOGGLE)}
@@ -349,10 +457,26 @@ export default function Inventory() {
   )
 }
 
-function UnitDetail({ item, canEdit, onEdit, canToggleOwnership, onToggleOwnership, onShowHistory }) {
+function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, onShowHistory }) {
   const isBarcoded = item.kind === 'barcoded'
   const available = item.units.filter((u) => u.status === 'available').length
   const checkedOut = item.units.length - available
+
+  // A unit matches the search when its barcode or serial contains the query.
+  const unitMatches = (u) =>
+    !!query &&
+    (u.barcode.toLowerCase().includes(query) || u.serial.toLowerCase().includes(query))
+  const firstMatchId = isBarcoded
+    ? item.units.find(unitMatches)?.id ?? null
+    : null
+
+  // Scroll the first matched unit into view when the search / item changes.
+  const firstMatchRef = useRef(null)
+  useEffect(() => {
+    if (firstMatchRef.current) {
+      firstMatchRef.current.scrollIntoView({ block: 'nearest' })
+    }
+  }, [firstMatchId, item.id])
 
   return (
     <>
@@ -411,14 +535,20 @@ function UnitDetail({ item, canEdit, onEdit, canToggleOwnership, onToggleOwnersh
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {item.units.map((unit, idx) => (
-              <tr key={unit.id} className="hover:bg-slate-50/60">
+            {item.units.map((unit, idx) => {
+              const matched = unitMatches(unit)
+              return (
+              <tr
+                key={unit.id}
+                ref={unit.id === firstMatchId ? firstMatchRef : null}
+                className={matched ? 'bg-yellow-50' : 'hover:bg-slate-50/60'}
+              >
                 <td className="px-5 py-2.5 text-slate-400">{idx + 1}</td>
                 <td className="px-3 py-2.5 font-mono text-slate-700">
-                  {unit.barcode}
+                  <Highlight text={unit.barcode} query={query} />
                 </td>
                 <td className="px-3 py-2.5 font-mono text-xs text-slate-500">
-                  {unit.serial}
+                  <Highlight text={unit.serial} query={query} />
                 </td>
                 <td className="px-3 py-2.5">
                   <StatusBadge status={unit.status} />
@@ -449,7 +579,8 @@ function UnitDetail({ item, canEdit, onEdit, canToggleOwnership, onToggleOwnersh
                   </button>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
