@@ -5,6 +5,8 @@ import { studioLabel } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
+import DateField from './DateField'
+import TimeField from './TimeField'
 
 const fieldClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
@@ -186,8 +188,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
             </div>
             <div>
               <label className={labelClass}>Date</label>
-              <input
-                type="date"
+              <DateField
                 value={form.date}
                 onChange={set('date')}
                 className={fieldClass}
@@ -195,8 +196,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
             </div>
             <div>
               <label className={labelClass}>Start time</label>
-              <input
-                type="time"
+              <TimeField
                 value={form.startTime}
                 onChange={set('startTime')}
                 className={fieldClass}
@@ -204,8 +204,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
             </div>
             <div>
               <label className={labelClass}>End time</label>
-              <input
-                type="time"
+              <TimeField
                 value={form.endTime}
                 onChange={set('endTime')}
                 className={fieldClass}

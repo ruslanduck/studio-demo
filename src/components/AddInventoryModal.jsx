@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CATEGORIES, ITEM_KINDS } from '../data/inventory'
 import Modal from './Modal'
+import DateField from './DateField'
 
 const MAX_QTY = 500
 
@@ -168,8 +169,7 @@ export default function AddInventoryModal({ open, onClose, onCreate }) {
             </div>
             <div>
               <label className={label}>Purchase date</label>
-              <input
-                type="date"
+              <DateField
                 value={form.purchaseDate}
                 onChange={set('purchaseDate')}
                 className={field}
