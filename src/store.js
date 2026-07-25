@@ -4,6 +4,7 @@ import { startOfWeek, addDays, format } from 'date-fns'
 import { STUDIOS, studioLabel } from './data/studios'
 import { INVENTORY_SEED, createUnits } from './data/inventory'
 import { REPAIR_TEMPLATES, repairDates } from './data/repairs'
+import { generateUsage } from './data/usage'
 import { BOOKING_TEMPLATES } from './data/bookings'
 import { PHOTOGRAPHERS, MODELS } from './data/contacts'
 import {
@@ -16,6 +17,7 @@ import {
   toggleOwnership as sbToggleOwnership,
   sendToRepair as sbSendToRepair,
   returnFromRepair as sbReturnFromRepair,
+  logItemUsage as sbLogItemUsage,
   addInventoryItem as sbAddInventoryItem,
   updateInventoryItem as sbUpdateInventoryItem,
   deleteInventoryItem as sbDeleteInventoryItem,
@@ -32,6 +34,10 @@ function buildSeedData() {
   for (const item of inventory) for (const u of item.units) u.repairs = []
   const byId = Object.fromEntries(inventory.map((item) => [item.id, item]))
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+
+  // Work-history / usage seeds (attach a year of usage events per item).
+  const usageByItem = generateUsage(new Date(), (d) => format(d, 'yyyy-MM-dd'))
+  for (const item of inventory) item.usage = usageByItem[item.id] || []
 
   // Repair-log seeds first: an OPEN repair marks the unit 'in_repair' so the
   // booking loop below skips it (a unit out for repair can't be reserved).
@@ -338,6 +344,34 @@ export const useStore = create(
               },
         )
         set({ inventory: withReservations(inventory, state.bookings) })
+      },
+
+      // Record a usage event for an item (work-history / analytics).
+      logUsage: async (itemId, details = {}) => {
+        if (usingSupabase) {
+          await sbLogItemUsage(itemId, details)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const event = {
+          jobTitle: details.jobTitle || null,
+          studioId: details.studioId || null,
+          quantity: details.quantity || 1,
+          usedOn: details.usedOn || format(new Date(), 'yyyy-MM-dd'),
+        }
+        set({
+          inventory: state.inventory.map((item) =>
+            item.id !== itemId
+              ? item
+              : {
+                  ...item,
+                  usage: [event, ...(item.usage || [])].sort((a, b) =>
+                    a.usedOn < b.usedOn ? 1 : -1,
+                  ),
+                },
+          ),
+        })
       },
 
       // Create a new inventory item with `quantity` freshly generated units.

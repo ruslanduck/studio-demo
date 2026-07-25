@@ -51,6 +51,26 @@ async function getRepairsByUnit() {
   return map
 }
 
+// Usage events grouped by item id, newest first. Fetched separately (like
+// repairs) so inventory still loads if the 2.7 migration hasn't run yet.
+async function getUsageByItem() {
+  const { data, error } = await supabase
+    .from('item_usage')
+    .select('inventory_item_id, job_title, studio_id, quantity, used_on')
+    .order('used_on', { ascending: false })
+  if (error) return {} // table absent / not yet migrated → no usage
+  const map = {}
+  for (const u of data || []) {
+    ;(map[u.inventory_item_id] ||= []).push({
+      jobTitle: u.job_title,
+      studioId: u.studio_id,
+      quantity: u.quantity,
+      usedOn: u.used_on,
+    })
+  }
+  return map
+}
+
 // Inventory items with their units. `status`/`location` are derived from the
 // active reservations in set_units + any open repair (the DB keeps no
 // denormalized copy). An open repair takes precedence: the unit is unavailable.
@@ -68,7 +88,10 @@ export async function getInventory() {
     .order('name')
   if (error) throw error
 
-  const repairsByUnit = await getRepairsByUnit()
+  const [repairsByUnit, usageByItem] = await Promise.all([
+    getRepairsByUnit(),
+    getUsageByItem(),
+  ])
 
   return data.map((item) => ({
     id: item.id,
@@ -82,6 +105,7 @@ export async function getInventory() {
     subcategory: item.subcategory,
     purchaseDate: item.purchase_date,
     replacementPrice: item.replacement_price,
+    usage: usageByItem[item.id] || [],
     units: (item.units || []).map((u) => {
       const repairs = repairsByUnit[u.id] || []
       const openRepair = repairs.find((r) => !r.returnedAt)
@@ -279,6 +303,19 @@ export async function returnFromRepair(repairId, { returnedAt, resolution } = {}
     .from('repairs')
     .update({ returned_at: returnedAt, resolution: resolution || null })
     .eq('id', repairId)
+  if (error) throw error
+}
+
+// Record a usage event for an item (work-history / analytics).
+export async function logItemUsage(itemId, { jobTitle, studioId, quantity, usedOn } = {}) {
+  const row = {
+    inventory_item_id: itemId,
+    job_title: jobTitle || null,
+    studio_id: studioId || null,
+    quantity: quantity || 1,
+  }
+  if (usedOn) row.used_on = usedOn
+  const { error } = await supabase.from('item_usage').insert(row)
   if (error) throw error
 }
 

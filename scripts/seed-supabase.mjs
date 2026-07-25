@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js'
 import { startOfWeek, addDays, format } from 'date-fns'
 import { INVENTORY_SEED } from '../src/data/inventory.js'
 import { REPAIR_TEMPLATES, repairDates } from '../src/data/repairs.js'
+import { generateUsage } from '../src/data/usage.js'
 import { BOOKING_TEMPLATES } from '../src/data/bookings.js'
 import { PHOTOGRAPHERS, MODELS } from '../src/data/contacts.js'
 import { STUDIOS, studioLabel } from '../src/data/studios.js'
@@ -29,7 +30,7 @@ function must(label, { error }) {
 // Wipe order avoids FK conflicts. set_units is deleted first: its DELETE
 // trigger writes to events, so events is cleared right after.
 const WIPE_ORDER = [
-  'set_units', 'events', 'roster_entries', 'order_lines',
+  'set_units', 'events', 'roster_entries', 'order_lines', 'item_usage',
   'sets', 'orders', 'repairs', 'units', 'kit_items', 'kits',
   'inventory_items', 'contacts', 'companies',
 ]
@@ -65,6 +66,7 @@ async function main() {
   console.log('Inventory items + units…')
   const itemUnits = {} // local item id -> [db unit id] in local order
   const itemUsed = {} // local item id -> count reserved so far
+  const itemDbId = {} // local item id -> db item id
   for (const item of INVENTORY_SEED) {
     const kind = item.kind ?? 'barcoded'
     const { data: it, error: iErr } = await db
@@ -85,6 +87,7 @@ async function main() {
       .single()
     if (iErr) throw iErr
 
+    itemDbId[item.id] = it.id
     itemUnits[item.id] = []
     itemUsed[item.id] = 0
     if (kind !== 'barcoded' || item.units.length === 0) continue // no unit rows
@@ -122,6 +125,28 @@ async function main() {
   const openRepairUnits = new Set(
     repairRows.filter((r) => !r.returned_at).map((r) => r.unit_id),
   )
+
+  console.log('Work-history / usage…')
+  const usageByItem = generateUsage(now, isoFor)
+  const usageRows = []
+  for (const [localId, events] of Object.entries(usageByItem)) {
+    const dbId = itemDbId[localId]
+    if (!dbId) continue
+    for (const e of events) {
+      usageRows.push({
+        inventory_item_id: dbId,
+        job_title: e.jobTitle,
+        studio_id: e.studioId,
+        quantity: e.quantity,
+        used_on: e.usedOn,
+      })
+    }
+  }
+  let usage = 0
+  if (usageRows.length) {
+    must('item_usage', await db.from('item_usage').insert(usageRows))
+    usage = usageRows.length
+  }
 
   console.log('Sets + set_units + roster…')
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
@@ -162,7 +187,7 @@ async function main() {
   const totalUnits = Object.values(itemUnits).reduce((n, a) => n + a.length, 0)
   console.log('\nDone:')
   console.log(`  companies: 1, contacts: ${contactRows.length}`)
-  console.log(`  inventory_items: ${INVENTORY_SEED.length}, units: ${totalUnits}, repairs: ${repairs}`)
+  console.log(`  inventory_items: ${INVENTORY_SEED.length}, units: ${totalUnits}, repairs: ${repairs}, item_usage: ${usage}`)
   console.log(`  sets: ${sets}, set_units: ${reservations}, roster_entries: ${rosterCount}`)
 }
 

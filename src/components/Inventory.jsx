@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
 import { useCan } from '../lib/useCan'
@@ -7,6 +7,7 @@ import { CAP } from '../lib/permissions'
 import AddInventoryModal from './AddInventoryModal'
 import UnitHistoryModal from './UnitHistoryModal'
 import RepairModal from './RepairModal'
+import WorkHistoryModal, { UsageStats } from './WorkHistoryModal'
 
 // Render `text` with the first occurrence of `query` (already lowercased) wrapped
 // in a highlight. Used to show what a name / barcode / serial search matched.
@@ -126,6 +127,7 @@ export default function Inventory() {
   const toggleOwnership = useStore((s) => s.toggleOwnership)
   const sendToRepair = useStore((s) => s.sendToRepair)
   const returnFromRepair = useStore((s) => s.returnFromRepair)
+  const logUsage = useStore((s) => s.logUsage)
   const addInventoryItem = useStore((s) => s.addInventoryItem)
   const updateInventoryItem = useStore((s) => s.updateInventoryItem)
   const deleteInventoryItem = useStore((s) => s.deleteInventoryItem)
@@ -141,6 +143,7 @@ export default function Inventory() {
   const [itemModal, setItemModal] = useState({ open: false, item: null })
   const [historyUnit, setHistoryUnit] = useState(null)
   const [repairUnitId, setRepairUnitId] = useState(null)
+  const [workHistoryOpen, setWorkHistoryOpen] = useState(false)
   // On phone/tablet-portrait the list and detail are separate screens.
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
@@ -437,6 +440,7 @@ export default function Inventory() {
                 onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
                 onShowHistory={(unit) => setHistoryUnit(unit)}
                 onShowRepair={(unit) => setRepairUnitId(unit.id)}
+                onShowWorkHistory={() => setWorkHistoryOpen(true)}
               />
             </>
           ) : (
@@ -477,11 +481,19 @@ export default function Inventory() {
         }
         onClose={() => setRepairUnitId(null)}
       />
+
+      <WorkHistoryModal
+        open={workHistoryOpen}
+        item={selected}
+        canLog={can(CAP.ITEM_USAGE_LOG)}
+        onLog={(details) => logUsage(selected.id, details)}
+        onClose={() => setWorkHistoryOpen(false)}
+      />
     </div>
   )
 }
 
-function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, onShowHistory, onShowRepair }) {
+function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, onShowHistory, onShowRepair, onShowWorkHistory }) {
   const isBarcoded = item.kind === 'barcoded'
   const available = item.units.filter((u) => u.status === 'available').length
   const inRepair = item.units.filter((u) => u.status === 'in_repair').length
@@ -534,16 +546,27 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
             )}
           </div>
         </div>
-        {canEdit && (
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={onEdit}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            onClick={onShowWorkHistory}
+            title="Work history & usage analytics"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
           >
-            <Pencil size={14} />
-            Edit
+            <Activity size={14} />
+            Work history
           </button>
-        )}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              <Pencil size={14} />
+              Edit
+            </button>
+          )}
+        </div>
       </div>
 
       <ItemDetailsGrid item={item} />
@@ -634,7 +657,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
         </table>
       </div>
       ) : (
-        <NonBarcodedBody item={item} />
+        <NonBarcodedBody item={item} onShowWorkHistory={onShowWorkHistory} />
       )}
     </>
   )
@@ -670,24 +693,63 @@ function ItemDetailsGrid({ item }) {
   )
 }
 
-function NonBarcodedBody({ item }) {
+function NonBarcodedBody({ item, onShowWorkHistory }) {
   const consumable = item.kind === 'consumable'
+  const usage = item.usage || []
+  const recent = usage.slice(0, 6)
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-10 py-6">
-        <div className="text-4xl font-semibold text-slate-900">{itemCount(item)}</div>
-        <div className="mt-1 text-xs uppercase tracking-wide text-slate-400">
-          on hand
+    <div className="min-h-0 flex-1 overflow-auto p-5">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-8 py-5 text-center">
+          <div className="text-4xl font-semibold text-slate-900">{itemCount(item)}</div>
+          <div className="mt-1 text-xs uppercase tracking-wide text-slate-400">on hand</div>
         </div>
+        <p className="max-w-xs text-sm text-slate-500">
+          {consumable
+            ? 'Consumable — expendable stock drawn down as it’s used. Usage is tracked by quantity across jobs.'
+            : 'Non-barcoded — counted by quantity, no per-unit tracking; usage is aggregated across jobs.'}
+        </p>
       </div>
-      <p className="max-w-sm text-sm text-slate-500">
-        {consumable
-          ? 'Consumable — expendable stock drawn down as it’s used. No per-unit barcodes.'
-          : 'Non-barcoded — counted by quantity, no per-unit tracking; total usage is aggregated across jobs.'}
-      </p>
-      <p className="text-xs text-slate-400">
-        Work history &amp; usage log — coming in the next inventory step.
-      </p>
+
+      <div className="mt-5 flex items-center justify-between">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Usage &amp; analytics
+        </h4>
+        <button
+          type="button"
+          onClick={onShowWorkHistory}
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-violet-600 transition hover:bg-violet-50"
+        >
+          <Activity size={14} />
+          Full history
+        </button>
+      </div>
+
+      <UsageStats events={usage} className="mt-2" />
+
+      {recent.length > 0 && (
+        <>
+          <div className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Recent usage
+          </div>
+          <ul className="space-y-1.5">
+            {recent.map((e, i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2"
+              >
+                <span className="truncate text-sm font-medium text-slate-800">
+                  {e.jobTitle || 'Usage'}
+                </span>
+                <div className="flex shrink-0 items-center gap-3 text-xs">
+                  <span className="font-medium text-slate-700">×{e.quantity}</span>
+                  <span className="text-slate-400">{e.usedOn}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   )
 }

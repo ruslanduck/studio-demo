@@ -17,6 +17,7 @@ export const CAP = {
   UNIT_OWNERSHIP_TOGGLE: 'unit.ownership_toggle',
   UNIT_WRITE_OFF: 'unit.write_off',
   UNIT_REPAIR: 'unit.repair',
+  ITEM_USAGE_LOG: 'item.usage_log',
 }
 
 export const ALL_CAPS = Object.values(CAP)
