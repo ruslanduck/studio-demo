@@ -58,6 +58,47 @@ function OwnershipBadge({ ownership, onToggle, disabled }) {
   )
 }
 
+function ItemRow({ item, active, onSelect }) {
+  const subtitle = [
+    item.brand,
+    item.kind !== 'barcoded' ? kindLabel(item.kind) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={[
+        'flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition',
+        active ? 'bg-violet-50 ring-1 ring-violet-200' : 'hover:bg-slate-50',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'grid h-9 w-9 shrink-0 place-items-center rounded-lg text-sm font-semibold',
+          active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
+        ].join(' ')}
+      >
+        {itemCount(item)}
+      </span>
+      <span className="min-w-0">
+        <span
+          className={[
+            'block truncate text-sm font-medium',
+            active ? 'text-violet-900' : 'text-slate-800',
+          ].join(' ')}
+        >
+          {item.name}
+        </span>
+        <span className="block truncate text-xs text-slate-400">
+          {subtitle || ' '}
+        </span>
+      </span>
+    </button>
+  )
+}
+
 export default function Inventory() {
   const inventory = useStore((s) => s.inventory)
   const toggleOwnership = useStore((s) => s.toggleOwnership)
@@ -82,6 +123,41 @@ export default function Inventory() {
         (q === '' || item.name.toLowerCase().includes(q)),
     )
   }, [inventory, search, category])
+
+  // Group the list by category → subcategory in the predefined category order
+  // (the same order items appear in an order). Categories are surfaced as
+  // headers in the main view, not just the filter.
+  const groups = useMemo(() => {
+    const catRank = (c) => {
+      const i = CATEGORIES.indexOf(c)
+      return i === -1 ? CATEGORIES.length : i
+    }
+    const byCat = new Map()
+    for (const item of filtered) {
+      if (!byCat.has(item.category)) byCat.set(item.category, [])
+      byCat.get(item.category).push(item)
+    }
+    return [...byCat.keys()]
+      .sort((a, b) => catRank(a) - catRank(b) || a.localeCompare(b))
+      .map((cat) => {
+        const bySub = new Map()
+        for (const item of byCat.get(cat)) {
+          const sub = item.subcategory || ''
+          if (!bySub.has(sub)) bySub.set(sub, [])
+          bySub.get(sub).push(item)
+        }
+        const subs = [...bySub.keys()].sort((a, b) =>
+          a === '' ? 1 : b === '' ? -1 : a.localeCompare(b),
+        )
+        return {
+          category: cat,
+          subgroups: subs.map((sub) => ({
+            subcategory: sub,
+            items: bySub.get(sub).sort((x, y) => x.name.localeCompare(y.name)),
+          })),
+        }
+      })
+  }, [filtered])
 
   const selected =
     inventory.find((i) => i.id === selectedId) ?? inventory[0] ?? null
@@ -165,55 +241,38 @@ export default function Inventory() {
                 No items match your filters.
               </p>
             ) : (
-              <ul className="space-y-0.5">
-                {filtered.map((item) => {
-                  const active = item.id === selectedId
-                  return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedId(item.id)
-                          setShowDetailMobile(true)
-                        }}
-                        className={[
-                          'flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition',
-                          active
-                            ? 'bg-violet-50 ring-1 ring-violet-200'
-                            : 'hover:bg-slate-50',
-                        ].join(' ')}
-                      >
-                        <span
-                          className={[
-                            'grid h-9 w-9 shrink-0 place-items-center rounded-lg text-sm font-semibold',
-                            active
-                              ? 'bg-violet-600 text-white'
-                              : 'bg-slate-100 text-slate-600',
-                          ].join(' ')}
-                        >
-                          {itemCount(item)}
-                        </span>
-                        <span className="min-w-0">
-                          <span
-                            className={[
-                              'block truncate text-sm font-medium',
-                              active ? 'text-violet-900' : 'text-slate-800',
-                            ].join(' ')}
-                          >
-                            {item.name}
-                          </span>
-                          <span className="block truncate text-xs text-slate-400">
-                            {item.category}
-                            {item.kind && item.kind !== 'barcoded' && (
-                              <> · {kindLabel(item.kind)}</>
-                            )}
-                          </span>
-                        </span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
+              <div className="space-y-1">
+                {groups.map((g) => (
+                  <div key={g.category}>
+                    <div className="sticky top-0 z-10 -mx-2 bg-white/95 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur">
+                      {g.category}
+                    </div>
+                    {g.subgroups.map((sg) => (
+                      <div key={sg.subcategory || '_none'} className="mb-1">
+                        {sg.subcategory && (
+                          <div className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-slate-400">
+                            {sg.subcategory}
+                          </div>
+                        )}
+                        <ul className="space-y-0.5">
+                          {sg.items.map((item) => (
+                            <li key={item.id}>
+                              <ItemRow
+                                item={item}
+                                active={item.id === selectedId}
+                                onSelect={() => {
+                                  setSelectedId(item.id)
+                                  setShowDetailMobile(true)
+                                }}
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
