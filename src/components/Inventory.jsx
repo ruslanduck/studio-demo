@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft } from 'lucide-react'
 import { useStore } from '../store'
-import { CATEGORIES } from '../data/inventory'
+import { CATEGORIES, itemCount, kindLabel } from '../data/inventory'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import AddInventoryModal from './AddInventoryModal'
@@ -191,7 +191,7 @@ export default function Inventory() {
                               : 'bg-slate-100 text-slate-600',
                           ].join(' ')}
                         >
-                          {item.units.length}
+                          {itemCount(item)}
                         </span>
                         <span className="min-w-0">
                           <span
@@ -204,6 +204,9 @@ export default function Inventory() {
                           </span>
                           <span className="block truncate text-xs text-slate-400">
                             {item.category}
+                            {item.kind && item.kind !== 'barcoded' && (
+                              <> · {kindLabel(item.kind)}</>
+                            )}
                           </span>
                         </span>
                       </button>
@@ -267,6 +270,7 @@ export default function Inventory() {
 }
 
 function UnitDetail({ item, canToggleOwnership, onToggleOwnership, onShowHistory }) {
+  const isBarcoded = item.kind === 'barcoded'
   const available = item.units.filter((u) => u.status === 'available').length
   const checkedOut = item.units.length - available
 
@@ -284,13 +288,23 @@ function UnitDetail({ item, canToggleOwnership, onToggleOwnership, onShowHistory
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
               {item.category}
             </span>
-            <span>{item.units.length} units</span>
-            <span className="text-emerald-600">{available} available</span>
-            <span className="text-orange-600">{checkedOut} checked out</span>
+            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
+              {kindLabel(item.kind)}
+            </span>
+            {isBarcoded ? (
+              <>
+                <span>{item.units.length} units</span>
+                <span className="text-emerald-600">{available} available</span>
+                <span className="text-orange-600">{checkedOut} checked out</span>
+              </>
+            ) : (
+              <span>{itemCount(item)} on hand</span>
+            )}
           </div>
         </div>
       </div>
 
+      {isBarcoded ? (
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
@@ -347,6 +361,31 @@ function UnitDetail({ item, canToggleOwnership, onToggleOwnership, onShowHistory
           </tbody>
         </table>
       </div>
+      ) : (
+        <NonBarcodedBody item={item} />
+      )}
     </>
+  )
+}
+
+function NonBarcodedBody({ item }) {
+  const consumable = item.kind === 'consumable'
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-10 py-6">
+        <div className="text-4xl font-semibold text-slate-900">{itemCount(item)}</div>
+        <div className="mt-1 text-xs uppercase tracking-wide text-slate-400">
+          on hand
+        </div>
+      </div>
+      <p className="max-w-sm text-sm text-slate-500">
+        {consumable
+          ? 'Consumable — expendable stock drawn down as it’s used. No per-unit barcodes.'
+          : 'Non-barcoded — counted by quantity, no per-unit tracking; total usage is aggregated across jobs.'}
+      </p>
+      <p className="text-xs text-slate-400">
+        Work history &amp; usage log — coming in the next inventory step.
+      </p>
+    </div>
   )
 }

@@ -14,6 +14,22 @@ export const CATEGORIES = [
   'Audio',
 ]
 
+// Item types (2.1). The type drives the detail card + how the item is counted.
+export const ITEM_KINDS = [
+  { value: 'barcoded', label: 'Barcoded' },
+  { value: 'non_barcoded', label: 'Non-barcoded' },
+  { value: 'consumable', label: 'Consumable' },
+]
+
+export function kindLabel(kind) {
+  return ITEM_KINDS.find((k) => k.value === kind)?.label ?? 'Barcoded'
+}
+
+// On-hand count: barcoded items count their tracked units; the rest use qty.
+export function itemCount(item) {
+  return item.kind === 'barcoded' ? item.units.length : (item.quantity ?? 0)
+}
+
 const SERIAL_CHARS = 'ABCDEFGHIJKLMNPQRSTUVWXYZ0123456789'
 
 // Deterministic serial derived from a seed string (FNV-1a hash + xorshift).
@@ -108,16 +124,28 @@ const CATALOG = [
   ['wireless-go-2', 'Rode Wireless GO II', 'Audio', 5],
   ['zoom-h6', 'Zoom H6 Recorder', 'Audio', 4],
   ['mixpre-6', 'Sound Devices MixPre-6', 'Audio', 2],
+
+  // --- Non-barcoded (counted by quantity, no per-unit tracking) ---
+  ['j-hook-2', 'J-Hook 2"', 'Grip', 50, 'non_barcoded'],
+  ['safety-cable', 'Safety Cable', 'Grip', 40, 'non_barcoded'],
+
+  // --- Consumables (expendable) ---
+  ['gaff-tape', 'Gaffer Tape 2" Black', 'Grip', 24, 'consumable'],
+  ['aa-batteries', 'AA Batteries', 'Electric/Lighting', 200, 'consumable'],
 ]
 
-// Build the seed inventory with sequential barcodes across all items, then
-// sprinkle a few sub-rentals into each stock for realism.
+// Build the seed inventory. Barcoded items get sequential barcodes (with a few
+// sub-rentals sprinkled in); non-barcoded / consumable items store a quantity
+// and have no unit rows.
 let seedBarcode = 703
-export const INVENTORY_SEED = CATALOG.map(([id, name, category, qty]) => {
+export const INVENTORY_SEED = CATALOG.map(([id, name, category, qty, kind = 'barcoded']) => {
+  if (kind !== 'barcoded') {
+    return { id, name, category, kind, quantity: qty, units: [] }
+  }
   const units = createUnits(id, qty, seedBarcode)
   seedBarcode += qty
   units.forEach((u, i) => {
     if (i % 7 === 6) u.ownership = 'sub_rental'
   })
-  return { id, name, category, units }
+  return { id, name, category, kind, quantity: 0, units }
 })

@@ -33,7 +33,7 @@ export async function getInventory() {
   const { data, error } = await supabase
     .from('inventory_items')
     .select(
-      `id, name, category,
+      `id, name, category, kind, quantity,
        units (
          id, barcode, serial, ownership,
          set_units ( status, set:sets ( title, studio_id, status ) )
@@ -46,6 +46,8 @@ export async function getInventory() {
     id: item.id,
     name: item.name,
     category: item.category,
+    kind: item.kind,
+    quantity: item.quantity,
     units: (item.units || []).map((u) => {
       const active = (u.set_units || []).find(occupies)
       return {
@@ -218,9 +220,24 @@ export async function toggleOwnership(unitId, next) {
   if (error) throw error
 }
 
-export async function addInventoryItem({ name, category, quantity }) {
+export async function addInventoryItem({ name, category, quantity, kind = 'barcoded' }) {
+  // Non-barcoded / consumable items store a quantity and have no unit rows.
+  if (kind !== 'barcoded') {
+    const { data: item, error } = await supabase
+      .from('inventory_items')
+      .insert({ name: name.trim(), category, kind, quantity })
+      .select('id')
+      .single()
+    if (error) throw error
+    return item.id
+  }
+
+  // Barcoded: generate `quantity` tracked units with fresh barcodes.
   const { data: item, error } = await supabase
-    .from('inventory_items').insert({ name: name.trim(), category }).select('id').single()
+    .from('inventory_items')
+    .insert({ name: name.trim(), category, kind: 'barcoded' })
+    .select('id')
+    .single()
   if (error) throw error
   const { data: rows } = await supabase.from('units').select('barcode')
   let maxB = 0

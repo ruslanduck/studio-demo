@@ -1,20 +1,27 @@
 import { useEffect, useState } from 'react'
-import { CATEGORIES } from '../data/inventory'
+import { CATEGORIES, ITEM_KINDS } from '../data/inventory'
 import Modal from './Modal'
 
 const MAX_QTY = 500
 
-// Create a new inventory item. On submit it auto-generates `quantity` units
-// (handled by the store) and reports the new item's id back to the parent.
+const KIND_HELP = {
+  barcoded: 'Each unit tracked by barcode & serial.',
+  non_barcoded: 'Counted by quantity only (e.g. 50 J-hooks).',
+  consumable: 'Expendable stock, drawn down over time.',
+}
+
+// Create a new inventory item of any type. Barcoded items auto-generate that
+// many tracked units; non-barcoded / consumable items just store a quantity.
 export default function AddInventoryModal({ open, onClose, onCreate }) {
   const [name, setName] = useState('')
+  const [kind, setKind] = useState('barcoded')
   const [category, setCategory] = useState(CATEGORIES[0])
   const [quantity, setQuantity] = useState('1')
 
-  // Reset the form each time the modal opens.
   useEffect(() => {
     if (open) {
       setName('')
+      setKind('barcoded')
       setCategory(CATEGORIES[0])
       setQuantity('1')
     }
@@ -22,6 +29,7 @@ export default function AddInventoryModal({ open, onClose, onCreate }) {
 
   const qty = Math.floor(Number(quantity))
   const canSubmit = name.trim() !== '' && Number.isFinite(qty) && qty >= 1
+  const isBarcoded = kind === 'barcoded'
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -29,6 +37,7 @@ export default function AddInventoryModal({ open, onClose, onCreate }) {
     onCreate({
       name: name.trim(),
       category,
+      kind,
       quantity: Math.min(MAX_QTY, qty),
     })
   }
@@ -56,6 +65,30 @@ export default function AddInventoryModal({ open, onClose, onCreate }) {
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Type
+            </label>
+            <div className="flex rounded-lg border border-slate-300 p-0.5">
+              {ITEM_KINDS.map((k) => (
+                <button
+                  key={k.value}
+                  type="button"
+                  onClick={() => setKind(k.value)}
+                  className={[
+                    'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition',
+                    kind === k.value
+                      ? 'bg-violet-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100',
+                  ].join(' ')}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-400">{KIND_HELP[kind]}</p>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
               Category
             </label>
             <select
@@ -73,7 +106,7 @@ export default function AddInventoryModal({ open, onClose, onCreate }) {
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">
-              Quantity
+              {isBarcoded ? 'Quantity' : 'Quantity on hand'}
             </label>
             <input
               type="number"
@@ -84,8 +117,15 @@ export default function AddInventoryModal({ open, onClose, onCreate }) {
               className={fieldClass}
             />
             <p className="mt-1.5 text-xs text-slate-400">
-              Generates {Number.isFinite(qty) && qty >= 1 ? Math.min(MAX_QTY, qty) : 0}{' '}
-              unit{qty === 1 ? '' : 's'} with auto barcodes &amp; serials, all owned.
+              {isBarcoded ? (
+                <>
+                  Generates{' '}
+                  {Number.isFinite(qty) && qty >= 1 ? Math.min(MAX_QTY, qty) : 0}{' '}
+                  unit{qty === 1 ? '' : 's'} with auto barcodes &amp; serials.
+                </>
+              ) : (
+                'Stored as a count — no per-unit barcodes.'
+              )}
             </p>
           </div>
         </div>

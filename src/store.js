@@ -238,9 +238,9 @@ export const useStore = create(
       // Create a new inventory item with `quantity` freshly generated units.
       // Barcodes start past every existing one so ids never collide. Returns
       // the new item's id so the UI can select it.
-      addInventoryItem: async ({ name, category, quantity }) => {
+      addInventoryItem: async ({ name, category, quantity, kind = 'barcoded' }) => {
         if (usingSupabase) {
-          const id = await sbAddInventoryItem({ name, category, quantity })
+          const id = await sbAddInventoryItem({ name, category, quantity, kind })
           await get().hydrate()
           return id
         }
@@ -259,12 +259,17 @@ export const useStore = create(
           }
         }
 
-        const item = {
-          id,
-          name: name.trim(),
-          category,
-          units: createUnits(id, quantity, maxBarcode + 1),
-        }
+        const item =
+          kind === 'barcoded'
+            ? {
+                id,
+                name: name.trim(),
+                category,
+                kind,
+                quantity: 0,
+                units: createUnits(id, quantity, maxBarcode + 1),
+              }
+            : { id, name: name.trim(), category, kind, quantity, units: [] }
         set({ inventory: [item, ...state.inventory] })
         return id
       },

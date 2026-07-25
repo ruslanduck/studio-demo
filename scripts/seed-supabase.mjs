@@ -65,9 +65,22 @@ async function main() {
   const itemUnits = {} // local item id -> [db unit id] in local order
   const itemUsed = {} // local item id -> count reserved so far
   for (const item of INVENTORY_SEED) {
-    const { data: it, error: iErr } =
-      await db.from('inventory_items').insert({ name: item.name, category: item.category }).select('id').single()
+    const kind = item.kind ?? 'barcoded'
+    const { data: it, error: iErr } = await db
+      .from('inventory_items')
+      .insert({
+        name: item.name,
+        category: item.category,
+        kind,
+        quantity: kind === 'barcoded' ? 0 : item.quantity ?? 0,
+      })
+      .select('id')
+      .single()
     if (iErr) throw iErr
+
+    itemUnits[item.id] = []
+    itemUsed[item.id] = 0
+    if (kind !== 'barcoded' || item.units.length === 0) continue // no unit rows
 
     const { data: units, error: uErr } = await db.from('units')
       .insert(item.units.map((u) => ({
@@ -78,7 +91,6 @@ async function main() {
 
     const byBarcode = Object.fromEntries(units.map((u) => [u.barcode, u.id]))
     itemUnits[item.id] = item.units.map((u) => byBarcode[u.barcode])
-    itemUsed[item.id] = 0
   }
 
   console.log('Sets + set_units + roster…')
