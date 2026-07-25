@@ -14,6 +14,8 @@ import {
   deleteBooking as sbDeleteBooking,
   toggleOwnership as sbToggleOwnership,
   addInventoryItem as sbAddInventoryItem,
+  updateInventoryItem as sbUpdateInventoryItem,
+  deleteInventoryItem as sbDeleteInventoryItem,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -274,6 +276,49 @@ export const useStore = create(
             : { ...base_, quantity, units: [] }
         set({ inventory: [item, ...state.inventory] })
         return id
+      },
+
+      // Edit an item's fields (kind immutable; quantity only for non-barcoded).
+      updateInventoryItem: async (id, changes) => {
+        if (usingSupabase) {
+          await sbUpdateInventoryItem(id, changes)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const { name, category, quantity, kind, ...fields } = changes
+        set({
+          inventory: state.inventory.map((item) => {
+            if (item.id !== id) return item
+            const next = { ...item }
+            if (name != null) next.name = name.trim()
+            if (category != null) next.category = category
+            for (const k of ['brand', 'assetType', 'placement', 'subcategory', 'purchaseDate', 'replacementPrice']) {
+              if (k in fields) next[k] = fields[k] || null
+            }
+            if (item.kind !== 'barcoded' && quantity != null) next.quantity = quantity
+            return next
+          }),
+        })
+      },
+
+      // Delete an item (write-off). Frees its units from any bookings.
+      deleteInventoryItem: async (id) => {
+        if (usingSupabase) {
+          await sbDeleteInventoryItem(id)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const item = state.inventory.find((i) => i.id === id)
+        const unitIds = new Set((item?.units || []).map((u) => u.id))
+        set({
+          inventory: state.inventory.filter((i) => i.id !== id),
+          bookings: state.bookings.map((b) => ({
+            ...b,
+            unitIds: (b.unitIds || []).filter((uid) => !unitIds.has(uid)),
+          })),
+        })
       },
 
       // Create a booking and reserve its selected units.

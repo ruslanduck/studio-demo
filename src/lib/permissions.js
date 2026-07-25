@@ -13,6 +13,7 @@ export const CAP = {
   BOOKING_DELETE: 'booking.delete',
   INVENTORY_ADD: 'inventory.add',
   INVENTORY_EDIT: 'inventory.edit',
+  INVENTORY_DELETE: 'inventory.delete',
   UNIT_OWNERSHIP_TOGGLE: 'unit.ownership_toggle',
   UNIT_WRITE_OFF: 'unit.write_off',
 }

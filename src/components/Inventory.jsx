@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES, itemCount, kindLabel } from '../data/inventory'
 import { useCan } from '../lib/useCan'
@@ -103,6 +103,8 @@ export default function Inventory() {
   const inventory = useStore((s) => s.inventory)
   const toggleOwnership = useStore((s) => s.toggleOwnership)
   const addInventoryItem = useStore((s) => s.addInventoryItem)
+  const updateInventoryItem = useStore((s) => s.updateInventoryItem)
+  const deleteInventoryItem = useStore((s) => s.deleteInventoryItem)
   const can = useCan()
 
   const [search, setSearch] = useState('')
@@ -110,7 +112,7 @@ export default function Inventory() {
   const [selectedId, setSelectedId] = useState(
     () => inventory.find((i) => i.id === 'kbd-magic')?.id ?? inventory[0]?.id ?? null,
   )
-  const [showAdd, setShowAdd] = useState(false)
+  const [itemModal, setItemModal] = useState({ open: false, item: null })
   const [historyUnit, setHistoryUnit] = useState(null)
   // On phone/tablet-portrait the list and detail are separate screens.
   const [showDetailMobile, setShowDetailMobile] = useState(false)
@@ -164,13 +166,27 @@ export default function Inventory() {
 
   const totalUnits = inventory.reduce((n, i) => n + i.units.length, 0)
 
+  const closeItemModal = () => setItemModal({ open: false, item: null })
+
   async function handleCreate(fields) {
     const newId = await addInventoryItem(fields)
     setSearch('')
     setCategory('All')
     setSelectedId(newId)
     setShowDetailMobile(true)
-    setShowAdd(false)
+    closeItemModal()
+  }
+
+  async function handleSave(id, changes) {
+    await updateInventoryItem(id, changes)
+    closeItemModal()
+  }
+
+  async function handleDelete(id) {
+    await deleteInventoryItem(id)
+    setSelectedId(null)
+    setShowDetailMobile(false)
+    closeItemModal()
   }
 
   return (
@@ -188,7 +204,7 @@ export default function Inventory() {
         {can(CAP.INVENTORY_ADD) && (
           <button
             type="button"
-            onClick={() => setShowAdd(true)}
+            onClick={() => setItemModal({ open: true, item: null })}
             className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
           >
             <Plus size={16} />
@@ -296,6 +312,8 @@ export default function Inventory() {
               </button>
               <UnitDetail
                 item={selected}
+                canEdit={can(CAP.INVENTORY_EDIT)}
+                onEdit={() => setItemModal({ open: true, item: selected })}
                 canToggleOwnership={can(CAP.UNIT_OWNERSHIP_TOGGLE)}
                 onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
                 onShowHistory={(unit) => setHistoryUnit(unit)}
@@ -313,9 +331,12 @@ export default function Inventory() {
       </div>
 
       <AddInventoryModal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
+        open={itemModal.open}
+        item={itemModal.item}
+        onClose={closeItemModal}
         onCreate={handleCreate}
+        onSave={handleSave}
+        onDelete={handleDelete}
       />
 
       <UnitHistoryModal
@@ -328,7 +349,7 @@ export default function Inventory() {
   )
 }
 
-function UnitDetail({ item, canToggleOwnership, onToggleOwnership, onShowHistory }) {
+function UnitDetail({ item, canEdit, onEdit, canToggleOwnership, onToggleOwnership, onShowHistory }) {
   const isBarcoded = item.kind === 'barcoded'
   const available = item.units.filter((u) => u.status === 'available').length
   const checkedOut = item.units.length - available
@@ -361,6 +382,16 @@ function UnitDetail({ item, canToggleOwnership, onToggleOwnership, onShowHistory
             )}
           </div>
         </div>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+          >
+            <Pencil size={14} />
+            Edit
+          </button>
+        )}
       </div>
 
       <ItemDetailsGrid item={item} />

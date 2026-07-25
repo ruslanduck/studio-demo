@@ -276,3 +276,27 @@ export async function addInventoryItem({ name, category, quantity, kind = 'barco
   if (uErr) throw uErr
   return item.id
 }
+
+// Update an item's fields. kind is immutable; quantity only applies to
+// non-barcoded / consumable items.
+export async function updateInventoryItem(itemId, { name, category, kind, quantity, ...fields }) {
+  const patch = itemFieldColumns(fields)
+  if (name != null) patch.name = name.trim()
+  if (category != null) patch.category = category
+  if (kind && kind !== 'barcoded' && quantity != null) patch.quantity = quantity
+  const { error } = await supabase.from('inventory_items').update(patch).eq('id', itemId)
+  if (error) throw error
+}
+
+// Delete an item (write-off). Frees any reservations on its units first, then
+// deletes the item (units cascade). Event-log history is preserved.
+export async function deleteInventoryItem(itemId) {
+  const { data: units } = await supabase.from('units').select('id').eq('inventory_item_id', itemId)
+  const unitIds = (units || []).map((u) => u.id)
+  if (unitIds.length) {
+    const { error: suErr } = await supabase.from('set_units').delete().in('unit_id', unitIds)
+    if (suErr) throw suErr
+  }
+  const { error } = await supabase.from('inventory_items').delete().eq('id', itemId)
+  if (error) throw error
+}
