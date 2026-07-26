@@ -22,10 +22,12 @@
 > 2.2 fields, 2.3 categories, 2.4 CRUD, 2.5 search + filters, 2.6 repair log (per-unit send/return +
 > history; open repair → unit unavailable), 2.7 work history (per-item usage log + aggregate counters
 > for all types — the analytics base; e.g. "N J-hooks used this year").
-> **Build order #3 (kits & predefined lists) IN PROGRESS:** 3.1 kit entry type DONE (kits are a 2nd
-> inventory entry type alongside a-la-carte items; Items/Kits toggle; kit = named bundle of slots;
-> `kits.category` + new `kit_slots` table, `20260726120000_kits.sql`). Next: 3.2 staging window, 3.3
-> FIXED/GENERIC slot types + scan-to-assign, 3.4 barcode edit on scan, 3.5 replace-on-add, 3.6 scenario lists.
+> **Build order #3 (kits & predefined lists) IN PROGRESS:** 3.1 kit entry type DONE (Items/Kits toggle;
+> `kits.category` + `kit_slots`, `20260726120000_kits.sql`). 3.2 staging window DONE (adding a kit to a
+> booking opens KitStagingModal: auto-resolves each slot to an available unit, add/remove/replace-from-
+> stock before final add, missing slot blocks confirm; edits affect only THIS add, not the kit template;
+> frontend-only, no migration). Next: 3.3 FIXED/GENERIC slot types + scan-to-assign, 3.4 barcode edit on
+> scan, 3.5 replace-on-add polish, 3.6 scenario lists.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`). Apply with `db push`; seed via `npm run seed:supabase` (wipes+reseeds), or add rows

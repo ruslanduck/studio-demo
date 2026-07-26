@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Trash2, Search, Minus, Plus, X } from 'lucide-react'
+import { Trash2, Search, Minus, Plus, X, Layers } from 'lucide-react'
 import { useStore } from '../store'
 import { studioLabel } from '../data/studios'
 import { useCan } from '../lib/useCan'
@@ -7,6 +7,7 @@ import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 import DateField from './DateField'
 import TimeField from './TimeField'
+import KitStagingModal from './KitStagingModal'
 
 const fieldClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
@@ -28,6 +29,7 @@ function blankForm(prefill) {
 export default function BookingModal({ open, onClose, booking, prefill }) {
   const studios = useStore((s) => s.studios)
   const inventory = useStore((s) => s.inventory)
+  const kits = useStore((s) => s.kits)
   const photographers = useStore((s) => s.photographers)
   const models = useStore((s) => s.models)
   const createBooking = useStore((s) => s.createBooking)
@@ -40,6 +42,11 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   const [form, setForm] = useState(() => blankForm(prefill))
   const [selected, setSelected] = useState({}) // itemId -> qty
   const [invSearch, setInvSearch] = useState('')
+  const [staging, setStaging] = useState(null) // kit being staged, or null
+  const [stagedUnits, setStagedUnits] = useState([]) // units added via kits: {unitId,itemName,label,kitName}
+
+  // Unit ids already assigned by staged kits — excluded from the a-la-carte pool.
+  const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
 
   // Units already reserved by *this* booking are available to it when editing.
   const bookingUnits = useMemo(
@@ -73,14 +80,17 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
       setSelected({})
     }
     setInvSearch('')
+    setStaging(null)
+    setStagedUnits([])
   }, [open, booking, prefill])
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
-  // Units of an item that this booking may reserve (free + its own).
+  // Units of an item that this booking may reserve (free + its own), minus any
+  // already claimed by a staged kit.
   function availCount(item) {
     return item.units.filter(
-      (u) => u.status === 'available' || bookingUnits.has(u.id),
+      (u) => (u.status === 'available' || bookingUnits.has(u.id)) && !stagedIds.has(u.id),
     ).length
   }
 
@@ -114,7 +124,26 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
       .slice(0, 8)
   }, [invSearch, inventory])
 
-  const totalUnits = Object.values(selected).reduce((n, q) => n + q, 0)
+  const totalUnits =
+    Object.values(selected).reduce((n, q) => n + q, 0) + stagedUnits.length
+
+  // Reserved unit ids already spoken for (a-la-carte + staged) — passed to the
+  // staging window so it never re-assigns a unit this booking already holds.
+  const reservedForStaging = useMemo(
+    () => [...resolveUnitIds()],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected, stagedUnits, inventory],
+  )
+
+  // Kits grouped in the staged list for display.
+  const stagedByKit = useMemo(() => {
+    const m = new Map()
+    for (const u of stagedUnits) {
+      if (!m.has(u.kitName)) m.set(u.kitName, [])
+      m.get(u.kitName).push(u)
+    }
+    return [...m.entries()]
+  }, [stagedUnits])
 
   function resolveUnitIds() {
     const ids = []
@@ -123,10 +152,12 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
       const item = inventory.find((i) => i.id === itemId)
       if (!item) continue
       const candidates = item.units.filter(
-        (u) => u.status === 'available' || bookingUnits.has(u.id),
+        (u) => (u.status === 'available' || bookingUnits.has(u.id)) && !stagedIds.has(u.id),
       )
       for (const u of candidates.slice(0, qty)) ids.push(u.id)
     }
+    // Merge in the units committed by staged kits (dedupe).
+    for (const u of stagedUnits) if (!ids.includes(u.unitId)) ids.push(u.unitId)
     return ids
   }
 
@@ -151,9 +182,15 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   }
 
   return (
+    <>
     <Modal
       open={open}
-      onClose={onClose}
+      // While the staging window is open, keep the booking modal open
+      // (Escape / backdrop should close staging, not the booking).
+      onClose={() => {
+        if (staging) return
+        onClose()
+      }}
       size="lg"
       title={isEdit ? 'Edit booking' : 'New booking'}
     >
@@ -256,6 +293,49 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
               </span>
             </label>
 
+            {stagedByKit.length > 0 && (
+              <div className="mb-2 space-y-2">
+                {stagedByKit.map(([kitName, units]) => (
+                  <div
+                    key={kitName}
+                    className="rounded-lg border border-violet-200 bg-violet-50/50 p-2"
+                  >
+                    <div className="mb-1 flex items-center gap-1.5 px-1 text-xs font-semibold text-violet-700">
+                      <Layers size={13} />
+                      {kitName}
+                    </div>
+                    <ul className="space-y-1">
+                      {units.map((u) => (
+                        <li
+                          key={u.unitId}
+                          className="flex items-center gap-2 rounded-md bg-white px-2.5 py-1"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
+                            {u.label && <span className="text-slate-400">{u.label}: </span>}
+                            {u.itemName}
+                          </span>
+                          {u.barcode && (
+                            <span className="shrink-0 font-mono text-xs text-slate-400">
+                              #{u.barcode}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setStagedUnits((prev) => prev.filter((x) => x.unitId !== u.unitId))
+                            }
+                            className="rounded p-0.5 text-slate-400 hover:text-rose-500"
+                          >
+                            <X size={14} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {Object.keys(selected).length > 0 && (
               <ul className="mb-2 space-y-1.5">
                 {Object.entries(selected).map(([itemId, qty]) => {
@@ -343,6 +423,30 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                 </ul>
               )}
             </div>
+
+            {kits.length > 0 && (
+              <div className="relative mt-2">
+                <Layers
+                  size={16}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-violet-500"
+                />
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const kit = kits.find((k) => k.id === e.target.value)
+                    if (kit) setStaging(kit)
+                  }}
+                  className={fieldClass + ' pl-9'}
+                >
+                  <option value="">Add a kit…</option>
+                  {kits.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div>
@@ -396,5 +500,18 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
         </div>
       </form>
     </Modal>
+
+    <KitStagingModal
+      open={!!staging}
+      kit={staging}
+      inventory={inventory}
+      reservedUnitIds={reservedForStaging}
+      onConfirm={(units) => {
+        setStagedUnits((prev) => [...prev, ...units])
+        setStaging(null)
+      }}
+      onCancel={() => setStaging(null)}
+    />
+    </>
   )
 }
