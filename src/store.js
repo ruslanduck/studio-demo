@@ -5,12 +5,14 @@ import { STUDIOS, studioLabel } from './data/studios'
 import { INVENTORY_SEED, createUnits } from './data/inventory'
 import { REPAIR_TEMPLATES, repairDates } from './data/repairs'
 import { generateUsage } from './data/usage'
+import { KIT_SEED } from './data/kits'
 import { BOOKING_TEMPLATES } from './data/bookings'
 import { PHOTOGRAPHERS, MODELS } from './data/contacts'
 import {
   usingSupabase,
   getInventory as sbGetInventory,
   getBookings as sbGetBookings,
+  getKits as sbGetKits,
   createBooking as sbCreateBooking,
   updateBooking as sbUpdateBooking,
   deleteBooking as sbDeleteBooking,
@@ -90,7 +92,27 @@ function buildSeedData() {
     }
   })
 
-  return { inventory, bookings }
+  // Kits (entry type #2): resolve each slot's component item for display.
+  const kits = KIT_SEED.map((k) => ({
+    id: k.id,
+    name: k.name,
+    category: k.category,
+    notes: k.notes,
+    slots: k.slots.map((s, i) => {
+      const it = byId[s.itemId]
+      return {
+        id: `${k.id}-slot-${i}`,
+        label: s.label,
+        position: i,
+        itemId: s.itemId,
+        itemName: it?.name || null,
+        itemCategory: it?.category || null,
+        itemKind: it?.kind || null,
+      }
+    }),
+  }))
+
+  return { inventory, bookings, kits }
 }
 
 function slugify(name) {
@@ -163,19 +185,20 @@ export const useStore = create(
       // Local mode: seeded synchronously. Supabase mode: starts empty and is
       // filled by hydrate() when the app mounts.
       ...(usingSupabase
-        ? { inventory: [], bookings: [], loading: true }
+        ? { inventory: [], bookings: [], kits: [], loading: true }
         : { ...buildSeedData(), loading: false }),
 
-      // Fetch inventory + bookings from Supabase (no-op in local mode).
+      // Fetch inventory + bookings + kits from Supabase (no-op in local mode).
       hydrate: async () => {
         if (!usingSupabase) return
         set({ loading: true })
         try {
-          const [inventory, bookings] = await Promise.all([
+          const [inventory, bookings, kits] = await Promise.all([
             sbGetInventory(),
             sbGetBookings(),
+            sbGetKits(),
           ])
-          set({ inventory, bookings, loading: false })
+          set({ inventory, bookings, kits, loading: false })
         } catch (e) {
           console.error('Supabase hydrate failed:', e)
           set({ loading: false })
@@ -515,6 +538,7 @@ export const useStore = create(
           : {
               inventory: state.inventory,
               bookings: state.bookings,
+              kits: state.kits,
               activeView: state.activeView,
             },
     },

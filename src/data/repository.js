@@ -27,6 +27,39 @@ export async function getStudios() {
   return data
 }
 
+// Kits with their component slots (Build order #3). Resilient: returns [] if
+// the 3.1 migration hasn't been applied yet (kit_slots absent) so the app
+// still loads. Each slot carries the component item's name/category for display.
+export async function getKits() {
+  const { data, error } = await supabase
+    .from('kits')
+    .select(
+      `id, name, category, notes,
+       kit_slots ( id, label, position, inventory_item_id,
+                   item:inventory_items ( name, category, kind ) )`,
+    )
+    .order('name')
+  if (error) return []
+  return (data || []).map((k) => ({
+    id: k.id,
+    name: k.name,
+    category: k.category,
+    notes: k.notes,
+    slots: (k.kit_slots || [])
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((s) => ({
+        id: s.id,
+        label: s.label,
+        position: s.position,
+        itemId: s.inventory_item_id,
+        itemName: s.item?.name || null,
+        itemCategory: s.item?.category || null,
+        itemKind: s.item?.kind || null,
+      })),
+  }))
+}
+
 // Repairs grouped by unit id, newest first. Fetched separately (not embedded)
 // so a project that hasn't run the 2.6 migration yet still loads inventory —
 // a missing `repairs` relation degrades to "no repairs" rather than failing

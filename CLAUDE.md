@@ -21,12 +21,16 @@
 > **Progress:** Build order #1 (V2 foundation) DONE. **Build order #2 (inventory) COMPLETE:** 2.1 types,
 > 2.2 fields, 2.3 categories, 2.4 CRUD, 2.5 search + filters, 2.6 repair log (per-unit send/return +
 > history; open repair → unit unavailable), 2.7 work history (per-item usage log + aggregate counters
-> for all types — the analytics base; e.g. "N J-hooks used this year"). Ship each section end-to-end
-> (migration → verify on Supabase → commit → push → confirm prod).
-> Note: 2.6 adds a `repairs` table (`20260725120000_repair_log.sql`); 2.7 adds an `item_usage` table
-> (`20260725130000_item_usage.sql`). Apply with `db push`; seed via `npm run seed:supabase` (wipes+reseeds).
-> Both frontends degrade gracefully if their table is absent (repairs & usage fetched in separate
-> try/caught queries), so deploying before a migration never breaks inventory. See memory files for more.
+> for all types — the analytics base; e.g. "N J-hooks used this year").
+> **Build order #3 (kits & predefined lists) IN PROGRESS:** 3.1 kit entry type DONE (kits are a 2nd
+> inventory entry type alongside a-la-carte items; Items/Kits toggle; kit = named bundle of slots;
+> `kits.category` + new `kit_slots` table, `20260726120000_kits.sql`). Next: 3.2 staging window, 3.3
+> FIXED/GENERIC slot types + scan-to-assign, 3.4 barcode edit on scan, 3.5 replace-on-add, 3.6 scenario lists.
+> Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
+> Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
+> (`20260726120000`). Apply with `db push`; seed via `npm run seed:supabase` (wipes+reseeds), or add rows
+> non-destructively. Every added frontend degrades gracefully if its table is absent (repairs/usage/kits
+> fetched in separate try/caught queries), so deploying before a migration never breaks inventory.
 
 ## What this is
 A **sales demo** of an inventory-tracking + studio-scheduling web app for a photo/film

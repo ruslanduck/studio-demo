@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
 import { useCan } from '../lib/useCan'
@@ -124,6 +124,7 @@ function ItemRow({ item, active, onSelect, query }) {
 
 export default function Inventory() {
   const inventory = useStore((s) => s.inventory)
+  const kits = useStore((s) => s.kits)
   const toggleOwnership = useStore((s) => s.toggleOwnership)
   const sendToRepair = useStore((s) => s.sendToRepair)
   const returnFromRepair = useStore((s) => s.returnFromRepair)
@@ -133,6 +134,7 @@ export default function Inventory() {
   const deleteInventoryItem = useStore((s) => s.deleteInventoryItem)
   const can = useCan()
 
+  const [entryType, setEntryType] = useState('items') // 'items' | 'kits'
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [brand, setBrand] = useState('All')
@@ -140,6 +142,7 @@ export default function Inventory() {
   const [selectedId, setSelectedId] = useState(
     () => inventory.find((i) => i.id === 'kbd-magic')?.id ?? inventory[0]?.id ?? null,
   )
+  const [selectedKitId, setSelectedKitId] = useState(() => kits[0]?.id ?? null)
   const [itemModal, setItemModal] = useState({ open: false, item: null })
   const [historyUnit, setHistoryUnit] = useState(null)
   const [repairUnitId, setRepairUnitId] = useState(null)
@@ -223,6 +226,13 @@ export default function Inventory() {
   const selected =
     inventory.find((i) => i.id === selectedId) ?? inventory[0] ?? null
 
+  // Kits (entry type #2): filter by name when searching, derive the selection.
+  const filteredKits = useMemo(
+    () => (query === '' ? kits : kits.filter((k) => k.name.toLowerCase().includes(query))),
+    [kits, query],
+  )
+  const selectedKit = kits.find((k) => k.id === selectedKitId) ?? null
+
   // Live unit for the repair modal — re-derived from the store each render so
   // it reflects mutations (send / return) without reopening.
   const repairUnit = selected?.units.find((u) => u.id === repairUnitId) ?? null
@@ -260,7 +270,7 @@ export default function Inventory() {
             Inventory
           </h2>
           <p className="text-sm text-slate-500">
-            {inventory.length} items · {totalUnits} units
+            {inventory.length} items · {kits.length} kits · {totalUnits} units
           </p>
         </div>
         {can(CAP.INVENTORY_ADD) && (
@@ -286,6 +296,31 @@ export default function Inventory() {
           ].join(' ')}
         >
           <div className="space-y-2 border-b border-slate-200 p-3">
+            {/* Entry-type toggle: a-la-carte items vs kits (Build order #3.1). */}
+            <div className="flex rounded-lg border border-slate-300 p-0.5">
+              {[
+                ['items', 'Items'],
+                ['kits', 'Kits'],
+              ].map(([val, lbl]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => {
+                    setEntryType(val)
+                    setSearch('')
+                  }}
+                  className={[
+                    'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition',
+                    entryType === val
+                      ? 'bg-violet-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100',
+                  ].join(' ')}
+                >
+                  {lbl}
+                  {val === 'kits' && kits.length > 0 ? ` (${kits.length})` : ''}
+                </button>
+              ))}
+            </div>
             <div className="relative">
               <Search
                 size={16}
@@ -295,7 +330,7 @@ export default function Inventory() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name, barcode, or serial…"
+                placeholder={entryType === 'kits' ? 'Search kits…' : 'Search name, barcode, or serial…'}
                 className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-9 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
               />
               {search !== '' && (
@@ -309,6 +344,7 @@ export default function Inventory() {
                 </button>
               )}
             </div>
+            {entryType === 'items' && (
             <div className="grid grid-cols-2 gap-2">
               <select
                 value={category}
@@ -357,10 +393,21 @@ export default function Inventory() {
                 </button>
               )}
             </div>
+            )}
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto p-2">
-            {filtered.length === 0 ? (
+            {entryType === 'kits' ? (
+              <KitList
+                kits={filteredKits}
+                selectedId={selectedKitId}
+                query={query}
+                onSelect={(id) => {
+                  setSelectedKitId(id)
+                  setShowDetailMobile(true)
+                }}
+              />
+            ) : filtered.length === 0 ? (
               <div className="px-3 py-10 text-center">
                 <p className="text-sm text-slate-400">
                   No items match your filters.
@@ -421,7 +468,34 @@ export default function Inventory() {
             'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm',
           ].join(' ')}
         >
-          {selected ? (
+          {entryType === 'kits' ? (
+            selectedKit ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowDetailMobile(false)}
+                  className="flex shrink-0 items-center gap-1 border-b border-slate-200 px-3 py-2 text-sm font-medium text-violet-600 lg:hidden"
+                >
+                  <ChevronLeft size={16} />
+                  Back to kits
+                </button>
+                <KitDetail
+                  kit={selectedKit}
+                  inventory={inventory}
+                  onSelectItem={(id) => {
+                    setEntryType('items')
+                    setSearch('')
+                    setSelectedId(id)
+                  }}
+                />
+              </>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center text-center">
+                <Boxes size={36} className="mb-3 text-slate-300" />
+                <p className="text-sm text-slate-400">Select a kit to see its contents.</p>
+              </div>
+            )
+          ) : selected ? (
             <>
               <button
                 type="button"
@@ -751,5 +825,153 @@ function NonBarcodedBody({ item, onShowWorkHistory }) {
         </>
       )}
     </div>
+  )
+}
+
+// Availability summary for a kit slot's component item.
+function slotAvailability(item) {
+  if (!item) return { text: 'not in stock', tone: 'text-rose-500' }
+  const n =
+    item.kind === 'barcoded'
+      ? item.units.filter((u) => u.status === 'available').length
+      : item.quantity ?? 0
+  const label = item.kind === 'barcoded' ? `${n} available` : `${n} on hand`
+  return { text: label, tone: n > 0 ? 'text-emerald-600' : 'text-orange-500' }
+}
+
+// Kit list (entry type #2) — rows in the list pane when the Kits tab is active.
+function KitList({ kits, selectedId, query, onSelect }) {
+  if (kits.length === 0) {
+    return (
+      <p className="px-3 py-10 text-center text-sm text-slate-400">
+        {query ? 'No kits match your search.' : 'No kits yet.'}
+      </p>
+    )
+  }
+  return (
+    <ul className="space-y-0.5">
+      {kits.map((kit) => {
+        const active = kit.id === selectedId
+        const subtitle = [kit.category, `${kit.slots.length} item${kit.slots.length === 1 ? '' : 's'}`]
+          .filter(Boolean)
+          .join(' · ')
+        return (
+          <li key={kit.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(kit.id)}
+              className={[
+                'flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition',
+                active ? 'bg-violet-50 ring-1 ring-violet-200' : 'hover:bg-slate-50',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
+                  active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
+                ].join(' ')}
+              >
+                <Layers size={16} />
+              </span>
+              <span className="min-w-0">
+                <span
+                  className={[
+                    'block truncate text-sm font-medium',
+                    active ? 'text-violet-900' : 'text-slate-800',
+                  ].join(' ')}
+                >
+                  <Highlight text={kit.name} query={query} />
+                </span>
+                <span className="block truncate text-xs text-slate-400">{subtitle}</span>
+              </span>
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+// Kit detail — the kit's composition (its slots) + each component's live
+// availability. Clicking a component jumps to that item in the Items tab.
+function KitDetail({ kit, inventory, onSelectItem }) {
+  return (
+    <>
+      <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Layers size={18} className="shrink-0 text-violet-500" />
+            <h3 className="truncate text-lg font-semibold text-slate-900">{kit.name}</h3>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
+              Kit
+            </span>
+            {kit.category && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                {kit.category}
+              </span>
+            )}
+            <span>
+              {kit.slots.length} item{kit.slots.length === 1 ? '' : 's'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {kit.notes && (
+        <p className="shrink-0 border-b border-slate-200 px-5 py-3 text-sm text-slate-600">
+          {kit.notes}
+        </p>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-auto p-3">
+        <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Contents
+        </div>
+        <ul className="space-y-1.5">
+          {kit.slots.map((slot, i) => {
+            const item = inventory.find((it) => it.id === slot.itemId)
+            const avail = slotAvailability(item)
+            return (
+              <li
+                key={slot.id}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5"
+              >
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-slate-100 text-xs font-semibold text-slate-500">
+                  {i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  {slot.label && (
+                    <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                      {slot.label}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => item && onSelectItem(item.id)}
+                    disabled={!item}
+                    className="block max-w-full truncate text-left text-sm font-medium text-slate-800 transition hover:text-violet-700 disabled:cursor-default disabled:hover:text-slate-800"
+                  >
+                    {slot.itemName || 'Unknown item'}
+                  </button>
+                </div>
+                {slot.itemCategory && (
+                  <span className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 sm:inline">
+                    {slot.itemCategory}
+                  </span>
+                )}
+                <span className={['shrink-0 text-xs font-medium', avail.tone].join(' ')}>
+                  {avail.text}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+        <p className="mt-4 px-1 text-xs text-slate-400">
+          Slot types (fixed / generic) and adding a kit to a set arrive next in Build order #3.
+        </p>
+      </div>
+    </>
   )
 }

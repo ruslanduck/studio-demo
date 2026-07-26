@@ -10,6 +10,7 @@ import { startOfWeek, addDays, format } from 'date-fns'
 import { INVENTORY_SEED } from '../src/data/inventory.js'
 import { REPAIR_TEMPLATES, repairDates } from '../src/data/repairs.js'
 import { generateUsage } from '../src/data/usage.js'
+import { KIT_SEED } from '../src/data/kits.js'
 import { BOOKING_TEMPLATES } from '../src/data/bookings.js'
 import { PHOTOGRAPHERS, MODELS } from '../src/data/contacts.js'
 import { STUDIOS, studioLabel } from '../src/data/studios.js'
@@ -31,7 +32,7 @@ function must(label, { error }) {
 // trigger writes to events, so events is cleared right after.
 const WIPE_ORDER = [
   'set_units', 'events', 'roster_entries', 'order_lines', 'item_usage',
-  'sets', 'orders', 'repairs', 'units', 'kit_items', 'kits',
+  'sets', 'orders', 'repairs', 'units', 'kit_items', 'kit_slots', 'kits',
   'inventory_items', 'contacts', 'companies',
 ]
 
@@ -148,6 +149,30 @@ async function main() {
     usage = usageRows.length
   }
 
+  console.log('Kits + slots…')
+  let kits = 0, kitSlots = 0
+  for (const k of KIT_SEED) {
+    const { data: kit, error: kErr } = await db
+      .from('kits')
+      .insert({ name: k.name, category: k.category, notes: k.notes })
+      .select('id')
+      .single()
+    if (kErr) throw kErr
+    kits++
+    const slotRows = k.slots
+      .map((s, i) => ({
+        kit_id: kit.id,
+        inventory_item_id: itemDbId[s.itemId],
+        label: s.label,
+        position: i,
+      }))
+      .filter((r) => r.inventory_item_id)
+    if (slotRows.length) {
+      must('kit_slots', await db.from('kit_slots').insert(slotRows))
+      kitSlots += slotRows.length
+    }
+  }
+
   console.log('Sets + set_units + roster…')
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   let sets = 0, reservations = 0, rosterCount = 0
@@ -188,6 +213,7 @@ async function main() {
   console.log('\nDone:')
   console.log(`  companies: 1, contacts: ${contactRows.length}`)
   console.log(`  inventory_items: ${INVENTORY_SEED.length}, units: ${totalUnits}, repairs: ${repairs}, item_usage: ${usage}`)
+  console.log(`  kits: ${kits}, kit_slots: ${kitSlots}`)
   console.log(`  sets: ${sets}, set_units: ${reservations}, roster_entries: ${rosterCount}`)
 }
 
