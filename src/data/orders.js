@@ -1,4 +1,4 @@
-// Order seed (Build order #4, 4.5 — work-history views).
+// Order seed (4.5 work-history views, extended for epic #5).
 //
 // Orders get their own module in epic #5; 4.5 only needs them as a *history
 // source*, so this seeds a realistic handful and the People/Company cards read
@@ -11,9 +11,16 @@
 //
 // `setTitle` links an order to a seeded booking so the card can show which job it
 // served; `dayOffset` is relative to the current week's Monday, like the bookings.
+//
+// Epic #5 vocabulary: the linked booking IS the Set, and its title IS the Job
+// name — so studio / dates / photographer are derived from it rather than
+// duplicated here. `po` is the accounting PO (5.2), typed by hand in the app;
+// seeded values just look like real ones. `status` uses the epic-5 lifecycle:
+// 'hold' (yellow) → 'confirmed' (green), with 'fulfilled' kept for past jobs.
 export const ORDER_SEED = [
   {
     number: 'SR-26014',
+    po: 'PO-4471',
     company: 'northlight-rentals',
     kind: 'sub_rental',
     status: 'fulfilled',
@@ -26,6 +33,7 @@ export const ORDER_SEED = [
   },
   {
     number: 'SR-26015',
+    po: 'PO-4482',
     company: 'kino-grip-co',
     kind: 'sub_rental',
     status: 'fulfilled',
@@ -38,6 +46,7 @@ export const ORDER_SEED = [
   },
   {
     number: 'SR-26016',
+    po: 'PO-4490',
     company: 'northlight-rentals',
     kind: 'sub_rental',
     status: 'confirmed',
@@ -50,6 +59,7 @@ export const ORDER_SEED = [
   },
   {
     number: 'SR-26017',
+    po: 'PO-4491',
     company: 'kino-grip-co',
     kind: 'sub_rental',
     status: 'confirmed',
@@ -59,6 +69,7 @@ export const ORDER_SEED = [
   },
   {
     number: 'CL-26031',
+    po: 'PO-4482',
     company: 'atlas-models',
     kind: 'client',
     status: 'fulfilled',
@@ -71,6 +82,7 @@ export const ORDER_SEED = [
   },
   {
     number: 'CL-26032',
+    po: 'PO-4490',
     company: 'vantage-mgmt',
     kind: 'client',
     status: 'confirmed',
@@ -83,15 +95,17 @@ export const ORDER_SEED = [
   },
   {
     number: 'CL-26033',
+    po: 'PO-4503',
     company: 'atlas-models',
     kind: 'client',
-    status: 'draft',
+    status: 'hold',
     dayOffset: 5,
     setTitle: 'Wedding Editorial',
     lines: [['folding-table-6', 2]],
   },
   {
     number: 'MS-26008',
+    po: 'PO-4496',
     company: 'swiftline-couriers',
     kind: 'sub_rental',
     status: 'fulfilled',

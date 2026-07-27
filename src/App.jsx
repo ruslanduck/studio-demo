@@ -7,6 +7,7 @@ import TopBar from './components/TopBar'
 import StudioCalendar from './components/StudioCalendar'
 import Inventory from './components/Inventory'
 import People from './components/People'
+import Orders from './components/Orders'
 import Login from './components/Login'
 
 export default function App() {
@@ -52,6 +53,8 @@ export default function App() {
             <Inventory />
           ) : activeView === 'people' ? (
             <People />
+          ) : activeView === 'orders' ? (
+            <Orders />
           ) : (
             <StudioCalendar />
           )}

@@ -285,7 +285,7 @@ async function main() {
     }).select('id').single()
     if (sErr) throw sErr
     sets++
-    setByTitle[t.title] = { id: set.id, date }
+    setByTitle[t.title] = { id: set.id, date, studioId: t.studioId, photographer: t.photographer }
 
     const suRows = []
     for (const [itemLocalId, count] of t.reserve) {
@@ -325,6 +325,14 @@ async function main() {
       kind: o.kind,
       status: o.status,
       ordered_at: set?.date ?? null,
+      // epic #5 (5.1/5.2): the linked booking is the Set and its title the Job
+      // name, so studio / dates / photographer come from it. PO is hand-typed.
+      job_name: o.setTitle ?? null,
+      studio_id: set?.studioId ?? null,
+      starts_on: set?.date ?? null,
+      ends_on: set?.date ?? null,
+      po_number: o.po ?? null,
+      photographer_contact_id: set?.photographer ? contactId[set.photographer] ?? null : null,
     }).select('id').single()
     if (oErr) throw oErr
     orders++

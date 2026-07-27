@@ -48,6 +48,11 @@ import {
   deleteCompanyType as sbDeleteCompanyType,
   getOrders as sbGetOrders,
   setUnitVendor as sbSetUnitVendor,
+  createOrder as sbCreateOrder,
+  updateOrder as sbUpdateOrder,
+  deleteOrder as sbDeleteOrder,
+  createSetForOrder as sbCreateSetForOrder,
+  countSetsOn as sbCountSetsOn,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -209,16 +214,27 @@ function buildSeedData() {
     }
   }
 
-  // 4.5 — orders as a history source (the module itself is epic #5).
+  // Orders (4.5 history + epic #5). The linked booking is the Set and its title
+  // is the Job name, so studio / dates / photographer come from it.
   const bookingByTitle = Object.fromEntries(bookings.map((b) => [b.title, b]))
   const orders = ORDER_SEED.map((o, i) => {
     const set = o.setTitle ? bookingByTitle[o.setTitle] : null
+    const orderedAt = format(addDays(weekStart, o.dayOffset), 'yyyy-MM-dd')
     return {
       id: `order-${i}`,
       number: o.number,
+      poNumber: o.po ?? null,
       status: o.status,
       kind: o.kind,
-      orderedAt: format(addDays(weekStart, o.dayOffset), 'yyyy-MM-dd'),
+      orderedAt,
+      jobName: set?.title ?? o.setTitle ?? null,
+      studioId: set?.studioId ?? null,
+      startsOn: set?.date ?? orderedAt,
+      endsOn: set?.date ?? orderedAt,
+      photographer: set?.photographer ?? null,
+      photographerId: null,
+      createdBy: 'Ann Taylor',
+      createdAt: orderedAt,
       companyId: o.company,
       companyName: companies.find((c) => c.id === o.company)?.name ?? null,
       setId: set?.id ?? null,
@@ -320,6 +336,37 @@ function resolveScenario(list, inventory, kits) {
           kitName: kit?.name || null,
         }
       }),
+  }
+}
+
+// A studio runs at most this many shoots a day (epic #5 terminology: Sets).
+export const MAX_SETS_PER_DAY = 5
+
+// Normalize an authored order (5.1/5.2) into the shape the UI reads. `createdBy`
+// is set here for local mode only; in Supabase mode the DB fills created_by from
+// auth.uid() and hydrate() reads the profile name back.
+function resolveOrder(o, companies) {
+  const startsOn = o.startsOn || o.orderedAt || null
+  return {
+    id: o.id,
+    number: trimmed(o.number),
+    poNumber: trimmed(o.poNumber),
+    status: o.status || 'hold',
+    kind: o.kind || 'client',
+    orderedAt: startsOn,
+    jobName: trimmed(o.jobName),
+    studioId: o.studioId || null,
+    startsOn,
+    endsOn: o.endsOn || startsOn,
+    photographer: trimmed(o.photographer),
+    photographerId: o.photographerId || null,
+    createdBy: o.createdBy ?? 'You',
+    createdAt: o.createdAt ?? format(new Date(), 'yyyy-MM-dd'),
+    companyId: o.companyId || null,
+    companyName: companies.find((c) => c.id === o.companyId)?.name ?? null,
+    setId: o.setId || null,
+    setTitle: trimmed(o.setTitle) ?? trimmed(o.jobName),
+    lines: o.lines || [],
   }
 }
 
@@ -1125,6 +1172,110 @@ export const useStore = create(
           return { ok: true }
         }
         set({ companyTypes: get().companyTypes.filter((t) => t.id !== id) })
+        return { ok: true }
+      },
+
+      // ---- Orders / Estimates (epic #5, 5.1 / 5.2) -----------------------
+      // An Order equips one Set: creating it also creates the shoot, so the job
+      // lands on the calendar. A studio takes at most MAX_SETS_PER_DAY shoots a
+      // day — the 6th is refused with an explanation rather than silently added.
+      createOrder: async (order) => {
+        const { jobName, studioId, startsOn } = order
+        if (!jobName?.trim()) return { error: 'Give the job a name.' }
+        if (!studioId) return { error: 'Pick a studio.' }
+        if (!startsOn) return { error: 'Pick the first working date.' }
+
+        const used = usingSupabase
+          ? await sbCountSetsOn(studioId, startsOn)
+          : get().bookings.filter(
+              (b) => b.studioId === studioId && b.date === startsOn && b.status === 'active',
+            ).length
+        if (used >= MAX_SETS_PER_DAY)
+          return {
+            error: `${studioLabel(studioId)} already has ${used} sets on ${startsOn} (max ${MAX_SETS_PER_DAY}). Pick another studio or date.`,
+          }
+
+        if (usingSupabase) {
+          const id = await sbCreateOrder({ ...order, status: order.status || 'hold' })
+          await sbCreateSetForOrder(id, { jobName, studioId, date: startsOn })
+          await get().hydrate()
+          return { ok: true, id }
+        }
+
+        const state = get()
+        const id = uniqueId(
+          `order-${slugify(jobName)}`,
+          state.orders.map((o) => o.id),
+        )
+        const setId = uniqueId(
+          `set-${slugify(jobName)}`,
+          state.bookings.map((b) => b.id),
+        )
+        const booking = {
+          id: setId,
+          title: jobName.trim(),
+          studioId,
+          date: startsOn,
+          startTime: order.startTime || '09:00',
+          endTime: order.endTime || '18:00',
+          photographer: order.photographer || '',
+          model: '',
+          unitIds: [],
+          status: 'active',
+          color: BOOKING_COLORS[state.bookings.length % BOOKING_COLORS.length],
+          orderId: id,
+        }
+        set({
+          bookings: [...state.bookings, booking],
+          orders: [
+            ...state.orders,
+            resolveOrder({ ...order, id, setId, setTitle: jobName.trim() }, state.companies),
+          ].sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1)),
+        })
+        return { ok: true, id }
+      },
+
+      updateOrder: async (id, changes) => {
+        if (usingSupabase) {
+          await sbUpdateOrder(id, changes)
+          await get().hydrate()
+          return { ok: true }
+        }
+        const state = get()
+        const orders = state.orders.map((o) =>
+          o.id === id ? resolveOrder({ ...o, ...changes, id }, state.companies) : o,
+        )
+        // The Set mirrors the order's job name, studio and first working date.
+        const target = orders.find((o) => o.id === id)
+        set({
+          orders: orders.sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1)),
+          bookings: state.bookings.map((b) =>
+            target?.setId && b.id === target.setId
+              ? {
+                  ...b,
+                  title: target.jobName ?? b.title,
+                  studioId: target.studioId ?? b.studioId,
+                  date: target.startsOn ?? b.date,
+                  photographer: target.photographer ?? b.photographer,
+                }
+              : b,
+          ),
+        })
+        return { ok: true }
+      },
+
+      // Scrapping an order leaves its Set alone (sets.order_id is ON DELETE SET
+      // NULL) — the studio booking is a separate fact from the paperwork.
+      deleteOrder: async (id) => {
+        if (usingSupabase) {
+          await sbDeleteOrder(id)
+          await get().hydrate()
+          return { ok: true }
+        }
+        set({
+          orders: get().orders.filter((o) => o.id !== id),
+          bookings: get().bookings.map((b) => (b.orderId === id ? { ...b, orderId: null } : b)),
+        })
         return { ok: true }
       },
 

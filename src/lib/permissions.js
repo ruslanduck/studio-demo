@@ -24,6 +24,8 @@ export const CAP = {
   // People & company databases (4.1 / 4.2).
   PERSON_MANAGE: 'person.manage',
   COMPANY_MANAGE: 'company.manage',
+  // Orders / estimates (epic #5).
+  ORDER_MANAGE: 'order.manage',
 }
 
 export const ALL_CAPS = Object.values(CAP)

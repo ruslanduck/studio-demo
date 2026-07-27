@@ -708,14 +708,26 @@ export async function deleteCompany(id) {
 // Orders, used by 4.5 as the work-history source for company cards. Epic #5 owns
 // the orders module; a missing kind column or table degrades to [].
 export async function getOrders() {
+  // Layered: the epic-5 shape first, then the 4.5 shape, then the stub — so a
+  // database that hasn't run the newer migrations still renders history.
+  const full = `id, order_number, status, ordered_at, kind, company_id,
+     job_name, studio_id, starts_on, ends_on, po_number, created_at,
+     photographer:contacts!photographer_contact_id ( id, full_name ),
+     creator:profiles!created_by ( full_name ),
+     company:companies ( id, name ),
+     order_lines ( quantity, item:inventory_items ( id, name ) ),
+     sets ( id, title, date )`
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
      order_lines ( quantity, item:inventory_items ( id, name ) ),
      sets ( id, title, date )`
   const withoutKind = withKind.replace('kind, ', '')
-  let { data, error } = await supabase.from('orders').select(withKind).order('ordered_at')
+
+  let { data, error } = await supabase.from('orders').select(full).order('ordered_at')
+  if (error) ({ data, error } = await supabase.from('orders').select(withKind).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withoutKind).order('ordered_at'))
   if (error) return []
+
   return (data || []).map((o) => ({
     id: o.id,
     number: o.order_number,
@@ -726,12 +738,92 @@ export async function getOrders() {
     companyName: o.company?.name ?? null,
     setId: o.sets?.[0]?.id ?? null,
     setTitle: o.sets?.[0]?.title ?? null,
+    // epic 5 (absent on a pre-5.1 database → null, and the UI hides the block)
+    jobName: o.job_name ?? o.sets?.[0]?.title ?? null,
+    studioId: o.studio_id ?? null,
+    startsOn: o.starts_on ?? null,
+    endsOn: o.ends_on ?? null,
+    poNumber: o.po_number ?? null,
+    photographerId: o.photographer?.id ?? null,
+    photographer: o.photographer?.full_name ?? null,
+    createdBy: o.creator?.full_name ?? null,
+    createdAt: o.created_at ?? null,
     lines: (o.order_lines || []).map((l) => ({
       itemId: l.item?.id ?? null,
       itemName: l.item?.name ?? null,
       quantity: l.quantity,
     })),
   }))
+}
+
+// Columns for an order payload (5.1/5.2). `created_by` is left to the column
+// default (auth.uid()) so attribution can't be spoofed from the client.
+function orderColumns(o) {
+  const row = {}
+  if (o.jobName != null) row.job_name = o.jobName.trim()
+  if (o.studioId !== undefined) row.studio_id = o.studioId || null
+  if (o.startsOn !== undefined) row.starts_on = o.startsOn || null
+  if (o.endsOn !== undefined) row.ends_on = o.endsOn || null
+  if (o.photographerId !== undefined) row.photographer_contact_id = o.photographerId || null
+  if (o.poNumber !== undefined) row.po_number = o.poNumber?.trim() || null
+  if (o.status !== undefined) row.status = o.status
+  if (o.kind !== undefined) row.kind = o.kind
+  if (o.companyId !== undefined) row.company_id = o.companyId || null
+  if (o.number !== undefined) row.order_number = o.number?.trim() || null
+  // The order date follows the first working day so history lines up.
+  if (o.startsOn !== undefined) row.ordered_at = o.startsOn || null
+  return row
+}
+
+export async function createOrder(order) {
+  const { data, error } = await supabase
+    .from('orders')
+    .insert(orderColumns(order))
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updateOrder(id, changes) {
+  const { error } = await supabase.from('orders').update(orderColumns(changes)).eq('id', id)
+  if (error) throw error
+}
+
+// order_lines cascade; sets.order_id is ON DELETE SET NULL, so the shoot itself
+// survives an order being scrapped.
+export async function deleteOrder(id) {
+  const { error } = await supabase.from('orders').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Create the Set an order equips (5.1: "Order привязан к Set/Job"), then link it.
+export async function createSetForOrder(orderId, { jobName, studioId, date }) {
+  const { data, error } = await supabase
+    .from('sets')
+    .insert({
+      title: jobName.trim(),
+      studio_id: studioId,
+      date,
+      status: 'active',
+      order_id: orderId,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+// How many sets a studio already has on a date — the "max 5 sets per day" rule.
+export async function countSetsOn(studioId, date) {
+  const { count, error } = await supabase
+    .from('sets')
+    .select('*', { count: 'exact', head: true })
+    .eq('studio_id', studioId)
+    .eq('date', date)
+    .eq('status', 'active')
+  if (error) return 0
+  return count ?? 0
 }
 
 // Name the vendor a sub-rented unit came from (4.5).

@@ -93,12 +93,35 @@
 > `sets.order_id`) — a direct person↔order link still needs epic #5. The sub-rental vendor is chosen in the
 > Inventory units table: a new Vendor column offers companies with `kind` vendor/both and writes through
 > `setUnitVendor`; toggling a unit back to Owned clears the vendor. Prod backfilled non-destructively (companies
-> UPDATEd by name, orders upserted by order_number, `sets.order_id` linked). Next: epic #5 (Orders).
+> UPDATEd by name, orders upserted by order_number, `sets.order_id` linked). **Build order #4 COMPLETE** (12/12 spec bullets + all 3 acceptance criteria).
+> **Epic #5 (Orders / Estimates) IN PROGRESS:** 5.1 creation form + 5.2 PO / created-by DONE
+> (`20260731120000_orders_epic5.sql`). Terminology agreed with Clay and used throughout the code:
+> **Job** = what we shoot (free-text job name), **Set** = the shoot itself (≤5 per studio per day, own
+> roster + gear), **Order** = the equipment list for a set (NOT an e-commerce order). The `orders` stub
+> (company/number/status, read-only in 4.5) became real: `job_name`, `studio_id`, `starts_on`/`ends_on`,
+> `photographer_contact_id` → contacts, `po_number`, `created_by` (defaults to `auth.uid()` like the other
+> attribution columns), and the status check now allows `hold` alongside the legacy values. New sidebar
+> view **Orders** (`src/components/Orders.jsx`): list with job search across PO / job name / dates /
+> photographer + status filter, detail card, and `OrderEditorModal` for create/edit/delete. An order
+> starts on **HOLD (yellow)** → **CONFIRMED (green)** via a toggle in the editor; those pill colours are
+> what epic #7 pulls into the calendar. Creating an order also creates the Set it equips (so the job lands
+> on the studio calendar) and refuses the 6th set on a studio/day with an explicit message —
+> `MAX_SETS_PER_DAY` in the store. 5.2's PO is a hand-typed text field, deliberately NOT generated: it
+> must match the number accounting issued (this overrides the client outline's "generate automatic PO",
+> per the last call); `order_number` stays as our own internal reference.
+> ⚠️ `DateField` hands the raw DOM event to `onChange` — read `e.target.value`; treating it as a plain
+> string puts an event object in state and crashes the render.
+> STILL TO COME in #5: EQ entry into an order (incl. kits), the zero-availability block with the
+> sub-rental prompt, in-house/sub-rental marking per line with the vendor from #4, and the costed
+> estimate + PDF. Prod backfilled non-destructively: all 8 orders carry job/PO/studio/status; 5 have no
+> working dates because their shoots don't exist on prod (8 sets there vs 11 in the seed) and dates
+> weren't invented — a full `npm run seed:supabase` would align them.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
 > 4.1/4.2 people profiles + `cvs` bucket (`20260729120000`), 4.3/4.4/4.5 company details + `company_types`
-> + `units.sub_rental_vendor_id` (`20260730120000`), `orders.kind` (`20260730130000`).
+> + `units.sub_rental_vendor_id` (`20260730120000`), `orders.kind` (`20260730130000`),
+> 5.1/5.2 order fields + `po_number` + `created_by` + `hold` status (`20260731120000`).
 > `supabase link` fails here — push with
 > `db push --db-url "postgresql://postgres.<ref>:<URL-ENCODED_PW>@aws-0-eu-north-1.pooler.supabase.com:5432/postgres"`.
 > Seed via
