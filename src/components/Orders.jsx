@@ -14,6 +14,7 @@ import {
   Clock3,
   FileDown,
   Boxes,
+  SlidersHorizontal,
   CheckCircle2,
   Undo2,
   Truck,
@@ -23,6 +24,14 @@ import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
 import { ORDER_STATUS, ORDER_FLOW, orderStatusMeta } from '../data/orderStatus'
+import {
+  searchOrders,
+  poCounts,
+  photographersIn,
+  studiosIn,
+  SORTS,
+} from '../lib/orderSearch'
+import DateField from './DateField'
 import OrderEditorModal from './OrderEditorModal'
 import OrderEquipmentModal from './OrderEquipmentModal'
 import { buildEstimate, money } from '../lib/estimate'
@@ -90,12 +99,21 @@ export default function Orders() {
 
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('All')
+  // 5.7 — job search: free text plus explicit photographer / studio / date-range
+  // filters and a sort. All matching lives in lib/orderSearch.
+  const [photographer, setPhotographer] = useState('All')
+  const [studioFilter, setStudioFilter] = useState('All')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [sort, setSort] = useState('newest')
+  const [showFilters, setShowFilters] = useState(false)
   const [selectedId, setSelectedId] = useState(() => orders[0]?.id ?? null)
   const [editor, setEditor] = useState({ open: false, order: null })
   const [eqEditor, setEqEditor] = useState({ open: false, order: null })
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
-  const query = search.trim().toLowerCase()
+  // Highlight marks the first search term; matching itself is multi-term (5.7).
+  const query = search.trim().toLowerCase().split(/\s+/)[0] ?? ''
 
   // Photographer suggestions: the People database first (epic #4), falling back
   // to the flat contact list.
@@ -106,18 +124,32 @@ export default function Orders() {
     return [...new Set([...fromPeople, ...photographers])]
   }, [people, photographers])
 
-  // Job search: PO, job name, dates, photographer (5.1).
   const filtered = useMemo(
-    () =>
-      orders.filter((o) => {
-        if (status !== 'All' && o.status !== status) return false
-        if (query === '') return true
-        return [o.poNumber, o.jobName, o.setTitle, o.photographer, o.number, o.startsOn, o.endsOn]
-          .filter(Boolean)
-          .some((v) => String(v).toLowerCase().includes(query))
-      }),
-    [orders, status, query],
+    () => searchOrders(orders, { text: search, status, photographer, studio: studioFilter, from, to, sort }),
+    [orders, search, status, photographer, studioFilter, from, to, sort],
   )
+
+  // How many orders share each PO — one job's PO covers every order raised
+  // against it, so this is the job-history hint on a row.
+  const sharedPo = useMemo(() => poCounts(orders), [orders])
+  const photographerOptions = useMemo(() => photographersIn(orders), [orders])
+  const studioOptions = useMemo(() => studiosIn(orders), [orders])
+
+  const activeFilters =
+    (status !== 'All' ? 1 : 0) +
+    (photographer !== 'All' ? 1 : 0) +
+    (studioFilter !== 'All' ? 1 : 0) +
+    (from ? 1 : 0) +
+    (to ? 1 : 0)
+
+  function clearAll() {
+    setSearch('')
+    setStatus('All')
+    setPhotographer('All')
+    setStudioFilter('All')
+    setFrom('')
+    setTo('')
+  }
 
   const selected = orders.find((o) => o.id === selectedId) ?? null
 
@@ -165,7 +197,7 @@ export default function Orders() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search PO, job, date or photographer…"
+                placeholder="PO, job, photographer… (every word must match)"
                 className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-9 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
               />
               {search !== '' && (
@@ -179,18 +211,113 @@ export default function Orders() {
                 </button>
               )}
             </div>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-            >
-              <option value="All">All statuses</option>
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  {ORDER_STATUS[s]?.label ?? s}
-                </option>
-              ))}
-            </select>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowFilters((v) => !v)}
+                className={[
+                  'inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition',
+                  activeFilters > 0
+                    ? 'border-violet-300 bg-violet-50 text-violet-700'
+                    : 'border-slate-300 text-slate-600 hover:bg-slate-50',
+                ].join(' ')}
+              >
+                <SlidersHorizontal size={13} />
+                Filters
+                {activeFilters > 0 && (
+                  <span className="rounded-full bg-violet-600 px-1.5 text-[10px] font-semibold text-white">
+                    {activeFilters}
+                  </span>
+                )}
+              </button>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none transition focus:border-violet-400"
+              >
+                {Object.entries(SORTS).map(([val, meta]) => (
+                  <option key={val} value={val}>
+                    {meta.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {showFilters && (
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
+                  >
+                    <option value="All">Any status</option>
+                    {statuses.map((v) => (
+                      <option key={v} value={v}>
+                        {ORDER_STATUS[v]?.label ?? v}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={studioFilter}
+                    onChange={(e) => setStudioFilter(e.target.value)}
+                    className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
+                  >
+                    <option value="All">Any studio</option>
+                    {studioOptions.map((id) => (
+                      <option key={id} value={id}>
+                        {studioLabel(id)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <select
+                  value={photographer}
+                  onChange={(e) => setPhotographer(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
+                >
+                  <option value="All">Any photographer</option>
+                  {photographerOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <div>
+                  <div className="mb-1 text-[11px] font-medium text-slate-500">
+                    Shooting between — any job whose dates overlap
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <DateField
+                      value={from}
+                      onChange={(e) => setFrom(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none focus:border-violet-400"
+                    />
+                    <DateField
+                      value={to}
+                      onChange={(e) => setTo(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none focus:border-violet-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between px-0.5 text-[11px] text-slate-400">
+              <span>
+                {filtered.length} of {orders.length} orders
+              </span>
+              {(search || activeFilters > 0) && (
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="font-medium text-violet-600 transition hover:underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto p-2">
@@ -240,6 +367,14 @@ export default function Orders() {
                               .filter(Boolean)
                               .join(' · ')}
                           </span>
+                          {o.poNumber && sharedPo[o.poNumber] > 1 && (
+                            <span
+                              title={`${sharedPo[o.poNumber]} orders share ${o.poNumber} — same job`}
+                              className="ml-auto shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] font-medium text-slate-500"
+                            >
+                              {sharedPo[o.poNumber]}× PO
+                            </span>
+                          )}
                         </div>
                       </button>
                     </li>

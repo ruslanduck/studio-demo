@@ -148,7 +148,18 @@
 > both take the last free unit (found in testing: the staging window said "1 free" for a unit an order line
 > already held). LOGIN: self-registration removed on request — sign-in only, accounts are issued by the
 > studio. `store.signUp` still exists for provisioning but nothing in the UI calls it.
-> STILL TO COME in #5: nothing — the epic's 4 acceptance criteria are met. Next: epic #6 (packing/scanning).
+> 5.7 order search DONE (no migration). Matching moved out of the component into the pure
+> `src/lib/orderSearch.js` (25 assertions in Node): free text takes SEVERAL terms and requires ALL of
+> them, each matching any of PO / job name / photographer / order ref / dates / client, so "nike 4490"
+> works without a field picker. Dates filter by OVERLAP against the order's working window, not string
+> prefix, so "everything shooting that week" is answerable and a multi-day job is found from any day
+> inside it. Explicit dropdowns for status / studio / photographer, a sort (newest / oldest / job A-Z),
+> an "N of M orders" count and Clear all. Rows sharing a PO show an "N x PO" chip — one job's PO covers
+> every order raised against it, and that grouping IS the job history the spec asks for.
+> ⚠️ Studio is a dropdown, NOT a free-text field: it used to be in the haystack as its label, which made
+> short numeric terms useless ("studio 2" matched nearly everything, because "2" is a substring of every
+> 2026 date). Caught by the test suite.
+> **Epic #5 COMPLETE** (5.1-5.7, all 4 acceptance criteria). Next: epic #6 (packing / scanning).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
