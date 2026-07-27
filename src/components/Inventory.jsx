@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine, ClipboardList } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
 import { useCan } from '../lib/useCan'
@@ -125,6 +125,7 @@ function ItemRow({ item, active, onSelect, query }) {
 export default function Inventory() {
   const inventory = useStore((s) => s.inventory)
   const kits = useStore((s) => s.kits)
+  const scenarios = useStore((s) => s.scenarios)
   const toggleOwnership = useStore((s) => s.toggleOwnership)
   const sendToRepair = useStore((s) => s.sendToRepair)
   const returnFromRepair = useStore((s) => s.returnFromRepair)
@@ -134,7 +135,7 @@ export default function Inventory() {
   const deleteInventoryItem = useStore((s) => s.deleteInventoryItem)
   const can = useCan()
 
-  const [entryType, setEntryType] = useState('items') // 'items' | 'kits'
+  const [entryType, setEntryType] = useState('items') // 'items' | 'kits' | 'lists'
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [brand, setBrand] = useState('All')
@@ -143,6 +144,7 @@ export default function Inventory() {
     () => inventory.find((i) => i.id === 'kbd-magic')?.id ?? inventory[0]?.id ?? null,
   )
   const [selectedKitId, setSelectedKitId] = useState(() => kits[0]?.id ?? null)
+  const [selectedListId, setSelectedListId] = useState(() => scenarios[0]?.id ?? null)
   const [itemModal, setItemModal] = useState({ open: false, item: null })
   const [historyUnit, setHistoryUnit] = useState(null)
   const [repairUnitId, setRepairUnitId] = useState(null)
@@ -233,6 +235,17 @@ export default function Inventory() {
   )
   const selectedKit = kits.find((k) => k.id === selectedKitId) ?? null
 
+  // Predefined scenario lists (3.5) — same list/detail pattern as kits.
+  const filteredLists = useMemo(
+    () =>
+      query === ''
+        ? scenarios
+        : scenarios.filter((l) => l.name.toLowerCase().includes(query)),
+    [scenarios, query],
+  )
+  const selectedList =
+    scenarios.find((l) => l.id === selectedListId) ?? scenarios[0] ?? null
+
   // Live unit for the repair modal — re-derived from the store each render so
   // it reflects mutations (send / return) without reopening.
   const repairUnit = selected?.units.find((u) => u.id === repairUnitId) ?? null
@@ -270,7 +283,8 @@ export default function Inventory() {
             Inventory
           </h2>
           <p className="text-sm text-slate-500">
-            {inventory.length} items · {kits.length} kits · {totalUnits} units
+            {inventory.length} items · {kits.length} kits · {scenarios.length} lists ·{' '}
+            {totalUnits} units
           </p>
         </div>
         {can(CAP.INVENTORY_ADD) && (
@@ -296,11 +310,13 @@ export default function Inventory() {
           ].join(' ')}
         >
           <div className="space-y-2 border-b border-slate-200 p-3">
-            {/* Entry-type toggle: a-la-carte items vs kits (Build order #3.1). */}
+            {/* Entry-type toggle: a-la-carte items, kits (3.1), and the
+                predefined scenario lists (3.5). */}
             <div className="flex rounded-lg border border-slate-300 p-0.5">
               {[
                 ['items', 'Items'],
                 ['kits', 'Kits'],
+                ['lists', 'Lists'],
               ].map(([val, lbl]) => (
                 <button
                   key={val}
@@ -318,6 +334,7 @@ export default function Inventory() {
                 >
                   {lbl}
                   {val === 'kits' && kits.length > 0 ? ` (${kits.length})` : ''}
+                  {val === 'lists' && scenarios.length > 0 ? ` (${scenarios.length})` : ''}
                 </button>
               ))}
             </div>
@@ -330,7 +347,13 @@ export default function Inventory() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder={entryType === 'kits' ? 'Search kits…' : 'Search name, barcode, or serial…'}
+                placeholder={
+                  entryType === 'kits'
+                    ? 'Search kits…'
+                    : entryType === 'lists'
+                      ? 'Search scenario lists…'
+                      : 'Search name, barcode, or serial…'
+                }
                 className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-9 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
               />
               {search !== '' && (
@@ -397,7 +420,17 @@ export default function Inventory() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto p-2">
-            {entryType === 'kits' ? (
+            {entryType === 'lists' ? (
+              <ScenarioListPane
+                lists={filteredLists}
+                selectedId={selectedList?.id ?? null}
+                query={query}
+                onSelect={(id) => {
+                  setSelectedListId(id)
+                  setShowDetailMobile(true)
+                }}
+              />
+            ) : entryType === 'kits' ? (
               <KitList
                 kits={filteredKits}
                 selectedId={selectedKitId}
@@ -468,7 +501,42 @@ export default function Inventory() {
             'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm',
           ].join(' ')}
         >
-          {entryType === 'kits' ? (
+          {entryType === 'lists' ? (
+            selectedList ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowDetailMobile(false)}
+                  className="flex shrink-0 items-center gap-1 border-b border-slate-200 px-3 py-2 text-sm font-medium text-violet-600 lg:hidden"
+                >
+                  <ChevronLeft size={16} />
+                  Back to lists
+                </button>
+                <ScenarioDetail
+                  list={selectedList}
+                  inventory={inventory}
+                  kits={kits}
+                  onSelectItem={(id) => {
+                    setEntryType('items')
+                    setSearch('')
+                    setSelectedId(id)
+                  }}
+                  onSelectKit={(id) => {
+                    setEntryType('kits')
+                    setSearch('')
+                    setSelectedKitId(id)
+                  }}
+                />
+              </>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center text-center">
+                <ClipboardList size={36} className="mb-3 text-slate-300" />
+                <p className="text-sm text-slate-400">
+                  Select a scenario list to see what it pulls.
+                </p>
+              </div>
+            )
+          ) : entryType === 'kits' ? (
             selectedKit ? (
               <>
                 <button
@@ -970,6 +1038,183 @@ function KitDetail({ kit, inventory, onSelectItem }) {
                 {slot.slotType === 'fixed' ? (
                   <span className="shrink-0 font-mono text-xs text-slate-500">
                     {slot.fixedBarcode ? `#${slot.fixedBarcode}` : 'unit unset'}
+                  </span>
+                ) : (
+                  <span className={['shrink-0 text-xs font-medium', avail.tone].join(' ')}>
+                    {avail.text}
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </>
+  )
+}
+
+// How many units a list reserves if everything resolves: kit slots + item
+// quantities. Non-unit-tracked lines are counted separately (pulled by hand).
+function listTotals(list, kits) {
+  let units = 0
+  let kitCount = 0
+  for (const e of list.entries) {
+    if (e.type === 'kit') {
+      kitCount++
+      units += kits.find((k) => k.id === e.kitId)?.slots.length ?? 0
+    } else {
+      units += e.quantity ?? 1
+    }
+  }
+  return { units, kits: kitCount }
+}
+
+// Scenario-list pane (entry type #3, 3.5) — rows in the list pane.
+function ScenarioListPane({ lists, selectedId, query, onSelect }) {
+  if (lists.length === 0) {
+    return (
+      <p className="px-3 py-10 text-center text-sm text-slate-400">
+        {query ? 'No scenario lists match your search.' : 'No scenario lists yet.'}
+      </p>
+    )
+  }
+  return (
+    <ul className="space-y-0.5">
+      {lists.map((list) => {
+        const active = list.id === selectedId
+        const subtitle = [
+          list.category,
+          `${list.entries.length} line${list.entries.length === 1 ? '' : 's'}`,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+        return (
+          <li key={list.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(list.id)}
+              className={[
+                'flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition',
+                active ? 'bg-violet-50 ring-1 ring-violet-200' : 'hover:bg-slate-50',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
+                  active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
+                ].join(' ')}
+              >
+                <ClipboardList size={16} />
+              </span>
+              <span className="min-w-0">
+                <span
+                  className={[
+                    'block truncate text-sm font-medium',
+                    active ? 'text-violet-900' : 'text-slate-800',
+                  ].join(' ')}
+                >
+                  <Highlight text={list.name} query={query} />
+                </span>
+                <span className="block truncate text-xs text-slate-400">{subtitle}</span>
+              </span>
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+// Scenario-list detail — everything the list pulls, with live availability.
+// Kit lines jump to the Kits tab; item lines jump to the item.
+function ScenarioDetail({ list, inventory, kits, onSelectItem, onSelectKit }) {
+  const totals = listTotals(list, kits)
+  return (
+    <>
+      <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <ClipboardList size={18} className="shrink-0 text-violet-500" />
+            <h3 className="truncate text-lg font-semibold text-slate-900">{list.name}</h3>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
+            <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
+              Scenario list
+            </span>
+            {list.category && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                {list.category}
+              </span>
+            )}
+            <span>
+              {list.entries.length} line{list.entries.length === 1 ? '' : 's'} · ~{totals.units}{' '}
+              unit{totals.units === 1 ? '' : 's'}
+              {totals.kits > 0 && ` · ${totals.kits} kit${totals.kits === 1 ? '' : 's'}`}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {list.notes && (
+        <p className="shrink-0 border-b border-slate-200 px-5 py-3 text-sm text-slate-600">
+          {list.notes}
+        </p>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-auto p-3">
+        <div className="mb-2 flex items-center justify-between px-1">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Pull list
+          </span>
+          <span className="text-xs text-slate-400">
+            Pick this list in a new booking to add it all at once
+          </span>
+        </div>
+        <ul className="space-y-1.5">
+          {list.entries.map((entry, i) => {
+            const isKit = entry.type === 'kit'
+            const kit = isKit ? kits.find((k) => k.id === entry.kitId) : null
+            const item = isKit ? null : inventory.find((it) => it.id === entry.itemId)
+            const avail = isKit ? null : slotAvailability(item)
+            return (
+              <li
+                key={entry.id ?? i}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5"
+              >
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-slate-100 text-xs font-semibold text-slate-500">
+                  {i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    {isKit ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                        <Layers size={9} /> Kit
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                        {entry.quantity ?? 1}×
+                      </span>
+                    )}
+                    {entry.note && (
+                      <span className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                        {entry.note}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => (isKit ? kit && onSelectKit(kit.id) : item && onSelectItem(item.id))}
+                    disabled={isKit ? !kit : !item}
+                    className="mt-0.5 block max-w-full truncate text-left text-sm font-medium text-slate-800 transition hover:text-violet-700 disabled:cursor-default disabled:hover:text-slate-800"
+                  >
+                    {isKit
+                      ? kit?.name || entry.kitName || 'Unknown kit'
+                      : item?.name || entry.itemName || 'Unknown item'}
+                  </button>
+                </div>
+                {isKit ? (
+                  <span className="shrink-0 text-xs font-medium text-slate-500">
+                    {kit ? `${kit.slots.length} slots` : 'kit missing'}
                   </span>
                 ) : (
                   <span className={['shrink-0 text-xs font-medium', avail.tone].join(' ')}>

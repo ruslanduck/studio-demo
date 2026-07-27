@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Trash2, Search, Minus, Plus, X, Layers } from 'lucide-react'
+import {
+  Trash2,
+  Search,
+  Minus,
+  Plus,
+  X,
+  Layers,
+  ClipboardList,
+  AlertTriangle,
+  Check,
+} from 'lucide-react'
 import { useStore } from '../store'
+import { applyScenarioList } from '../lib/scenarios'
 import { studioLabel } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -30,6 +41,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   const studios = useStore((s) => s.studios)
   const inventory = useStore((s) => s.inventory)
   const kits = useStore((s) => s.kits)
+  const scenarios = useStore((s) => s.scenarios)
   const photographers = useStore((s) => s.photographers)
   const models = useStore((s) => s.models)
   const createBooking = useStore((s) => s.createBooking)
@@ -46,6 +58,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   const [invSearch, setInvSearch] = useState('')
   const [staging, setStaging] = useState(null) // kit being staged, or null
   const [stagedUnits, setStagedUnits] = useState([]) // units added via kits: {unitId,itemName,label,kitName}
+  const [applied, setApplied] = useState(null) // last applied scenario list: {name, applied, warnings, notes}
 
   // Unit ids already assigned by staged kits — excluded from the a-la-carte pool.
   const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
@@ -84,7 +97,25 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
     setInvSearch('')
     setStaging(null)
     setStagedUnits([])
+    setApplied(null)
   }, [open, booking, prefill])
+
+  // Apply a predefined scenario list (3.5): kits are auto-staged and item lines
+  // are added at their listed quantity, capped by what's actually free. The
+  // result is a normal editable selection — nothing about the list changes.
+  function applyList(list) {
+    const res = applyScenarioList({
+      list,
+      inventory,
+      kits,
+      selected,
+      stagedUnits,
+      bookingUnits,
+    })
+    setSelected(res.selected)
+    setStagedUnits(res.stagedUnits)
+    setApplied({ name: list.name, ...res })
+  }
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
@@ -294,6 +325,81 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                 · {totalUnits} unit{totalUnits === 1 ? '' : 's'} reserved
               </span>
             </label>
+
+            {/* Predefined scenario list (3.5) — one pick instead of adding
+                every line by hand; the result stays fully editable below. */}
+            {scenarios.length > 0 && (
+              <div className="mb-2">
+                <div className="relative">
+                  <ClipboardList
+                    size={16}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-violet-500"
+                  />
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const list = scenarios.find((l) => l.id === e.target.value)
+                      if (list) applyList(list)
+                    }}
+                    className={fieldClass + ' pl-9'}
+                  >
+                    <option value="">Start from a scenario list…</option>
+                    {scenarios.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                        {l.category ? ` · ${l.category}` : ''} ({l.entries.length} lines)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {applied && (
+                  <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2">
+                    <div className="flex items-start gap-2">
+                      <Check size={14} className="mt-0.5 shrink-0 text-violet-600" />
+                      <p className="min-w-0 flex-1 text-xs text-violet-900">
+                        <span className="font-semibold">{applied.name}</span> applied —{' '}
+                        {applied.applied.units} unit
+                        {applied.applied.units === 1 ? '' : 's'} reserved
+                        {applied.applied.kits > 0 &&
+                          `, ${applied.applied.kits} kit${applied.applied.kits === 1 ? '' : 's'} staged`}
+                        . Edit anything below.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setApplied(null)}
+                        className="shrink-0 rounded p-0.5 text-violet-400 transition hover:text-violet-700"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    {applied.notes.length > 0 && (
+                      <ul className="mt-1.5 space-y-0.5 pl-6 text-xs text-slate-500">
+                        {applied.notes.map((n) => (
+                          <li key={n}>• {n}</li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {applied.warnings.length > 0 && (
+                      <div className="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 ring-1 ring-amber-200">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                          <AlertTriangle size={12} />
+                          {applied.warnings.length} line
+                          {applied.warnings.length === 1 ? '' : 's'} need sourcing
+                        </div>
+                        <ul className="mt-0.5 space-y-0.5 pl-5 text-xs text-amber-700/90">
+                          {applied.warnings.map((w) => (
+                            <li key={w}>• {w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {stagedByKit.length > 0 && (
               <div className="mb-2 space-y-2">

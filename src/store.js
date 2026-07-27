@@ -6,6 +6,7 @@ import { INVENTORY_SEED, createUnits } from './data/inventory'
 import { REPAIR_TEMPLATES, repairDates } from './data/repairs'
 import { generateUsage } from './data/usage'
 import { KIT_SEED } from './data/kits'
+import { SCENARIO_SEED } from './data/scenarios'
 import { BOOKING_TEMPLATES } from './data/bookings'
 import { PHOTOGRAPHERS, MODELS } from './data/contacts'
 import {
@@ -13,6 +14,7 @@ import {
   getInventory as sbGetInventory,
   getBookings as sbGetBookings,
   getKits as sbGetKits,
+  getScenarioLists as sbGetScenarioLists,
   createBooking as sbCreateBooking,
   updateBooking as sbUpdateBooking,
   deleteBooking as sbDeleteBooking,
@@ -120,7 +122,33 @@ function buildSeedData() {
     }),
   }))
 
-  return { inventory, bookings, kits }
+  // Predefined scenario lists (3.5): resolve each entry to its item or kit so
+  // the UI can show names/availability without another lookup.
+  const kitById = Object.fromEntries(kits.map((k) => [k.id, k]))
+  const scenarios = SCENARIO_SEED.map((l) => ({
+    id: l.id,
+    name: l.name,
+    category: l.category,
+    notes: l.notes,
+    entries: l.entries.map((e, i) => {
+      const kit = e.kit ? kitById[e.kit] : null
+      const item = e.item ? byId[e.item] : null
+      return {
+        id: `${l.id}-entry-${i}`,
+        type: e.kit ? 'kit' : 'item',
+        quantity: e.kit ? 1 : (e.qty ?? 1),
+        position: i,
+        note: e.note || null,
+        itemId: item?.id || null,
+        itemName: item?.name || null,
+        itemKind: item?.kind || null,
+        kitId: kit?.id || null,
+        kitName: kit?.name || null,
+      }
+    }),
+  }))
+
+  return { inventory, bookings, kits, scenarios }
 }
 
 function slugify(name) {
@@ -193,20 +221,22 @@ export const useStore = create(
       // Local mode: seeded synchronously. Supabase mode: starts empty and is
       // filled by hydrate() when the app mounts.
       ...(usingSupabase
-        ? { inventory: [], bookings: [], kits: [], loading: true }
+        ? { inventory: [], bookings: [], kits: [], scenarios: [], loading: true }
         : { ...buildSeedData(), loading: false }),
 
-      // Fetch inventory + bookings + kits from Supabase (no-op in local mode).
+      // Fetch inventory + bookings + kits + scenario lists from Supabase
+      // (no-op in local mode).
       hydrate: async () => {
         if (!usingSupabase) return
         set({ loading: true })
         try {
-          const [inventory, bookings, kits] = await Promise.all([
+          const [inventory, bookings, kits, scenarios] = await Promise.all([
             sbGetInventory(),
             sbGetBookings(),
             sbGetKits(),
+            sbGetScenarioLists(),
           ])
-          set({ inventory, bookings, kits, loading: false })
+          set({ inventory, bookings, kits, scenarios, loading: false })
         } catch (e) {
           console.error('Supabase hydrate failed:', e)
           set({ loading: false })
@@ -255,7 +285,7 @@ export const useStore = create(
               set({ profile: data })
               await get().hydrate()
             } else {
-              set({ profile: null, inventory: [], bookings: [] })
+              set({ profile: null, inventory: [], bookings: [], kits: [], scenarios: [] })
             }
             set({ authReady: true })
           }, 0)
@@ -572,6 +602,7 @@ export const useStore = create(
               inventory: state.inventory,
               bookings: state.bookings,
               kits: state.kits,
+              scenarios: state.scenarios,
               activeView: state.activeView,
             },
     },

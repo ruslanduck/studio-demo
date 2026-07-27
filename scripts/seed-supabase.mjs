@@ -11,6 +11,7 @@ import { INVENTORY_SEED } from '../src/data/inventory.js'
 import { REPAIR_TEMPLATES, repairDates } from '../src/data/repairs.js'
 import { generateUsage } from '../src/data/usage.js'
 import { KIT_SEED } from '../src/data/kits.js'
+import { SCENARIO_SEED } from '../src/data/scenarios.js'
 import { BOOKING_TEMPLATES } from '../src/data/bookings.js'
 import { PHOTOGRAPHERS, MODELS } from '../src/data/contacts.js'
 import { STUDIOS, studioLabel } from '../src/data/studios.js'
@@ -32,7 +33,8 @@ function must(label, { error }) {
 // trigger writes to events, so events is cleared right after.
 const WIPE_ORDER = [
   'set_units', 'events', 'roster_entries', 'order_lines', 'item_usage',
-  'sets', 'orders', 'repairs', 'units', 'kit_items', 'kit_slots', 'kits',
+  'sets', 'orders', 'repairs', 'units', 'scenario_list_entries', 'scenario_lists',
+  'kit_items', 'kit_slots', 'kits',
   'inventory_items', 'contacts', 'companies',
 ]
 
@@ -151,6 +153,7 @@ async function main() {
 
   console.log('Kits + slots…')
   let kits = 0, kitSlots = 0
+  const kitDbId = {} // local kit id -> db kit id
   for (const k of KIT_SEED) {
     const { data: kit, error: kErr } = await db
       .from('kits')
@@ -159,6 +162,7 @@ async function main() {
       .single()
     if (kErr) throw kErr
     kits++
+    kitDbId[k.id] = kit.id
     const slotRows = k.slots
       .map((s, i) => {
         // FIXED slots pin a specific unit (by index within the item); fall back
@@ -180,6 +184,34 @@ async function main() {
     if (slotRows.length) {
       must('kit_slots', await db.from('kit_slots').insert(slotRows))
       kitSlots += slotRows.length
+    }
+  }
+
+  console.log('Scenario lists…')
+  let lists = 0, listEntries = 0
+  for (const l of SCENARIO_SEED) {
+    const { data: list, error: lErr } = await db
+      .from('scenario_lists')
+      .insert({ name: l.name, category: l.category, notes: l.notes })
+      .select('id')
+      .single()
+    if (lErr) throw lErr
+    lists++
+    const rows = l.entries
+      .map((e, i) => ({
+        list_id: list.id,
+        entry_type: e.kit ? 'kit' : 'item',
+        kit_id: e.kit ? kitDbId[e.kit] ?? null : null,
+        inventory_item_id: e.item ? itemDbId[e.item] ?? null : null,
+        quantity: e.kit ? 1 : e.qty ?? 1,
+        position: i,
+        note: e.note ?? null,
+      }))
+      // Skip entries whose target didn't seed (keeps the target check valid).
+      .filter((r) => (r.entry_type === 'kit' ? r.kit_id : r.inventory_item_id))
+    if (rows.length) {
+      must('scenario_list_entries', await db.from('scenario_list_entries').insert(rows))
+      listEntries += rows.length
     }
   }
 
@@ -224,6 +256,7 @@ async function main() {
   console.log(`  companies: 1, contacts: ${contactRows.length}`)
   console.log(`  inventory_items: ${INVENTORY_SEED.length}, units: ${totalUnits}, repairs: ${repairs}, item_usage: ${usage}`)
   console.log(`  kits: ${kits}, kit_slots: ${kitSlots}`)
+  console.log(`  scenario_lists: ${lists}, scenario_list_entries: ${listEntries}`)
   console.log(`  sets: ${sets}, set_units: ${reservations}, roster_entries: ${rosterCount}`)
 }
 

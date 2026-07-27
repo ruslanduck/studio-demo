@@ -36,11 +36,21 @@
 > via new `setUnitBarcode` store action + `units.barcode` update, guarded against duplicates. Replace a
 > filled unit with a reason — "Return to stock" (back to pool) or "Broken → send to repair" (reuses 2.6
 > `sendToRepair`, unit → in_repair, out of the pool everywhere). No migration — uses existing columns.
-> These are real inventory writes, unlike this-add-only slot edits). Next: 3.5 replace-on-add polish,
-> 3.6 scenario lists.
+> These are real inventory writes, unlike this-add-only slot edits). 3.5 predefined scenario lists DONE
+> (a list = named preset pull list for a *type of shoot* mixing whole KITS and a-la-carte ITEMS with
+> quantities — `scenario_lists` + `scenario_list_entries`, `20260728120000_scenario_lists.sql`. In the
+> booking modal "Start from a scenario list…" replaces adding every line by hand: `src/lib/scenarios.js`
+> resolves kit entries first (their slots need specific units), then item quantities from what's left,
+> and returns a normal editable selection. Unsatisfiable lines are reported, never silently dropped —
+> shortfalls ("2 of 4 available") and non-unit-tracked consumables ("take from stock") show in a banner.
+> Applying never mutates the list. Third Inventory tab "Lists" shows each list's pull list with live
+> availability; kit/item lines jump to their entry). Next: 3.6.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
-> (`20260726120000`), 3.3 slot types (`20260727120000`). Apply with `db push`; seed via
+> (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`).
+> `supabase link` fails here — push with
+> `db push --db-url "postgresql://postgres.<ref>:<URL-ENCODED_PW>@aws-0-eu-north-1.pooler.supabase.com:5432/postgres"`.
+> Seed via
 > `npm run seed:supabase` (wipes+reseeds), or add rows non-destructively (3.3 fixed slots were applied
 > to prod via a targeted UPDATE, not a wipe). Every added frontend degrades gracefully if its table is absent (repairs/usage/kits
 > fetched in separate try/caught queries), so deploying before a migration never breaks inventory.

@@ -70,6 +70,44 @@ export async function getKits() {
   }))
 }
 
+// Predefined scenario lists with their entries (3.5). Like kits, this degrades
+// to [] when the table isn't migrated yet, so the frontend can ship first.
+export async function getScenarioLists() {
+  const { data, error } = await supabase
+    .from('scenario_lists')
+    .select(
+      `id, name, category, notes,
+       scenario_list_entries (
+         id, entry_type, quantity, position, note, inventory_item_id, kit_id,
+         item:inventory_items ( name, category, kind ),
+         kit:kits ( name, category )
+       )`,
+    )
+    .order('name')
+  if (error) return []
+  return (data || []).map((l) => ({
+    id: l.id,
+    name: l.name,
+    category: l.category,
+    notes: l.notes,
+    entries: (l.scenario_list_entries || [])
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((e) => ({
+        id: e.id,
+        type: e.entry_type,
+        quantity: e.quantity,
+        position: e.position,
+        note: e.note,
+        itemId: e.inventory_item_id,
+        itemName: e.item?.name || null,
+        itemKind: e.item?.kind || null,
+        kitId: e.kit_id,
+        kitName: e.kit?.name || null,
+      })),
+  }))
+}
+
 // Repairs grouped by unit id, newest first. Fetched separately (not embedded)
 // so a project that hasn't run the 2.6 migration yet still loads inventory —
 // a missing `repairs` relation degrades to "no repairs" rather than failing
