@@ -12,12 +12,17 @@ import {
   Building2,
   UserRound,
   Clock3,
+  FileDown,
+  Boxes,
 } from 'lucide-react'
 import { useStore } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
 import OrderEditorModal from './OrderEditorModal'
+import OrderEquipmentModal from './OrderEquipmentModal'
+import { buildEstimate, money } from '../lib/estimate'
+import { downloadEstimatePdf } from '../lib/estimatePdf'
 
 // Orders / Estimates (epic #5, 5.1 + 5.2).
 //
@@ -84,6 +89,11 @@ export default function Orders() {
   const studios = useStore((s) => s.studios)
   const photographers = useStore((s) => s.photographers)
   const people = useStore((s) => s.people)
+  const inventory = useStore((s) => s.inventory)
+  const kits = useStore((s) => s.kits)
+  const scenarios = useStore((s) => s.scenarios)
+  const bookings = useStore((s) => s.bookings)
+  const setOrderLines = useStore((s) => s.setOrderLines)
   const createOrder = useStore((s) => s.createOrder)
   const updateOrder = useStore((s) => s.updateOrder)
   const deleteOrder = useStore((s) => s.deleteOrder)
@@ -93,6 +103,7 @@ export default function Orders() {
   const [status, setStatus] = useState('All')
   const [selectedId, setSelectedId] = useState(() => orders[0]?.id ?? null)
   const [editor, setEditor] = useState({ open: false, order: null })
+  const [eqEditor, setEqEditor] = useState({ open: false, order: null })
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
   const query = search.trim().toLowerCase()
@@ -269,8 +280,21 @@ export default function Orders() {
               </button>
               <OrderDetail
                 order={selected}
+                estimate={buildEstimate(selected, {
+                  inventory,
+                  kits,
+                  booking: bookings.find((b) => b.id === selected.setId) ?? null,
+                })}
                 canManage={can(CAP.ORDER_MANAGE)}
                 onEdit={() => setEditor({ open: true, order: selected })}
+                onEditEquipment={() => setEqEditor({ open: true, order: selected })}
+                onDownloadPdf={() =>
+                  downloadEstimatePdf(selected, {
+                    inventory,
+                    kits,
+                    booking: bookings.find((b) => b.id === selected.setId) ?? null,
+                  })
+                }
               />
             </>
           ) : (
@@ -299,6 +323,16 @@ export default function Orders() {
           setSelectedId((cur) => (cur === id ? null : cur))
         }}
       />
+
+      <OrderEquipmentModal
+        open={eqEditor.open}
+        order={eqEditor.order}
+        inventory={inventory}
+        kits={kits}
+        scenarios={scenarios}
+        onClose={() => setEqEditor({ open: false, order: null })}
+        onSave={(id, lines) => setOrderLines(id, lines)}
+      />
     </div>
   )
 }
@@ -313,8 +347,7 @@ function Row({ icon: Icon, label, children }) {
   )
 }
 
-function OrderDetail({ order, canManage, onEdit }) {
-  const totalUnits = order.lines.reduce((n, l) => n + (l.quantity || 0), 0)
+function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDownloadPdf }) {
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -380,31 +413,114 @@ function OrderDetail({ order, canManage, onEdit }) {
           </Row>
         </section>
 
+        {/* 5.3 equipment + 5.4 estimate */}
         <section>
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Equipment{order.lines.length > 0 && ` · ${totalUnits} pcs`}
-          </h4>
-          {order.lines.length > 0 ? (
-            <ul className="space-y-1.5">
-              {order.lines.map((l, i) => (
-                <li
-                  key={`${l.itemId}-${i}`}
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
-                >
-                  <Package size={14} className="shrink-0 text-slate-400" />
-                  <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
-                    {l.itemName ?? 'Item'}
-                  </span>
-                  <span className="shrink-0 text-xs font-medium text-slate-500">×{l.quantity}</span>
-                </li>
+          <div className="mb-2 flex items-center justify-between">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Equipment
+              {estimate.lineCount > 0 && ` · ${estimate.pieces} pcs`}
+            </h4>
+            {canManage && (
+              <button
+                type="button"
+                onClick={onEditEquipment}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-violet-600 transition hover:bg-violet-50"
+              >
+                <Boxes size={13} />
+                Edit equipment
+              </button>
+            )}
+          </div>
+
+          {estimate.groups.length > 0 ? (
+            <div className="space-y-3">
+              {estimate.groups.map((g) => (
+                <div key={g.kitId ?? 'items'}>
+                  <div className="mb-1 flex items-center gap-2 px-1">
+                    <span
+                      className={[
+                        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                        g.type === 'kit'
+                          ? 'bg-violet-100 text-violet-700'
+                          : 'bg-slate-200 text-slate-600',
+                      ].join(' ')}
+                    >
+                      {g.type === 'kit' ? g.name : 'A-la-carte'}
+                    </span>
+                    <span className="ml-auto text-xs text-slate-400">
+                      {g.pieces} pcs · {money(g.subtotal)}
+                    </span>
+                  </div>
+                  <ul className="space-y-1">
+                    {g.lines.map((l, i) => (
+                      <li
+                        key={`${l.itemId}-${i}`}
+                        className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
+                      >
+                        <Package size={14} className="shrink-0 text-slate-400" />
+                        <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
+                          {l.itemName}
+                          {l.slotLabel && (
+                            <span className="ml-1.5 text-[11px] uppercase tracking-wide text-slate-400">
+                              {l.slotLabel}
+                            </span>
+                          )}
+                        </span>
+                        {l.barcode && (
+                          <span className="shrink-0 font-mono text-[11px] text-slate-400">
+                            #{l.barcode}
+                          </span>
+                        )}
+                        <span className="shrink-0 text-xs text-slate-500">×{l.quantity}</span>
+                        <span className="w-20 shrink-0 text-right text-xs text-slate-500">
+                          {l.dayRate == null ? 'no rate' : `${money(l.dayRate)}/day`}
+                        </span>
+                        <span className="w-20 shrink-0 text-right text-sm font-medium text-slate-800">
+                          {l.dayRate == null ? '—' : money(l.lineTotal)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           ) : (
             <p className="text-sm text-slate-400">
-              Nothing added yet — equipment entry, the zero-availability block and the costed
-              estimate are the next sub-items of this epic.
+              Nothing added yet — use “Edit equipment” to assign items, kits or a scenario list.
             </p>
           )}
+        </section>
+
+        {/* 5.4 — estimate totals + PDF */}
+        <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Estimate
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {estimate.lineCount} lines · {estimate.pieces} pieces · {estimate.days} billable
+                day(s)
+              </div>
+              {estimate.unratedCount > 0 && (
+                <div className="mt-1 text-xs text-amber-600">
+                  {estimate.unratedCount} line(s) have no day rate and sit outside the total
+                </div>
+              )}
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-semibold text-slate-900">{money(estimate.total)}</div>
+              <div className="text-[11px] text-slate-400">equipment only</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onDownloadPdf}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+          >
+            <FileDown size={15} />
+            Download estimate PDF
+          </button>
         </section>
       </div>
     </>

@@ -159,15 +159,18 @@ export async function getInventory() {
   // `sub_rental_vendor_id` (4.5) is requested with a fallback: inventory is the
   // app's backbone, so a pre-4.5 database must still load it.
   const withVendor = `id, name, category, kind, quantity,
-     brand, asset_type, placement, subcategory, purchase_date, replacement_price,
+     brand, asset_type, placement, subcategory, purchase_date, replacement_price, day_rate,
      units (
        id, barcode, serial, ownership, sub_rental_vendor_id,
        set_units ( status, set:sets ( title, studio_id, status ) )
      )`
   const withoutVendor = withVendor.replace(', sub_rental_vendor_id', '')
+  const withoutRate = withoutVendor.replace(', day_rate', '')
   let { data, error } = await supabase.from('inventory_items').select(withVendor).order('name')
   if (error)
     ({ data, error } = await supabase.from('inventory_items').select(withoutVendor).order('name'))
+  if (error)
+    ({ data, error } = await supabase.from('inventory_items').select(withoutRate).order('name'))
   if (error) throw error
 
   const [repairsByUnit, usageByItem] = await Promise.all([
@@ -187,6 +190,7 @@ export async function getInventory() {
     subcategory: item.subcategory,
     purchaseDate: item.purchase_date,
     replacementPrice: item.replacement_price,
+    dayRate: item.day_rate != null ? Number(item.day_rate) : null,
     usage: usageByItem[item.id] || [],
     units: (item.units || []).map((u) => {
       const repairs = repairsByUnit[u.id] || []
@@ -715,7 +719,9 @@ export async function getOrders() {
      photographer:contacts!photographer_contact_id ( id, full_name ),
      creator:profiles!created_by ( full_name ),
      company:companies ( id, name ),
-     order_lines ( quantity, item:inventory_items ( id, name ) ),
+     order_lines ( id, quantity, kit_id, unit_id, slot_label,
+                   item:inventory_items ( id, name, day_rate ),
+                   unit:units ( id, barcode ) ),
      sets ( id, title, date )`
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
@@ -749,9 +755,15 @@ export async function getOrders() {
     createdBy: o.creator?.full_name ?? null,
     createdAt: o.created_at ?? null,
     lines: (o.order_lines || []).map((l) => ({
+      id: l.id ?? null,
       itemId: l.item?.id ?? null,
       itemName: l.item?.name ?? null,
       quantity: l.quantity,
+      dayRate: l.item?.day_rate != null ? Number(l.item.day_rate) : null,
+      kitId: l.kit_id ?? null,
+      unitId: l.unit?.id ?? l.unit_id ?? null,
+      barcode: l.unit?.barcode ?? null,
+      slotLabel: l.slot_label ?? null,
     })),
   }))
 }
@@ -937,4 +949,26 @@ export async function uploadCv(file, personName = 'cv') {
   if (error) throw error
   const { data } = supabase.storage.from('cvs').getPublicUrl(path)
   return { url: data.publicUrl, filename: file.name }
+}
+
+// Replace an order's equipment lines wholesale (5.3). Same approach as kit slots
+// and scenario entries: the lines aren't referenced from anywhere else, so a full
+// replace is simpler and safer than diffing.
+export async function setOrderLines(orderId, lines) {
+  const { error: delErr } = await supabase.from('order_lines').delete().eq('order_id', orderId)
+  if (delErr) throw delErr
+  const rows = (lines || [])
+    .filter((l) => l.itemId)
+    .map((l) => ({
+      order_id: orderId,
+      inventory_item_id: l.itemId,
+      quantity: Math.max(1, Number(l.quantity) || 1),
+      kit_id: l.kitId || null,
+      unit_id: l.unitId || null,
+      slot_label: l.slotLabel?.trim() || null,
+      notes: l.notes?.trim() || null,
+    }))
+  if (!rows.length) return
+  const { error } = await supabase.from('order_lines').insert(rows)
+  if (error) throw error
 }

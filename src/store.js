@@ -53,6 +53,7 @@ import {
   deleteOrder as sbDeleteOrder,
   createSetForOrder as sbCreateSetForOrder,
   countSetsOn as sbCountSetsOn,
+  setOrderLines as sbSetOrderLines,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -1264,6 +1265,40 @@ export const useStore = create(
         return { ok: true }
       },
 
+      // 5.3 — replace an order's equipment lines. Lines arrive as
+      // { itemId, quantity, kitId?, unitId?, slotLabel? }; names and day rates are
+      // resolved here so the estimate and the PDF read the same numbers.
+      setOrderLines: async (orderId, lines) => {
+        if (usingSupabase) {
+          await sbSetOrderLines(orderId, lines)
+          await get().hydrate()
+          return { ok: true }
+        }
+        const state = get()
+        const byId = Object.fromEntries(state.inventory.map((i) => [i.id, i]))
+        const unitBarcode = {}
+        for (const item of state.inventory)
+          for (const u of item.units || []) unitBarcode[u.id] = u.barcode
+
+        const resolved = (lines || [])
+          .filter((l) => l.itemId)
+          .map((l, i) => ({
+            id: l.id ?? `line-${orderId}-${i}`,
+            itemId: l.itemId,
+            itemName: byId[l.itemId]?.name ?? l.itemName ?? null,
+            quantity: Math.max(1, Number(l.quantity) || 1),
+            dayRate: byId[l.itemId]?.dayRate ?? null,
+            kitId: l.kitId ?? null,
+            unitId: l.unitId ?? null,
+            barcode: l.barcode ?? (l.unitId ? unitBarcode[l.unitId] ?? null : null),
+            slotLabel: l.slotLabel ?? null,
+          }))
+        set({
+          orders: state.orders.map((o) => (o.id === orderId ? { ...o, lines: resolved } : o)),
+        })
+        return { ok: true }
+      },
+
       // Scrapping an order leaves its Set alone (sets.order_id is ON DELETE SET
       // NULL) — the studio booking is a separate fact from the paperwork.
       deleteOrder: async (id) => {
@@ -1329,9 +1364,12 @@ export const useStore = create(
       name: STORAGE_KEY,
       // Bumped for 4.1/4.2: older persisted state has no people/companies, so it
       // is reseeded rather than merged into a half-filled shape.
-      version: 2,
+      // v2 added people/companies; v3 added orders' epic-5 fields and the day
+      // rates the estimate multiplies. An older snapshot has neither, and a
+      // half-filled shape would quietly total $0.00 — so it is reseeded.
+      version: 3,
       migrate: (persisted, version) => {
-        if (version >= 2) return persisted
+        if (version >= 3) return persisted
         return usingSupabase
           ? { activeView: persisted?.activeView ?? 'calendar' }
           : { ...buildSeedData(), activeView: persisted?.activeView ?? 'calendar' }

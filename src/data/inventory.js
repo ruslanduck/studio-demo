@@ -149,14 +149,78 @@ const CATALOG = [
 // sub-rentals sprinkled in); non-barcoded / consumable items store a quantity
 // and have no unit rows.
 let seedBarcode = 703
+// Rental day rates (epic #5, 5.4) — what the estimate multiplies by quantity and
+// billable days. Real per-item rates where the number matters (camera, lighting,
+// computers); everything else falls back to its category's typical rate, so the
+// catalogue can grow without touching this table. Consumables are sold, not
+// rented, so they carry no day rate.
+const DAY_RATE_BY_CATEGORY = {
+  Grip: 12,
+  'Electric/Lighting': 45,
+  Computers: 55,
+  Cables: 6,
+  Camera: 90,
+  Furniture: 15,
+  Audio: 40,
+}
+
+const DAY_RATE_OVERRIDES = {
+  // Camera
+  'sony-fx6': 285,
+  'canon-r5': 210,
+  'sony-2470': 75,
+  'smallhd-702': 65,
+  'cfexpress-512': 35,
+  // Electric / lighting
+  'arri-2k': 110,
+  'arri-750': 65,
+  'aputure-600d': 145,
+  'aputure-300x': 95,
+  'astera-titan': 120,
+  'quasar-4ft': 28,
+  'stinger-25': 9,
+  'flag-24x36': 14,
+  // Computers
+  'macbook-16': 120,
+  'monitor-lg-27': 45,
+  'kbd-magic': 12,
+  'mouse-magic': 10,
+  'anker-hub': 14,
+  // Audio
+  'mkh-416': 55,
+  'wireless-go-2': 45,
+  'zoom-h6': 40,
+  'mixpre-6': 70,
+  // Grip / furniture
+  'c-stand-40': 18,
+  'sandbag-25': 6,
+  'applebox-full': 12,
+  'bench': 18,
+  'director-chair': 12,
+  'wardrobe-rack': 22,
+  'folding-table-6': 16,
+}
+
+// Day rate for a seed item; null when the item isn't rented out by the day.
+export function dayRateFor({ id, category, kind }) {
+  if (kind === 'consumable') return null
+  return DAY_RATE_OVERRIDES[id] ?? DAY_RATE_BY_CATEGORY[category] ?? 20
+}
+
 export const INVENTORY_SEED = CATALOG.map(([id, name, category, qty, kind = 'barcoded']) => {
   if (kind !== 'barcoded') {
-    return { id, name, category, kind, quantity: qty, units: [], brand: brandFor(name) }
+    return {
+      id, name, category, kind, quantity: qty, units: [], brand: brandFor(name),
+      dayRate: dayRateFor({ id, category, kind }),
+    }
   }
   const units = createUnits(id, qty, seedBarcode)
   seedBarcode += qty
   units.forEach((u, i) => {
     if (i % 7 === 6) u.ownership = 'sub_rental'
   })
-  return { id, name, category, kind, quantity: 0, units, brand: brandFor(name) }
+  return {
+    id, name, category, kind, quantity: 0, units, brand: brandFor(name),
+    dayRate: dayRateFor({ id, category, kind }),
+  }
 })

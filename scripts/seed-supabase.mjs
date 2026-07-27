@@ -127,6 +127,7 @@ async function main() {
         subcategory: item.subcategory ?? null,
         purchase_date: item.purchaseDate ?? null,
         replacement_price: item.replacementPrice ?? null,
+        day_rate: item.dayRate ?? null, // 5.4 — what the estimate multiplies
       })
       .select('id')
       .single()
