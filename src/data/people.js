@@ -18,6 +18,8 @@ export const COMPANY_TYPES = [
   'Studio',
 ]
 
+// 4.3 adds the fields a coordinator needs to actually reach a company: address,
+// opening hours (free text — how the crew writes them), website, email, phone.
 export const COMPANY_SEED = [
   {
     id: 'anntaylor-rental',
@@ -25,6 +27,11 @@ export const COMPANY_SEED = [
     companyType: 'Studio',
     kind: 'both',
     notes: 'Us — the studio and its own gear pool.',
+    address: '412 W 27th St, New York, NY 10001',
+    openingHours: 'Mon–Fri 8:00–20:00 · Sat 10:00–16:00',
+    website: 'https://anntaylor-rental.example.com',
+    email: 'studio@anntaylor.demo',
+    phone: '+1 212 555 0100',
   },
   {
     id: 'northlight-rentals',
@@ -32,6 +39,11 @@ export const COMPANY_SEED = [
     companyType: 'Rental company',
     kind: 'vendor',
     notes: 'Primary sub-rental partner for lighting and grip.',
+    address: '55 Vandam St, New York, NY 10013',
+    openingHours: 'Mon–Fri 7:30–18:30 · Sat 9:00–13:00',
+    website: 'https://northlight.example.com',
+    email: 'orders@northlight.example.com',
+    phone: '+1 212 555 0400',
   },
   {
     id: 'kino-grip-co',
@@ -39,6 +51,11 @@ export const COMPANY_SEED = [
     companyType: 'Rental company',
     kind: 'vendor',
     notes: 'Camera bodies and specialty lenses.',
+    address: '1820 Flushing Ave, Brooklyn, NY 11237',
+    openingHours: 'Mon–Fri 9:00–18:00',
+    website: 'https://kinogrip.example.com',
+    email: 'rentals@kinogrip.example.com',
+    phone: '+1 646 555 0500',
   },
   {
     id: 'atlas-models',
@@ -46,6 +63,11 @@ export const COMPANY_SEED = [
     companyType: 'Modeling agency',
     kind: 'client',
     notes: null,
+    address: '270 Lafayette St, New York, NY 10012',
+    openingHours: 'Mon–Fri 9:30–18:00',
+    website: 'https://atlasmodels.example.com',
+    email: 'bookings@atlasmodels.example.com',
+    phone: '+1 212 555 0600',
   },
   {
     id: 'vantage-mgmt',
@@ -53,6 +75,11 @@ export const COMPANY_SEED = [
     companyType: 'Modeling agency',
     kind: 'client',
     notes: null,
+    address: '9 Desbrosses St, New York, NY 10013',
+    openingHours: 'Mon–Fri 10:00–19:00',
+    website: 'https://vantagemgmt.example.com',
+    email: 'casting@vantagemgmt.example.com',
+    phone: '+1 917 555 0650',
   },
   {
     id: 'swiftline-couriers',
@@ -60,6 +87,11 @@ export const COMPANY_SEED = [
     companyType: 'Messenger service',
     kind: 'vendor',
     notes: 'Same-day gear runs across the city.',
+    address: '640 Dean St, Brooklyn, NY 11238',
+    openingHours: 'Mon–Sun 6:00–22:00',
+    website: 'https://swiftline.example.com',
+    email: 'dispatch@swiftline.example.com',
+    phone: '+1 917 555 0700',
   },
 ]
 

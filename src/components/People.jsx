@@ -14,6 +14,11 @@ import {
   Phone,
   Briefcase,
   ExternalLink,
+  MapPin,
+  Clock,
+  Package,
+  ArrowDownLeft,
+  ArrowUpRight,
 } from 'lucide-react'
 import { useStore } from '../store'
 import { useCan } from '../lib/useCan'
@@ -21,6 +26,7 @@ import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
 import { PEOPLE_CATEGORIES } from '../data/people'
 import PersonEditorModal from './PersonEditorModal'
+import CompanyEditorModal from './CompanyEditorModal'
 import { usingSupabase } from '../data/repository'
 import { uploadCv } from '../data/repository'
 
@@ -61,10 +67,19 @@ const webUrl = (url) => (/^https?:\/\//i.test(url) ? url : `https://${url}`)
 export default function People() {
   const people = useStore((s) => s.people)
   const companies = useStore((s) => s.companies)
+  // Needed for the "sub-rented from them" block on a vendor's card (4.5).
+  const inventory = useStore((s) => s.inventory)
   const createPerson = useStore((s) => s.createPerson)
   const updatePerson = useStore((s) => s.updatePerson)
   const deletePerson = useStore((s) => s.deletePerson)
   const createCompany = useStore((s) => s.createCompany)
+  const updateCompany = useStore((s) => s.updateCompany)
+  const deleteCompany = useStore((s) => s.deleteCompany)
+  const companyTypes = useStore((s) => s.companyTypes)
+  const orders = useStore((s) => s.orders)
+  const createCompanyType = useStore((s) => s.createCompanyType)
+  const renameCompanyType = useStore((s) => s.renameCompanyType)
+  const deleteCompanyType = useStore((s) => s.deleteCompanyType)
   const can = useCan()
 
   const [tab, setTab] = useState('people') // 'people' | 'companies'
@@ -73,6 +88,7 @@ export default function People() {
   const [selectedPersonId, setSelectedPersonId] = useState(() => people[0]?.id ?? null)
   const [selectedCompanyId, setSelectedCompanyId] = useState(() => companies[0]?.id ?? null)
   const [editor, setEditor] = useState({ open: false, person: null })
+  const [companyEditor, setCompanyEditor] = useState({ open: false, company: null })
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
   const query = search.trim().toLowerCase()
@@ -134,16 +150,27 @@ export default function People() {
             {people.length} contacts · {companies.length} companies
           </p>
         </div>
-        {tab === 'people' && can(CAP.PERSON_MANAGE) && (
-          <button
-            type="button"
-            onClick={() => setEditor({ open: true, person: null })}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
-          >
-            <Plus size={16} />
-            New person
-          </button>
-        )}
+        {tab === 'people'
+          ? can(CAP.PERSON_MANAGE) && (
+              <button
+                type="button"
+                onClick={() => setEditor({ open: true, person: null })}
+                className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+              >
+                <Plus size={16} />
+                New person
+              </button>
+            )
+          : can(CAP.COMPANY_MANAGE) && (
+              <button
+                type="button"
+                onClick={() => setCompanyEditor({ open: true, company: null })}
+                className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+              >
+                <Plus size={16} />
+                New company
+              </button>
+            )}
       </div>
 
       <div className="flex min-h-0 flex-1 gap-4">
@@ -286,6 +313,10 @@ export default function People() {
               <CompanyDetail
                 company={selectedCompany}
                 people={people}
+                orders={orders}
+                inventory={inventory}
+                canManage={can(CAP.COMPANY_MANAGE)}
+                onEdit={() => setCompanyEditor({ open: true, company: selectedCompany })}
                 onOpenPerson={openPerson}
               />
             </>
@@ -299,6 +330,7 @@ export default function People() {
         open={editor.open}
         person={editor.person}
         companies={companies}
+        companyTypes={companyTypes}
         jobCount={editor.person?.jobs?.length ?? 0}
         onClose={() => setEditor({ open: false, person: null })}
         onCreate={async (payload) => {
@@ -313,6 +345,30 @@ export default function People() {
         }}
         onCreateCompany={(payload) => createCompany(payload)}
         onUploadCv={usingSupabase ? uploadCv : null}
+      />
+
+      <CompanyEditorModal
+        open={companyEditor.open}
+        company={companyEditor.company}
+        companyTypes={companyTypes}
+        contactCount={
+          companyEditor.company
+            ? people.filter((p) => p.companyId === companyEditor.company.id).length
+            : 0
+        }
+        onClose={() => setCompanyEditor({ open: false, company: null })}
+        onCreate={async (payload) => {
+          const id = await createCompany(payload)
+          if (id) setSelectedCompanyId(id)
+        }}
+        onSave={(id, payload) => updateCompany(id, payload)}
+        onDelete={(id) => {
+          deleteCompany(id)
+          setSelectedCompanyId((cur) => (cur === id ? null : cur))
+        }}
+        onCreateType={(name) => createCompanyType(name)}
+        onRenameType={(id, name) => renameCompanyType(id, name)}
+        onDeleteType={(id) => deleteCompanyType(id)}
       />
     </div>
   )
@@ -596,10 +652,11 @@ function PersonDetail({ person, canManage, onEdit, onOpenCompany }) {
   )
 }
 
-// Minimal company card for 4.1: identity, type and its people (the reverse
-// hyperlink), plus the jobs its contacts worked. Address / opening hours /
-// editable type lists arrive with the Company module.
-function CompanyDetail({ company, people, onOpenPerson }) {
+// Company card (4.1 + 4.3 + 4.5): identity and type, the reachability block
+// (address / hours / website / email / phone), its people as hyperlinks back to
+// People, and work history — orders in both directions, the gear we currently
+// hold from them as a vendor, and the jobs its people worked.
+function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, onOpenPerson }) {
   const staff = people.filter((p) => p.companyId === company.id)
   const jobs = useMemo(() => {
     const seen = new Set()
@@ -613,6 +670,31 @@ function CompanyDetail({ company, people, onOpenPerson }) {
       })
       .sort((a, b) => (a.date < b.date ? 1 : -1))
   }, [staff])
+
+  // 4.5 — orders in either direction, newest first.
+  const companyOrders = useMemo(
+    () =>
+      (orders || [])
+        .filter((o) => o.companyId === company.id)
+        .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1)),
+    [orders, company.id],
+  )
+
+  // 4.5 — gear we currently hold from this vendor, grouped per item.
+  const { heldGear, heldUnitCount } = useMemo(() => {
+    const rows = []
+    let total = 0
+    for (const item of inventory || []) {
+      const count = (item.units || []).filter(
+        (u) => u.ownership === 'sub_rental' && u.subRentalVendorId === company.id,
+      ).length
+      if (count > 0) {
+        rows.push({ itemId: item.id, name: item.name, count })
+        total += count
+      }
+    }
+    return { heldGear: rows.sort((a, b) => b.count - a.count), heldUnitCount: total }
+  }, [inventory, company.id])
 
   return (
     <>
@@ -631,8 +713,23 @@ function CompanyDetail({ company, people, onOpenPerson }) {
             <span>
               {staff.length} contact{staff.length === 1 ? '' : 's'}
             </span>
+            {companyOrders.length > 0 && (
+              <span>
+                {companyOrders.length} order{companyOrders.length === 1 ? '' : 's'}
+              </span>
+            )}
           </div>
         </div>
+        {canManage && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:border-violet-300 hover:text-violet-600"
+          >
+            <Pencil size={14} />
+            Edit
+          </button>
+        )}
       </div>
 
       {company.notes && (
@@ -642,6 +739,67 @@ function CompanyDetail({ company, people, onOpenPerson }) {
       )}
 
       <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
+        {/* 4.3 — how to reach them */}
+        <section>
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Details
+          </h4>
+          {company.address ||
+          company.openingHours ||
+          company.website ||
+          company.email ||
+          company.phone ? (
+            <div className="space-y-1.5 text-sm">
+              {company.address && (
+                <div className="flex items-start gap-2 text-slate-700">
+                  <MapPin size={14} className="mt-0.5 shrink-0 text-slate-400" />
+                  {company.address}
+                </div>
+              )}
+              {company.openingHours && (
+                <div className="flex items-start gap-2 text-slate-700">
+                  <Clock size={14} className="mt-0.5 shrink-0 text-slate-400" />
+                  {company.openingHours}
+                </div>
+              )}
+              {company.website && (
+                <a
+                  href={webUrl(company.website)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="flex items-center gap-2 text-violet-600 underline decoration-violet-300 underline-offset-2 transition hover:text-violet-800"
+                >
+                  <Globe size={14} className="shrink-0" />
+                  {company.website.replace(/^https?:\/\//i, '')}
+                  <ExternalLink size={11} className="text-slate-400" />
+                </a>
+              )}
+              {company.email && (
+                <a
+                  href={`mailto:${company.email}`}
+                  className="flex items-center gap-2 text-slate-700 transition hover:text-violet-700"
+                >
+                  <Mail size={14} className="shrink-0 text-slate-400" />
+                  {company.email}
+                </a>
+              )}
+              {company.phone && (
+                <a
+                  href={`tel:${company.phone.replace(/\s/g, '')}`}
+                  className="flex items-center gap-2 text-slate-700 transition hover:text-violet-700"
+                >
+                  <Phone size={14} className="shrink-0 text-slate-400" />
+                  {company.phone}
+                </a>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">
+              No address, hours or contact details on file yet.
+            </p>
+          )}
+        </section>
+
         <section>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             Contacts
@@ -682,14 +840,102 @@ function CompanyDetail({ company, people, onOpenPerson }) {
           )}
         </section>
 
+        {/* 4.5 — order history, both directions */}
         <section>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Work history{jobs.length > 0 && ` (${jobs.length})`}
+            Order history{companyOrders.length > 0 && ` (${companyOrders.length})`}
+          </h4>
+          <OrderList orders={companyOrders} />
+        </section>
+
+        {/* 4.5 — gear currently held from this vendor */}
+        {heldGear.length > 0 && (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Sub-rented from them ({heldUnitCount} unit{heldUnitCount === 1 ? '' : 's'})
+            </h4>
+            <ul className="space-y-1.5">
+              {heldGear.map((g) => (
+                <li
+                  key={g.itemId}
+                  className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
+                >
+                  <Package size={14} className="shrink-0 text-slate-400" />
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-800">{g.name}</span>
+                  <span className="shrink-0 text-xs font-medium text-slate-500">×{g.count}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section>
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Jobs its people worked{jobs.length > 0 && ` (${jobs.length})`}
           </h4>
           <JobList jobs={jobs} showWho emptyText="No jobs involving this company yet." />
         </section>
       </div>
     </>
+  )
+}
+
+// Order history rows (4.5). `kind` tells the direction: an order the company
+// placed with us, or gear we sub-rented from them.
+function OrderList({ orders }) {
+  if (orders.length === 0)
+    return (
+      <p className="text-sm text-slate-400">
+        No orders yet — the Orders module lands in the next epic.
+      </p>
+    )
+  const STATUS = {
+    draft: 'bg-slate-100 text-slate-500',
+    confirmed: 'bg-amber-100 text-amber-700',
+    fulfilled: 'bg-emerald-100 text-emerald-700',
+    canceled: 'bg-rose-100 text-rose-600',
+  }
+  return (
+    <ul className="space-y-1.5">
+      {orders.map((o) => {
+        const inbound = o.kind === 'sub_rental'
+        return (
+          <li key={o.id} className="rounded-lg border border-slate-200 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span
+                title={inbound ? 'We rented from them' : 'They ordered from us'}
+                className={[
+                  'inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                  inbound ? 'bg-violet-100 text-violet-700' : 'bg-slate-200 text-slate-600',
+                ].join(' ')}
+              >
+                {inbound ? <ArrowDownLeft size={9} /> : <ArrowUpRight size={9} />}
+                {inbound ? 'Sub-rental' : 'Client'}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-600">
+                {o.number}
+              </span>
+              <span
+                className={[
+                  'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium',
+                  STATUS[o.status] ?? 'bg-slate-100 text-slate-500',
+                ].join(' ')}
+              >
+                {o.status}
+              </span>
+            </div>
+            <div className="mt-1 truncate text-xs text-slate-400">
+              {[o.orderedAt, o.setTitle].filter(Boolean).join(' · ')}
+            </div>
+            {o.lines.length > 0 && (
+              <div className="mt-1 truncate text-xs text-slate-600">
+                {o.lines.map((l) => `${l.quantity}× ${l.itemName ?? 'item'}`).join(', ')}
+              </div>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

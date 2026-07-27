@@ -74,11 +74,28 @@
 > Supabase mode; locally it's derived from the bookings that name the person. A person on ≥1 job can't
 > be deleted (roster_entries is ON DELETE RESTRICT) — the editor explains instead of failing. New caps
 > `PERSON_MANAGE`/`COMPANY_MANAGE`; persist bumped to v2 with a `migrate` that reseeds pre-4.1 snapshots.
-> Prod was backfilled non-destructively (match by name → UPDATE, insert missing) — not a wipe. Next: 4.3.
+> Prod was backfilled non-destructively (match by name → UPDATE, insert missing) — not a wipe.
+> 4.3 company fields + 4.4 editable Types + 4.5 work-history views DONE
+> (`20260730120000_company_details_types.sql`, `20260730130000_order_kind.sql`). 4.3: `companies` gained
+> `address`, `opening_hours` (free text — how the crew writes them), `website`, `email`, `phone`, all shown
+> in a Details block on the card with website/email/phone as live links; full company CRUD via
+> `CompanyEditorModal` ("New company" on the Companies tab, Edit in the card header). Deleting a company
+> detaches its people/orders (FKs are ON DELETE SET NULL) instead of destroying them. 4.4: the Type option
+> list lives in a `company_types` table, not a check constraint — "Manage" in the editor adds/renames/
+> removes options. `companies.company_type` stays TEXT, so renaming a type relabels every company using it
+> and removing one leaves existing labels intact (the card still shows it, marked "(removed)" in the
+> dropdown). 4.5: `orders.kind` ('client' = they ordered from us, 'sub_rental' = we rented from them)
+> drives an Order history block with status pills, the linked job and line items; `units.sub_rental_vendor_id`
+> powers a "Sub-rented from them" block. ORDER_SEED (`src/data/orders.js`) supplies the history because the
+> Orders MODULE is epic #5 — only mapped items get a vendor, the rest stay unattributed on purpose so a
+> lighting house isn't shown renting us keyboards. Person work history stays roster-based (`roster_entries`
+> → `sets`); linking people to orders needs epic #5. Prod backfilled non-destructively again (companies
+> UPDATEd by name, orders upserted by order_number, `sets.order_id` linked). Next: epic #5 (Orders).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
-> 4.1/4.2 people profiles + `cvs` bucket (`20260729120000`).
+> 4.1/4.2 people profiles + `cvs` bucket (`20260729120000`), 4.3/4.4/4.5 company details + `company_types`
+> + `units.sub_rental_vendor_id` (`20260730120000`), `orders.kind` (`20260730130000`).
 > `supabase link` fails here — push with
 > `db push --db-url "postgresql://postgres.<ref>:<URL-ENCODED_PW>@aws-0-eu-north-1.pooler.supabase.com:5432/postgres"`.
 > Seed via

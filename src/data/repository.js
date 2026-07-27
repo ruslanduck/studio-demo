@@ -156,17 +156,18 @@ async function getUsageByItem() {
 // active reservations in set_units + any open repair (the DB keeps no
 // denormalized copy). An open repair takes precedence: the unit is unavailable.
 export async function getInventory() {
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .select(
-      `id, name, category, kind, quantity,
-       brand, asset_type, placement, subcategory, purchase_date, replacement_price,
-       units (
-         id, barcode, serial, ownership,
-         set_units ( status, set:sets ( title, studio_id, status ) )
-       )`,
-    )
-    .order('name')
+  // `sub_rental_vendor_id` (4.5) is requested with a fallback: inventory is the
+  // app's backbone, so a pre-4.5 database must still load it.
+  const withVendor = `id, name, category, kind, quantity,
+     brand, asset_type, placement, subcategory, purchase_date, replacement_price,
+     units (
+       id, barcode, serial, ownership, sub_rental_vendor_id,
+       set_units ( status, set:sets ( title, studio_id, status ) )
+     )`
+  const withoutVendor = withVendor.replace(', sub_rental_vendor_id', '')
+  let { data, error } = await supabase.from('inventory_items').select(withVendor).order('name')
+  if (error)
+    ({ data, error } = await supabase.from('inventory_items').select(withoutVendor).order('name'))
   if (error) throw error
 
   const [repairsByUnit, usageByItem] = await Promise.all([
@@ -205,6 +206,7 @@ export async function getInventory() {
         barcode: u.barcode,
         serial: u.serial,
         ownership: u.ownership,
+        subRentalVendorId: u.sub_rental_vendor_id ?? null,
         status,
         location,
         repairs,
@@ -607,9 +609,12 @@ export async function deleteScenarioList(listId) {
 // ---------------------------------------------------------------------------
 
 export async function getCompanies() {
-  const enriched = 'id, name, kind, notes, company_type'
+  // Layered like getKits: full 4.3 shape, then 4.2, then the original columns.
+  const full = 'id, name, kind, notes, company_type, address, opening_hours, website, email, phone'
+  const mid = 'id, name, kind, notes, company_type'
   const basic = 'id, name, kind, notes'
-  let { data, error } = await supabase.from('companies').select(enriched).order('name')
+  let { data, error } = await supabase.from('companies').select(full).order('name')
+  if (error) ({ data, error } = await supabase.from('companies').select(mid).order('name'))
   if (error) ({ data, error } = await supabase.from('companies').select(basic).order('name'))
   if (error) return []
   return (data || []).map((c) => ({
@@ -618,7 +623,124 @@ export async function getCompanies() {
     kind: c.kind,
     companyType: c.company_type ?? null,
     notes: c.notes,
+    address: c.address ?? null,
+    openingHours: c.opening_hours ?? null,
+    website: c.website ?? null,
+    email: c.email ?? null,
+    phone: c.phone ?? null,
   }))
+}
+
+// The user-editable Type option list (4.4). Missing table → the app falls back to
+// the types already in use, so the dropdown is never empty.
+export async function getCompanyTypes() {
+  const { data, error } = await supabase
+    .from('company_types')
+    .select('id, name, position')
+    .order('position')
+  if (error) return []
+  return (data || []).map((t) => ({ id: t.id, name: t.name, position: t.position }))
+}
+
+export async function createCompanyType(name, position = 999) {
+  const { data, error } = await supabase
+    .from('company_types')
+    .insert({ name: name.trim(), position })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+// Renaming a type also moves every company already labelled with the old value,
+// since companies store the type as text.
+export async function renameCompanyType(id, oldName, newName) {
+  const { error } = await supabase
+    .from('company_types')
+    .update({ name: newName.trim() })
+    .eq('id', id)
+  if (error) throw error
+  if (oldName) {
+    await supabase
+      .from('companies')
+      .update({ company_type: newName.trim() })
+      .eq('company_type', oldName)
+  }
+}
+
+// Removing an option leaves companies that already use it untouched — the label
+// stays, it just stops being offered.
+export async function deleteCompanyType(id) {
+  const { error } = await supabase.from('company_types').delete().eq('id', id)
+  if (error) throw error
+}
+
+function companyColumns(c) {
+  const row = {}
+  if (c.name != null) row.name = c.name.trim()
+  if (c.kind !== undefined) row.kind = c.kind || 'client'
+  for (const [key, col] of [
+    ['companyType', 'company_type'],
+    ['address', 'address'],
+    ['openingHours', 'opening_hours'],
+    ['website', 'website'],
+    ['email', 'email'],
+    ['phone', 'phone'],
+    ['notes', 'notes'],
+  ]) {
+    if (key in c) row[col] = (typeof c[key] === 'string' ? c[key].trim() : c[key]) || null
+  }
+  return row
+}
+
+export async function updateCompany(id, changes) {
+  const { error } = await supabase.from('companies').update(companyColumns(changes)).eq('id', id)
+  if (error) throw error
+}
+
+// contacts.company_id and orders.company_id are ON DELETE SET NULL, so deleting a
+// company detaches its people and orders rather than destroying them.
+export async function deleteCompany(id) {
+  const { error } = await supabase.from('companies').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Orders, used by 4.5 as the work-history source for company cards. Epic #5 owns
+// the orders module; a missing kind column or table degrades to [].
+export async function getOrders() {
+  const withKind = `id, order_number, status, ordered_at, kind, company_id,
+     company:companies ( id, name ),
+     order_lines ( quantity, item:inventory_items ( id, name ) ),
+     sets ( id, title, date )`
+  const withoutKind = withKind.replace('kind, ', '')
+  let { data, error } = await supabase.from('orders').select(withKind).order('ordered_at')
+  if (error) ({ data, error } = await supabase.from('orders').select(withoutKind).order('ordered_at'))
+  if (error) return []
+  return (data || []).map((o) => ({
+    id: o.id,
+    number: o.order_number,
+    status: o.status,
+    orderedAt: o.ordered_at,
+    kind: o.kind ?? 'client',
+    companyId: o.company?.id ?? o.company_id ?? null,
+    companyName: o.company?.name ?? null,
+    setId: o.sets?.[0]?.id ?? null,
+    setTitle: o.sets?.[0]?.title ?? null,
+    lines: (o.order_lines || []).map((l) => ({
+      itemId: l.item?.id ?? null,
+      itemName: l.item?.name ?? null,
+      quantity: l.quantity,
+    })),
+  }))
+}
+
+// Name the vendor a sub-rented unit came from (4.5).
+export async function setUnitVendor(unitId, companyId) {
+  const { error } = await supabase
+    .from('units')
+    .update({ sub_rental_vendor_id: companyId || null })
+    .eq('id', unitId)
+  if (error) throw error
 }
 
 // A person plus their company (for the hyperlink) and their job history, which

@@ -14,7 +14,8 @@ import { KIT_SEED } from '../src/data/kits.js'
 import { SCENARIO_SEED } from '../src/data/scenarios.js'
 import { BOOKING_TEMPLATES } from '../src/data/bookings.js'
 import { PHOTOGRAPHERS, MODELS } from '../src/data/contacts.js'
-import { PEOPLE_SEED, COMPANY_SEED } from '../src/data/people.js'
+import { PEOPLE_SEED, COMPANY_SEED, COMPANY_TYPES } from '../src/data/people.js'
+import { ORDER_SEED, SUB_RENTAL_VENDORS } from '../src/data/orders.js'
 import { STUDIOS, studioLabel } from '../src/data/studios.js'
 
 const url = process.env.VITE_SUPABASE_URL
@@ -62,6 +63,11 @@ async function main() {
       kind: c.kind ?? 'client',
       company_type: c.companyType ?? null,
       notes: c.notes ?? null,
+      address: c.address ?? null,
+      opening_hours: c.openingHours ?? null,
+      website: c.website ?? null,
+      email: c.email ?? null,
+      phone: c.phone ?? null,
     })))
     .select('id, name')
   if (cErr) throw cErr
@@ -70,6 +76,13 @@ async function main() {
   const companyIdBySlug = Object.fromEntries(
     COMPANY_SEED.map((c) => [c.id, companyIdByName[c.name]]),
   )
+
+  // 4.4 — the editable Type option list. Upserted by name: the migration already
+  // inserted a base set, and a reseed must not duplicate it.
+  must('company_types', await db.from('company_types').upsert(
+    COMPANY_TYPES.map((name, i) => ({ name, position: i })),
+    { onConflict: 'name' },
+  ))
 
   // People (4.1/4.2) carry category/subcategory and their profile. Any booking
   // name missing from PEOPLE_SEED is added bare so the roster still links.
@@ -133,6 +146,22 @@ async function main() {
 
     const byBarcode = Object.fromEntries(units.map((u) => [u.barcode, u.id]))
     itemUnits[item.id] = item.units.map((u) => byBarcode[u.barcode])
+  }
+
+  // 4.5 — attribute sub-rented units to the vendor they came from. Only mapped
+  // items are attributed; the rest stay unattributed on purpose.
+  let vendorLinks = 0
+  for (const [itemSlug, vendorSlug] of Object.entries(SUB_RENTAL_VENDORS)) {
+    const vendorId = companyIdBySlug[vendorSlug]
+    const dbItemId = itemDbId[itemSlug]
+    if (!vendorId || !dbItemId) continue
+    const { data: linked, error: vErr } = await db.from('units')
+      .update({ sub_rental_vendor_id: vendorId })
+      .eq('inventory_item_id', dbItemId)
+      .eq('ownership', 'sub_rental')
+      .select('id')
+    if (vErr) throw vErr
+    vendorLinks += (linked || []).length
   }
 
   console.log('Repairs…')
@@ -247,6 +276,7 @@ async function main() {
   console.log('Sets + set_units + roster…')
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   let sets = 0, reservations = 0, rosterCount = 0
+  const setByTitle = {} // title -> { id, date }, used to link orders (4.5)
   for (const t of BOOKING_TEMPLATES) {
     const date = format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd')
     const { data: set, error: sErr } = await db.from('sets').insert({
@@ -255,6 +285,7 @@ async function main() {
     }).select('id').single()
     if (sErr) throw sErr
     sets++
+    setByTitle[t.title] = { id: set.id, date }
 
     const suRows = []
     for (const [itemLocalId, count] of t.reserve) {
@@ -280,6 +311,39 @@ async function main() {
     }
   }
 
+  // 4.5 — orders as the work-history source (the module itself is epic #5). An
+  // order's date follows the job it serves so the two histories line up.
+  console.log('Orders + lines…')
+  let orders = 0, orderLines = 0
+  for (const o of ORDER_SEED) {
+    const companyId = companyIdBySlug[o.company]
+    if (!companyId) continue
+    const set = o.setTitle ? setByTitle[o.setTitle] : null
+    const { data: order, error: oErr } = await db.from('orders').insert({
+      order_number: o.number,
+      company_id: companyId,
+      kind: o.kind,
+      status: o.status,
+      ordered_at: set?.date ?? null,
+    }).select('id').single()
+    if (oErr) throw oErr
+    orders++
+
+    const lineRows = o.lines
+      .map(([slug, quantity]) => ({
+        order_id: order.id,
+        inventory_item_id: itemDbId[slug],
+        quantity,
+      }))
+      .filter((r) => r.inventory_item_id)
+    if (lineRows.length) {
+      must('order_lines', await db.from('order_lines').insert(lineRows))
+      orderLines += lineRows.length
+    }
+    // Link the job to its order so a card can show which shoot it served.
+    if (set) must('sets.order_id', await db.from('sets').update({ order_id: order.id }).eq('id', set.id))
+  }
+
   const totalUnits = Object.values(itemUnits).reduce((n, a) => n + a.length, 0)
   console.log('\nDone:')
   console.log(`  companies: ${companyRows.length}, contacts: ${contactRows.length}`)
@@ -287,6 +351,8 @@ async function main() {
   console.log(`  kits: ${kits}, kit_slots: ${kitSlots}`)
   console.log(`  scenario_lists: ${lists}, scenario_list_entries: ${listEntries}`)
   console.log(`  sets: ${sets}, set_units: ${reservations}, roster_entries: ${rosterCount}`)
+  console.log(`  company_types: ${COMPANY_TYPES.length}, sub-rental vendor links: ${vendorLinks}`)
+  console.log(`  orders: ${orders}, order_lines: ${orderLines}`)
 }
 
 main().catch((e) => { console.error('SEED FAILED:', e.message); process.exit(1) })

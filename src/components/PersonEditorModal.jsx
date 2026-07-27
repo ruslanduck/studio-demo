@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import Modal from './Modal'
-import { PEOPLE_CATEGORIES, COMPANY_TYPES } from '../data/people'
+import { PEOPLE_CATEGORIES } from '../data/people'
 
 // Person editor (Build order #4, 4.1 + 4.2).
 //
@@ -39,6 +39,7 @@ export default function PersonEditorModal({
   open,
   person,
   companies,
+  companyTypes = [],
   jobCount = 0,
   onClose,
   onCreate,
@@ -216,9 +217,9 @@ export default function PersonEditorModal({
                   className={field}
                 >
                   <option value="">Type —</option>
-                  {COMPANY_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
+                  {companyTypes.map((t) => (
+                    <option key={t.id} value={t.name}>
+                      {t.name}
                     </option>
                   ))}
                 </select>

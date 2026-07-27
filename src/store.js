@@ -9,7 +9,8 @@ import { KIT_SEED } from './data/kits'
 import { SCENARIO_SEED } from './data/scenarios'
 import { BOOKING_TEMPLATES } from './data/bookings'
 import { PHOTOGRAPHERS, MODELS } from './data/contacts'
-import { PEOPLE_SEED, COMPANY_SEED } from './data/people'
+import { PEOPLE_SEED, COMPANY_SEED, COMPANY_TYPES } from './data/people'
+import { ORDER_SEED, SUB_RENTAL_VENDORS } from './data/orders'
 import {
   usingSupabase,
   getInventory as sbGetInventory,
@@ -39,6 +40,13 @@ import {
   updatePerson as sbUpdatePerson,
   deletePerson as sbDeletePerson,
   createCompany as sbCreateCompany,
+  updateCompany as sbUpdateCompany,
+  deleteCompany as sbDeleteCompany,
+  getCompanyTypes as sbGetCompanyTypes,
+  createCompanyType as sbCreateCompanyType,
+  renameCompanyType as sbRenameCompanyType,
+  deleteCompanyType as sbDeleteCompanyType,
+  getOrders as sbGetOrders,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -169,6 +177,12 @@ function buildSeedData() {
     kind: c.kind ?? 'client',
     companyType: c.companyType ?? null,
     notes: c.notes ?? null,
+    // 4.3 — contact block shown on the company card.
+    address: c.address ?? null,
+    openingHours: c.openingHours ?? null,
+    website: c.website ?? null,
+    email: c.email ?? null,
+    phone: c.phone ?? null,
   }))
   const people = PEOPLE_SEED.map((p, i) =>
     resolvePerson(
@@ -178,7 +192,45 @@ function buildSeedData() {
     ),
   ).sort((a, b) => a.name.localeCompare(b.name))
 
-  return { inventory, bookings, kits, scenarios, people, companies }
+  // 4.4 — the editable Type option list starts from the base set.
+  const companyTypes = COMPANY_TYPES.map((name, i) => ({ id: `type-${i}`, name, position: i }))
+
+  // 4.5 — attribute sub-rented units to the vendor they came from, so a company
+  // card can list the gear we currently hold from it. Only items with a known
+  // vendor are attributed: the rest stay unattributed rather than being dumped on
+  // whichever vendor happens to be first, which would put keyboards on a lighting
+  // house's card.
+  for (const item of inventory) {
+    const vendorId = SUB_RENTAL_VENDORS[item.id] ?? null
+    for (const u of item.units || []) {
+      if (u.ownership !== 'sub_rental') continue
+      u.subRentalVendorId = vendorId
+    }
+  }
+
+  // 4.5 — orders as a history source (the module itself is epic #5).
+  const bookingByTitle = Object.fromEntries(bookings.map((b) => [b.title, b]))
+  const orders = ORDER_SEED.map((o, i) => {
+    const set = o.setTitle ? bookingByTitle[o.setTitle] : null
+    return {
+      id: `order-${i}`,
+      number: o.number,
+      status: o.status,
+      kind: o.kind,
+      orderedAt: format(addDays(weekStart, o.dayOffset), 'yyyy-MM-dd'),
+      companyId: o.company,
+      companyName: companies.find((c) => c.id === o.company)?.name ?? null,
+      setId: set?.id ?? null,
+      setTitle: set?.title ?? o.setTitle ?? null,
+      lines: o.lines.map(([itemId, quantity]) => ({
+        itemId,
+        itemName: byId[itemId]?.name ?? null,
+        quantity,
+      })),
+    }
+  }).sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
+
+  return { inventory, bookings, kits, scenarios, people, companies, companyTypes, orders }
 }
 
 function slugify(name) {
@@ -267,6 +319,22 @@ function resolveScenario(list, inventory, kits) {
           kitName: kit?.name || null,
         }
       }),
+  }
+}
+
+// Normalize an authored company (4.3) into the shape the UI reads.
+function resolveCompany(c) {
+  return {
+    id: c.id,
+    name: c.name.trim(),
+    kind: c.kind || 'client',
+    companyType: trimmed(c.companyType),
+    notes: trimmed(c.notes),
+    address: trimmed(c.address),
+    openingHours: trimmed(c.openingHours),
+    website: trimmed(c.website),
+    email: trimmed(c.email),
+    phone: trimmed(c.phone),
   }
 }
 
@@ -379,6 +447,8 @@ export const useStore = create(
             scenarios: [],
             people: [],
             companies: [],
+            companyTypes: [],
+            orders: [],
             loading: true,
           }
         : { ...buildSeedData(), loading: false }),
@@ -389,15 +459,28 @@ export const useStore = create(
         if (!usingSupabase) return
         set({ loading: true })
         try {
-          const [inventory, bookings, kits, scenarios, people, companies] = await Promise.all([
-            sbGetInventory(),
-            sbGetBookings(),
-            sbGetKits(),
-            sbGetScenarioLists(),
-            sbGetPeople(),
-            sbGetCompanies(),
-          ])
-          set({ inventory, bookings, kits, scenarios, people, companies, loading: false })
+          const [inventory, bookings, kits, scenarios, people, companies, companyTypes, orders] =
+            await Promise.all([
+              sbGetInventory(),
+              sbGetBookings(),
+              sbGetKits(),
+              sbGetScenarioLists(),
+              sbGetPeople(),
+              sbGetCompanies(),
+              sbGetCompanyTypes(),
+              sbGetOrders(),
+            ])
+          set({
+            inventory,
+            bookings,
+            kits,
+            scenarios,
+            people,
+            companies,
+            companyTypes,
+            orders,
+            loading: false,
+          })
         } catch (e) {
           console.error('Supabase hydrate failed:', e)
           set({ loading: false })
@@ -882,10 +965,12 @@ export const useStore = create(
         return { ok: true }
       },
 
-      // Quick-add used by the person editor when the company isn't on file yet.
-      createCompany: async ({ name, companyType, kind = 'client', notes }) => {
+      // Used both by the company editor (4.3) and as a quick-add from the person
+      // editor when the company isn't on file yet.
+      createCompany: async (company) => {
+        const { name, kind = 'client' } = company
         if (usingSupabase) {
-          const id = await sbCreateCompany({ name, companyType, kind, notes })
+          const id = await sbCreateCompany({ ...company, kind })
           await get().hydrate()
           return id
         }
@@ -895,18 +980,119 @@ export const useStore = create(
           state.companies.map((c) => c.id),
         )
         set({
-          companies: [
-            ...state.companies,
-            {
-              id,
-              name: name.trim(),
-              kind,
-              companyType: trimmed(companyType),
-              notes: trimmed(notes),
-            },
-          ].sort((a, b) => a.name.localeCompare(b.name)),
+          companies: [...state.companies, resolveCompany({ ...company, id, kind })].sort((a, b) =>
+            a.name.localeCompare(b.name),
+          ),
         })
         return id
+      },
+
+      updateCompany: async (id, changes) => {
+        if (usingSupabase) {
+          await sbUpdateCompany(id, changes)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const companies = state.companies
+          .map((c) => (c.id === id ? resolveCompany({ ...c, ...changes, id }) : c))
+          .sort((a, b) => a.name.localeCompare(b.name))
+        // People and orders cache the company name for display — re-resolve them
+        // so a rename doesn't leave stale labels behind.
+        set({
+          companies,
+          people: state.people.map((p) => resolvePerson(p, companies, state.bookings)),
+          orders: state.orders.map((o) => ({
+            ...o,
+            companyName: companies.find((c) => c.id === o.companyId)?.name ?? o.companyName,
+          })),
+        })
+      },
+
+      // Deleting a company detaches its people and orders (the DB columns are ON
+      // DELETE SET NULL); local mode mirrors that rather than cascading.
+      deleteCompany: async (id) => {
+        if (usingSupabase) {
+          await sbDeleteCompany(id)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const companies = state.companies.filter((c) => c.id !== id)
+        set({
+          companies,
+          people: state.people.map((p) =>
+            p.companyId === id
+              ? resolvePerson({ ...p, companyId: null }, companies, state.bookings)
+              : p,
+          ),
+          orders: state.orders.map((o) =>
+            o.companyId === id ? { ...o, companyId: null, companyName: null } : o,
+          ),
+          inventory: state.inventory.map((item) => ({
+            ...item,
+            units: (item.units || []).map((u) =>
+              u.subRentalVendorId === id ? { ...u, subRentalVendorId: null } : u,
+            ),
+          })),
+        })
+      },
+
+      // ---- Editable company Type options (4.4) --------------------------
+      createCompanyType: async (name) => {
+        const clean = String(name || '').trim()
+        if (!clean) return { error: 'Type name cannot be empty.' }
+        const state = get()
+        if (state.companyTypes.some((t) => t.name.toLowerCase() === clean.toLowerCase()))
+          return { error: `"${clean}" already exists.` }
+        const position = state.companyTypes.length
+        if (usingSupabase) {
+          await sbCreateCompanyType(clean, position)
+          await get().hydrate()
+          return { ok: true, name: clean }
+        }
+        set({
+          companyTypes: [
+            ...state.companyTypes,
+            { id: uniqueId(slugify(clean), state.companyTypes.map((t) => t.id)), name: clean, position },
+          ],
+        })
+        return { ok: true, name: clean }
+      },
+
+      // Renaming an option also relabels every company already using it.
+      renameCompanyType: async (id, newName) => {
+        const clean = String(newName || '').trim()
+        if (!clean) return { error: 'Type name cannot be empty.' }
+        const state = get()
+        const old = state.companyTypes.find((t) => t.id === id)
+        if (!old) return { error: 'Type not found.' }
+        if (state.companyTypes.some((t) => t.id !== id && t.name.toLowerCase() === clean.toLowerCase()))
+          return { error: `"${clean}" already exists.` }
+        if (usingSupabase) {
+          await sbRenameCompanyType(id, old.name, clean)
+          await get().hydrate()
+          return { ok: true }
+        }
+        set({
+          companyTypes: state.companyTypes.map((t) => (t.id === id ? { ...t, name: clean } : t)),
+          companies: state.companies.map((c) =>
+            c.companyType === old.name ? { ...c, companyType: clean } : c,
+          ),
+        })
+        return { ok: true }
+      },
+
+      // Removing an option leaves companies already labelled with it untouched —
+      // the label stays, it just stops being offered in the dropdown.
+      deleteCompanyType: async (id) => {
+        if (usingSupabase) {
+          await sbDeleteCompanyType(id)
+          await get().hydrate()
+          return { ok: true }
+        }
+        set({ companyTypes: get().companyTypes.filter((t) => t.id !== id) })
+        return { ok: true }
       },
 
       // Create a booking and reserve its selected units.
@@ -978,6 +1164,8 @@ export const useStore = create(
               scenarios: state.scenarios,
               people: state.people,
               companies: state.companies,
+              companyTypes: state.companyTypes,
+              orders: state.orders,
               activeView: state.activeView,
             },
     },
