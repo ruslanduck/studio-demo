@@ -31,7 +31,13 @@
 > pull" override; GENERIC starts empty, assigned by barcode scan (onKeyDown) or "use available", with
 > validation; confirm blocked while any slot unfilled. `20260727120000_kit_slot_types.sql` adds
 > `slot_type` + `fixed_unit_id` to kit_slots; `getKits` falls back to the pre-3.3 shape if columns
-> absent). Next: 3.4 barcode edit on scan, 3.5 replace-on-add polish, 3.6 scenario lists.
+> absent). 3.4 barcode scan/edit when filling slots DONE (in KitStagingModal: unknown scan → offer to
+> register the barcode onto a free unit; pencil-edit an assigned unit's barcode inline, both persisting
+> via new `setUnitBarcode` store action + `units.barcode` update, guarded against duplicates. Replace a
+> filled unit with a reason — "Return to stock" (back to pool) or "Broken → send to repair" (reuses 2.6
+> `sendToRepair`, unit → in_repair, out of the pool everywhere). No migration — uses existing columns.
+> These are real inventory writes, unlike this-add-only slot edits). Next: 3.5 replace-on-add polish,
+> 3.6 scenario lists.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`). Apply with `db push`; seed via

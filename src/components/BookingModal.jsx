@@ -35,6 +35,8 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   const createBooking = useStore((s) => s.createBooking)
   const updateBooking = useStore((s) => s.updateBooking)
   const deleteBooking = useStore((s) => s.deleteBooking)
+  const sendToRepair = useStore((s) => s.sendToRepair)
+  const setUnitBarcode = useStore((s) => s.setUnitBarcode)
 
   const can = useCan()
   const isEdit = !!booking
@@ -506,6 +508,10 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
       kit={staging}
       inventory={inventory}
       reservedUnitIds={reservedForStaging}
+      onMarkBroken={(itemId, unitId) =>
+        sendToRepair(itemId, unitId, { issue: 'Flagged broken during kit staging' })
+      }
+      onSetBarcode={(itemId, unitId, barcode) => setUnitBarcode(itemId, unitId, barcode)}
       onConfirm={(units) => {
         setStagedUnits((prev) => [...prev, ...units])
         setStaging(null)

@@ -17,6 +17,7 @@ import {
   updateBooking as sbUpdateBooking,
   deleteBooking as sbDeleteBooking,
   toggleOwnership as sbToggleOwnership,
+  setUnitBarcode as sbSetUnitBarcode,
   sendToRepair as sbSendToRepair,
   returnFromRepair as sbReturnFromRepair,
   logItemUsage as sbLogItemUsage,
@@ -310,6 +311,31 @@ export const useStore = create(
             console.error('toggleOwnership failed:', e),
           )
         }
+      },
+
+      // Set/correct a unit's barcode (3.4). Returns { ok } or { error } — the
+      // caller (kit staging) uses it to guard against duplicate barcodes.
+      setUnitBarcode: (itemId, unitId, barcode) => {
+        const code = String(barcode || '').trim()
+        if (!code) return { error: 'Barcode cannot be empty.' }
+        const state = get()
+        const clash = state.inventory.some((item) =>
+          item.units?.some((u) => u.id !== unitId && u.barcode === code),
+        )
+        if (clash) return { error: `#${code} is already used by another unit.` }
+        const inventory = state.inventory.map((item) =>
+          item.id !== itemId
+            ? item
+            : {
+                ...item,
+                units: item.units.map((u) => (u.id === unitId ? { ...u, barcode: code } : u)),
+              },
+        )
+        set({ inventory })
+        if (usingSupabase) {
+          sbSetUnitBarcode(unitId, code).catch((e) => console.error('setUnitBarcode failed:', e))
+        }
+        return { ok: true }
       },
 
       // Send a unit out for repair. Opens a repair entry; the unit becomes

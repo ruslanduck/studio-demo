@@ -331,6 +331,12 @@ export async function toggleOwnership(unitId, next) {
   if (error) throw error
 }
 
+// Set/correct a unit's barcode (3.4 — barcode edit/add when filling slots).
+export async function setUnitBarcode(unitId, barcode) {
+  const { error } = await supabase.from('units').update({ barcode }).eq('id', unitId)
+  if (error) throw error
+}
+
 // Send a unit out for repair (opens a repair row → unit becomes unavailable).
 export async function sendToRepair(unitId, { vendor, issue, sentAt } = {}) {
   const row = { unit_id: unitId, vendor: vendor || null, issue: issue || null }
