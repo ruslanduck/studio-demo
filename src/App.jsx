@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import StudioCalendar from './components/StudioCalendar'
 import Inventory from './components/Inventory'
+import People from './components/People'
 import Login from './components/Login'
 
 export default function App() {
@@ -49,6 +50,8 @@ export default function App() {
             </div>
           ) : activeView === 'inventory' ? (
             <Inventory />
+          ) : activeView === 'people' ? (
+            <People />
           ) : (
             <StudioCalendar />
           )}

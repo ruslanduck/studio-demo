@@ -1,10 +1,11 @@
-import { Calendar, CalendarRange, Boxes, X } from 'lucide-react'
+import { Calendar, CalendarRange, Boxes, Users, X } from 'lucide-react'
 import { useStore } from '../store'
 
 const NAV = [
   { id: 'booking', label: 'Booking Calendar', icon: Calendar, disabled: true },
   { id: 'calendar', label: 'Studio Calendar', icon: CalendarRange },
   { id: 'inventory', label: 'Inventory', icon: Boxes },
+  { id: 'people', label: 'People', icon: Users },
 ]
 
 export default function Sidebar() {

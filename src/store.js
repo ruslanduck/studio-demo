@@ -9,6 +9,7 @@ import { KIT_SEED } from './data/kits'
 import { SCENARIO_SEED } from './data/scenarios'
 import { BOOKING_TEMPLATES } from './data/bookings'
 import { PHOTOGRAPHERS, MODELS } from './data/contacts'
+import { PEOPLE_SEED, COMPANY_SEED } from './data/people'
 import {
   usingSupabase,
   getInventory as sbGetInventory,
@@ -32,6 +33,12 @@ import {
   createScenarioList as sbCreateScenarioList,
   updateScenarioList as sbUpdateScenarioList,
   deleteScenarioList as sbDeleteScenarioList,
+  getPeople as sbGetPeople,
+  getCompanies as sbGetCompanies,
+  createPerson as sbCreatePerson,
+  updatePerson as sbUpdatePerson,
+  deletePerson as sbDeletePerson,
+  createCompany as sbCreateCompany,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -154,7 +161,24 @@ function buildSeedData() {
     }),
   }))
 
-  return { inventory, bookings, kits, scenarios }
+  // People & companies (4.1/4.2). Seed people carry a company slug; jobs are
+  // derived from the bookings that name them.
+  const companies = COMPANY_SEED.map((c) => ({
+    id: c.id,
+    name: c.name,
+    kind: c.kind ?? 'client',
+    companyType: c.companyType ?? null,
+    notes: c.notes ?? null,
+  }))
+  const people = PEOPLE_SEED.map((p, i) =>
+    resolvePerson(
+      { ...p, id: p.id ?? `person-${i}`, companyId: p.company ?? null },
+      companies,
+      bookings,
+    ),
+  ).sort((a, b) => a.name.localeCompare(b.name))
+
+  return { inventory, bookings, kits, scenarios, people, companies }
 }
 
 function slugify(name) {
@@ -246,6 +270,47 @@ function resolveScenario(list, inventory, kits) {
   }
 }
 
+// Resolve a person (4.1/4.2) into the shape the UI reads: the company name for
+// the hyperlink plus their job history. In Supabase mode history comes from
+// roster_entries; locally a booking's photographer/model fields are plain names,
+// so the person's jobs are the bookings that name them.
+function resolvePerson(person, companies, bookings) {
+  const company = companies.find((c) => c.id === person.companyId) || null
+  const jobs = (bookings || [])
+    .map((b) => {
+      const role =
+        b.photographer === person.name ? 'photographer' : b.model === person.name ? 'model' : null
+      return role
+        ? {
+            id: b.id,
+            title: b.title,
+            date: b.date,
+            studioId: b.studioId,
+            status: b.status,
+            role,
+          }
+        : null
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+  return {
+    id: person.id,
+    name: person.name,
+    email: trimmed(person.email),
+    phone: trimmed(person.phone),
+    notes: trimmed(person.notes),
+    category: trimmed(person.category),
+    subcategory: trimmed(person.subcategory),
+    website: trimmed(person.website),
+    instagram: trimmed(person.instagram),
+    cvUrl: trimmed(person.cvUrl),
+    cvFilename: trimmed(person.cvFilename),
+    companyId: company?.id ?? null,
+    companyName: company?.name ?? null,
+    jobs,
+  }
+}
+
 // Default chip colors cycled through for newly created bookings.
 const BOOKING_COLORS = [
   '#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6',
@@ -307,7 +372,15 @@ export const useStore = create(
       // Local mode: seeded synchronously. Supabase mode: starts empty and is
       // filled by hydrate() when the app mounts.
       ...(usingSupabase
-        ? { inventory: [], bookings: [], kits: [], scenarios: [], loading: true }
+        ? {
+            inventory: [],
+            bookings: [],
+            kits: [],
+            scenarios: [],
+            people: [],
+            companies: [],
+            loading: true,
+          }
         : { ...buildSeedData(), loading: false }),
 
       // Fetch inventory + bookings + kits + scenario lists from Supabase
@@ -316,13 +389,15 @@ export const useStore = create(
         if (!usingSupabase) return
         set({ loading: true })
         try {
-          const [inventory, bookings, kits, scenarios] = await Promise.all([
+          const [inventory, bookings, kits, scenarios, people, companies] = await Promise.all([
             sbGetInventory(),
             sbGetBookings(),
             sbGetKits(),
             sbGetScenarioLists(),
+            sbGetPeople(),
+            sbGetCompanies(),
           ])
-          set({ inventory, bookings, kits, scenarios, loading: false })
+          set({ inventory, bookings, kits, scenarios, people, companies, loading: false })
         } catch (e) {
           console.error('Supabase hydrate failed:', e)
           set({ loading: false })
@@ -748,6 +823,92 @@ export const useStore = create(
         set({ scenarios: get().scenarios.filter((l) => l.id !== id) })
       },
 
+      // ---- People & companies (4.1 / 4.2) --------------------------------
+      createPerson: async (person) => {
+        if (usingSupabase) {
+          const id = await sbCreatePerson(person)
+          await get().hydrate()
+          return id
+        }
+        const state = get()
+        const id = uniqueId(
+          slugify(person.name),
+          state.people.map((p) => p.id),
+        )
+        set({
+          people: [
+            ...state.people,
+            resolvePerson({ ...person, id }, state.companies, state.bookings),
+          ].sort((a, b) => a.name.localeCompare(b.name)),
+        })
+        return id
+      },
+
+      updatePerson: async (id, changes) => {
+        if (usingSupabase) {
+          await sbUpdatePerson(id, changes)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        set({
+          people: state.people
+            .map((p) =>
+              p.id === id
+                ? resolvePerson({ ...p, ...changes, id }, state.companies, state.bookings)
+                : p,
+            )
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        })
+      },
+
+      // A person who worked a job is kept: roster_entries references contacts
+      // with ON DELETE RESTRICT, and their history shouldn't silently vanish.
+      // Returns { error } so the caller can explain instead of failing silently.
+      deletePerson: async (id) => {
+        const person = get().people.find((p) => p.id === id)
+        if (person?.jobs?.length)
+          return {
+            error: `${person.name} appears on ${person.jobs.length} job${
+              person.jobs.length === 1 ? '' : 's'
+            } — work history keeps the record.`,
+          }
+        if (usingSupabase) {
+          await sbDeletePerson(id)
+          await get().hydrate()
+          return { ok: true }
+        }
+        set({ people: get().people.filter((p) => p.id !== id) })
+        return { ok: true }
+      },
+
+      // Quick-add used by the person editor when the company isn't on file yet.
+      createCompany: async ({ name, companyType, kind = 'client', notes }) => {
+        if (usingSupabase) {
+          const id = await sbCreateCompany({ name, companyType, kind, notes })
+          await get().hydrate()
+          return id
+        }
+        const state = get()
+        const id = uniqueId(
+          slugify(name),
+          state.companies.map((c) => c.id),
+        )
+        set({
+          companies: [
+            ...state.companies,
+            {
+              id,
+              name: name.trim(),
+              kind,
+              companyType: trimmed(companyType),
+              notes: trimmed(notes),
+            },
+          ].sort((a, b) => a.name.localeCompare(b.name)),
+        })
+        return id
+      },
+
       // Create a booking and reserve its selected units.
       createBooking: async (data) => {
         if (usingSupabase) {
@@ -796,7 +957,15 @@ export const useStore = create(
     }),
     {
       name: STORAGE_KEY,
-      version: 1,
+      // Bumped for 4.1/4.2: older persisted state has no people/companies, so it
+      // is reseeded rather than merged into a half-filled shape.
+      version: 2,
+      migrate: (persisted, version) => {
+        if (version >= 2) return persisted
+        return usingSupabase
+          ? { activeView: persisted?.activeView ?? 'calendar' }
+          : { ...buildSeedData(), activeView: persisted?.activeView ?? 'calendar' }
+      },
       // Local mode persists data to localStorage. Supabase mode persists only
       // UI state — data always comes fresh from the database.
       partialize: (state) =>
@@ -807,6 +976,8 @@ export const useStore = create(
               bookings: state.bookings,
               kits: state.kits,
               scenarios: state.scenarios,
+              people: state.people,
+              companies: state.companies,
               activeView: state.activeView,
             },
     },

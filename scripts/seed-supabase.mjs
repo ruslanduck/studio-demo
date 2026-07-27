@@ -14,6 +14,7 @@ import { KIT_SEED } from '../src/data/kits.js'
 import { SCENARIO_SEED } from '../src/data/scenarios.js'
 import { BOOKING_TEMPLATES } from '../src/data/bookings.js'
 import { PHOTOGRAPHERS, MODELS } from '../src/data/contacts.js'
+import { PEOPLE_SEED, COMPANY_SEED } from '../src/data/people.js'
 import { STUDIOS, studioLabel } from '../src/data/studios.js'
 
 const url = process.env.VITE_SUPABASE_URL
@@ -54,14 +55,42 @@ async function main() {
     STUDIOS.map((id) => ({ id, label: studioLabel(id) })),
   ))
 
-  console.log('Company + contacts…')
-  const { data: company, error: cErr } =
-    await db.from('companies').insert({ name: 'AnnTaylor Rental', kind: 'both' }).select('id').single()
+  console.log('Companies + people…')
+  const { data: companyRows, error: cErr } = await db.from('companies')
+    .insert(COMPANY_SEED.map((c) => ({
+      name: c.name,
+      kind: c.kind ?? 'client',
+      company_type: c.companyType ?? null,
+      notes: c.notes ?? null,
+    })))
+    .select('id, name')
   if (cErr) throw cErr
+  const companyIdByName = Object.fromEntries(companyRows.map((c) => [c.name, c.id]))
+  // seed slug -> db uuid, so a person's `company` slug resolves.
+  const companyIdBySlug = Object.fromEntries(
+    COMPANY_SEED.map((c) => [c.id, companyIdByName[c.name]]),
+  )
 
-  const names = [...new Set([...PHOTOGRAPHERS, ...MODELS])]
+  // People (4.1/4.2) carry category/subcategory and their profile. Any booking
+  // name missing from PEOPLE_SEED is added bare so the roster still links.
+  const seeded = new Set(PEOPLE_SEED.map((p) => p.name))
+  const extras = [...new Set([...PHOTOGRAPHERS, ...MODELS])].filter((n) => !seeded.has(n))
   const { data: contactRows, error: ctErr } = await db.from('contacts')
-    .insert(names.map((full_name) => ({ company_id: company.id, full_name })))
+    .insert([
+      ...PEOPLE_SEED.map((p) => ({
+        company_id: p.company ? companyIdBySlug[p.company] ?? null : null,
+        full_name: p.name,
+        email: p.email ?? null,
+        phone: p.phone ?? null,
+        notes: p.notes ?? null,
+        category: p.category ?? null,
+        subcategory: p.subcategory ?? null,
+        website: p.website ?? null,
+        instagram: p.instagram ?? null,
+        cv_filename: p.cvFilename ?? null,
+      })),
+      ...extras.map((full_name) => ({ full_name })),
+    ])
     .select('id, full_name')
   if (ctErr) throw ctErr
   const contactId = Object.fromEntries(contactRows.map((c) => [c.full_name, c.id]))
@@ -253,7 +282,7 @@ async function main() {
 
   const totalUnits = Object.values(itemUnits).reduce((n, a) => n + a.length, 0)
   console.log('\nDone:')
-  console.log(`  companies: 1, contacts: ${contactRows.length}`)
+  console.log(`  companies: ${companyRows.length}, contacts: ${contactRows.length}`)
   console.log(`  inventory_items: ${INVENTORY_SEED.length}, units: ${totalUnits}, repairs: ${repairs}, item_usage: ${usage}`)
   console.log(`  kits: ${kits}, kit_slots: ${kitSlots}`)
   console.log(`  scenario_lists: ${lists}, scenario_list_entries: ${listEntries}`)

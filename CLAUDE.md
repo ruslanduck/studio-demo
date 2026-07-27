@@ -55,10 +55,30 @@
 > than diffing, and slot ids aren't referenced elsewhere) honouring both check constraints. NO migration —
 > the 3.1/3.3/3.5 tables already allow authenticated writes. Local mode mirrors the DB's cascade
 > (deleting a kit drops list lines that point at it) and re-resolves presets after a kit/item rename so
-> denormalized labels never go stale. Next: Build order #4 (undefined — #3 is complete).
+> denormalized labels never go stale. **Build order #3 COMPLETE** (all 6 features + all 4 acceptance
+> criteria).
+> **Build order #4 (people & company databases) IN PROGRESS:** 4.1 people DB + company hyperlink and
+> 4.2 categories + profile DONE (`20260729120000_people_profiles.sql`). The `contacts` table already
+> existed as the roster lookup, so 4.1/4.2 grew it rather than adding a table: `category`/`subcategory`
+> (free text — the freelancer taxonomy in `PEOPLE_CATEGORIES`, extensible without a migration), plus
+> `website`/`instagram`/`cv_url`/`cv_filename` — a person may have any, all or none of the three, nothing
+> forced. `companies` gained free-text `company_type` (rental company / modeling agency / messenger
+> service …; its option list becomes user-editable in 4.3) alongside the coarse `kind` check column.
+> CVs upload to a public `cvs` storage bucket created by the same migration; local mode has nowhere to
+> put bytes so it files the filename only and the card says so. New sidebar view **People**
+> (`src/components/People.jsx`) — master-detail like Inventory, tabs People/Companies, search + category
+> filter. Person card: contact info, company hyperlink, profile chips (website/IG/CV with normalized
+> URLs), work history. Company card (minimal until 4.3 adds address/hours/editable types): type badge,
+> its contacts as hyperlinks back to People, aggregated job history. Hyperlinks work **both ways** —
+> one of #4's acceptance criteria already met. Work history comes from `roster_entries`→`sets` in
+> Supabase mode; locally it's derived from the bookings that name the person. A person on ≥1 job can't
+> be deleted (roster_entries is ON DELETE RESTRICT) — the editor explains instead of failing. New caps
+> `PERSON_MANAGE`/`COMPANY_MANAGE`; persist bumped to v2 with a `migrate` that reseeds pre-4.1 snapshots.
+> Prod was backfilled non-destructively (match by name → UPDATE, insert missing) — not a wipe. Next: 4.3.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
-> (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`).
+> (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
+> 4.1/4.2 people profiles + `cvs` bucket (`20260729120000`).
 > `supabase link` fails here — push with
 > `db push --db-url "postgresql://postgres.<ref>:<URL-ENCODED_PW>@aws-0-eu-north-1.pooler.supabase.com:5432/postgres"`.
 > Seed via

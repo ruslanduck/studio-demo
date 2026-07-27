@@ -21,6 +21,9 @@ export const CAP = {
   // Authoring the presets themselves (3.6): kit composition and scenario lists.
   KIT_MANAGE: 'kit.manage',
   SCENARIO_MANAGE: 'scenario.manage',
+  // People & company databases (4.1 / 4.2).
+  PERSON_MANAGE: 'person.manage',
+  COMPANY_MANAGE: 'company.manage',
 }
 
 export const ALL_CAPS = Object.values(CAP)

@@ -599,3 +599,128 @@ export async function deleteScenarioList(listId) {
   const { error } = await supabase.from('scenario_lists').delete().eq('id', listId)
   if (error) throw error
 }
+
+// ---------------------------------------------------------------------------
+// People & companies (4.1 + 4.2). `contacts` predates this module as the roster
+// lookup, so both reads degrade to the pre-4.1 column set when the migration
+// hasn't run — the app keeps working, just without categories/profiles.
+// ---------------------------------------------------------------------------
+
+export async function getCompanies() {
+  const enriched = 'id, name, kind, notes, company_type'
+  const basic = 'id, name, kind, notes'
+  let { data, error } = await supabase.from('companies').select(enriched).order('name')
+  if (error) ({ data, error } = await supabase.from('companies').select(basic).order('name'))
+  if (error) return []
+  return (data || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    kind: c.kind,
+    companyType: c.company_type ?? null,
+    notes: c.notes,
+  }))
+}
+
+// A person plus their company (for the hyperlink) and their job history, which
+// comes from roster_entries → sets.
+export async function getPeople() {
+  const jobs = `roster_entries ( role, set:sets ( id, title, date, studio_id, status ) )`
+  const enriched = `id, full_name, email, phone, notes,
+     category, subcategory, website, instagram, cv_url, cv_filename,
+     company:companies ( id, name ), ${jobs}`
+  const basic = `id, full_name, email, phone, notes, company:companies ( id, name ), ${jobs}`
+
+  let { data, error } = await supabase.from('contacts').select(enriched).order('full_name')
+  if (error) ({ data, error } = await supabase.from('contacts').select(basic).order('full_name'))
+  if (error) return []
+
+  return (data || []).map((p) => ({
+    id: p.id,
+    name: p.full_name,
+    email: p.email,
+    phone: p.phone,
+    notes: p.notes,
+    category: p.category ?? null,
+    subcategory: p.subcategory ?? null,
+    website: p.website ?? null,
+    instagram: p.instagram ?? null,
+    cvUrl: p.cv_url ?? null,
+    cvFilename: p.cv_filename ?? null,
+    companyId: p.company?.id ?? null,
+    companyName: p.company?.name ?? null,
+    jobs: (p.roster_entries || [])
+      .filter((r) => r.set)
+      .map((r) => ({
+        id: r.set.id,
+        title: r.set.title,
+        date: r.set.date,
+        studioId: r.set.studio_id,
+        status: r.set.status,
+        role: r.role,
+      }))
+      .sort((a, b) => (a.date < b.date ? 1 : -1)),
+  }))
+}
+
+// contacts columns for a person payload (only the keys present are written).
+function personColumns(p) {
+  const row = {}
+  if (p.name != null) row.full_name = p.name.trim()
+  if (p.companyId !== undefined) row.company_id = p.companyId || null
+  for (const [key, col] of [
+    ['email', 'email'],
+    ['phone', 'phone'],
+    ['notes', 'notes'],
+    ['category', 'category'],
+    ['subcategory', 'subcategory'],
+    ['website', 'website'],
+    ['instagram', 'instagram'],
+    ['cvUrl', 'cv_url'],
+    ['cvFilename', 'cv_filename'],
+  ]) {
+    if (key in p) row[col] = (typeof p[key] === 'string' ? p[key].trim() : p[key]) || null
+  }
+  return row
+}
+
+export async function createPerson(person) {
+  const { data, error } = await supabase
+    .from('contacts')
+    .insert(personColumns(person))
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updatePerson(id, changes) {
+  const { error } = await supabase.from('contacts').update(personColumns(changes)).eq('id', id)
+  if (error) throw error
+}
+
+// roster_entries references contacts with ON DELETE RESTRICT, so a person who
+// worked a job can't be deleted — the caller checks job count first and explains
+// why instead of letting the DB throw.
+export async function deletePerson(id) {
+  const { error } = await supabase.from('contacts').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function createCompany({ name, companyType, kind = 'client', notes }) {
+  const row = { name: name.trim(), kind, notes: notes?.trim() || null }
+  if (companyType !== undefined) row.company_type = companyType || null
+  const { data, error } = await supabase.from('companies').insert(row).select('id').single()
+  if (error) throw error
+  return data.id
+}
+
+// Upload a CV into the public `cvs` bucket and return its public URL.
+export async function uploadCv(file, personName = 'cv') {
+  const safe = `${personName}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const ext = file.name.includes('.') ? file.name.split('.').pop() : 'pdf'
+  const path = `${safe || 'cv'}-${Math.floor(performance.now())}.${ext}`
+  const { error } = await supabase.storage.from('cvs').upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data } = supabase.storage.from('cvs').getPublicUrl(path)
+  return { url: data.publicUrl, filename: file.name }
+}
