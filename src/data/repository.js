@@ -27,19 +27,26 @@ export async function getStudios() {
   return data
 }
 
-// Kits with their component slots (Build order #3). Resilient: returns [] if
-// the 3.1 migration hasn't been applied yet (kit_slots absent) so the app
-// still loads. Each slot carries the component item's name/category for display.
+// Kits with their component slots (Build order #3). Resilient in two layers:
+//   • returns [] if the 3.1 kit_slots table is absent (app still loads);
+//   • if the 3.3 slot_type / fixed_unit columns aren't migrated yet, retries
+//     without them so kits keep working (every slot treated as generic) until
+//     the migration runs. This lets the frontend deploy before the migration.
 export async function getKits() {
-  const { data, error } = await supabase
-    .from('kits')
-    .select(
-      `id, name, category, notes,
-       kit_slots ( id, label, position, inventory_item_id,
-                   item:inventory_items ( name, category, kind ) )`,
-    )
-    .order('name')
-  if (error) return []
+  const enriched = `id, name, category, notes,
+     kit_slots ( id, label, position, slot_type, inventory_item_id,
+                 fixed_unit:units!fixed_unit_id ( id, barcode ),
+                 item:inventory_items ( name, category, kind ) )`
+  const basic = `id, name, category, notes,
+     kit_slots ( id, label, position, inventory_item_id,
+                 item:inventory_items ( name, category, kind ) )`
+
+  let { data, error } = await supabase.from('kits').select(enriched).order('name')
+  if (error) {
+    // 3.3 columns not present yet → fall back to the pre-3.3 shape.
+    ;({ data, error } = await supabase.from('kits').select(basic).order('name'))
+  }
+  if (error) return [] // kit_slots table itself absent (pre-3.1)
   return (data || []).map((k) => ({
     id: k.id,
     name: k.name,
@@ -52,10 +59,13 @@ export async function getKits() {
         id: s.id,
         label: s.label,
         position: s.position,
+        slotType: s.slot_type || 'generic',
         itemId: s.inventory_item_id,
         itemName: s.item?.name || null,
         itemCategory: s.item?.category || null,
         itemKind: s.item?.kind || null,
+        fixedUnitId: s.fixed_unit?.id || null,
+        fixedBarcode: s.fixed_unit?.barcode || null,
       })),
   }))
 }

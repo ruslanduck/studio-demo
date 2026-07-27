@@ -100,14 +100,21 @@ function buildSeedData() {
     notes: k.notes,
     slots: k.slots.map((s, i) => {
       const it = byId[s.itemId]
+      // FIXED slots pin one specific unit (by its index within the item);
+      // GENERIC slots leave the concrete unit unassigned (scanned at pull time).
+      const fixedUnit =
+        s.slotType === 'fixed' && it ? it.units[s.fixedUnitIndex ?? 0] || null : null
       return {
         id: `${k.id}-slot-${i}`,
         label: s.label,
         position: i,
+        slotType: s.slotType || 'generic',
         itemId: s.itemId,
         itemName: it?.name || null,
         itemCategory: it?.category || null,
         itemKind: it?.kind || null,
+        fixedUnitId: fixedUnit?.id || null,
+        fixedBarcode: fixedUnit?.barcode || null,
       }
     }),
   }))

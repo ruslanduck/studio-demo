@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
 import { useCan } from '../lib/useCan'
@@ -942,35 +942,44 @@ function KitDetail({ kit, inventory, onSelectItem }) {
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  {slot.label && (
-                    <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                      {slot.label}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {slot.slotType === 'fixed' ? (
+                      <span className="inline-flex items-center gap-1 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                        <Lock size={9} /> Fixed
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                        <ScanLine size={9} /> Generic
+                      </span>
+                    )}
+                    {slot.label && (
+                      <span className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                        {slot.label}
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => item && onSelectItem(item.id)}
                     disabled={!item}
-                    className="block max-w-full truncate text-left text-sm font-medium text-slate-800 transition hover:text-violet-700 disabled:cursor-default disabled:hover:text-slate-800"
+                    className="mt-0.5 block max-w-full truncate text-left text-sm font-medium text-slate-800 transition hover:text-violet-700 disabled:cursor-default disabled:hover:text-slate-800"
                   >
                     {slot.itemName || 'Unknown item'}
                   </button>
                 </div>
-                {slot.itemCategory && (
-                  <span className="hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 sm:inline">
-                    {slot.itemCategory}
+                {slot.slotType === 'fixed' ? (
+                  <span className="shrink-0 font-mono text-xs text-slate-500">
+                    {slot.fixedBarcode ? `#${slot.fixedBarcode}` : 'unit unset'}
+                  </span>
+                ) : (
+                  <span className={['shrink-0 text-xs font-medium', avail.tone].join(' ')}>
+                    {avail.text}
                   </span>
                 )}
-                <span className={['shrink-0 text-xs font-medium', avail.tone].join(' ')}>
-                  {avail.text}
-                </span>
               </li>
             )
           })}
         </ul>
-        <p className="mt-4 px-1 text-xs text-slate-400">
-          Slot types (fixed / generic) and adding a kit to a set arrive next in Build order #3.
-        </p>
       </div>
     </>
   )

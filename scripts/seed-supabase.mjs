@@ -160,12 +160,22 @@ async function main() {
     if (kErr) throw kErr
     kits++
     const slotRows = k.slots
-      .map((s, i) => ({
-        kit_id: kit.id,
-        inventory_item_id: itemDbId[s.itemId],
-        label: s.label,
-        position: i,
-      }))
+      .map((s, i) => {
+        // FIXED slots pin a specific unit (by index within the item); fall back
+        // to generic if the pinned unit can't be resolved, so seeding never
+        // violates the fixed-slot check constraint.
+        const fixedUnitId =
+          s.slotType === 'fixed' ? (itemUnits[s.itemId] || [])[s.fixedUnitIndex ?? 0] || null : null
+        const slotType = s.slotType === 'fixed' && fixedUnitId ? 'fixed' : 'generic'
+        return {
+          kit_id: kit.id,
+          inventory_item_id: itemDbId[s.itemId],
+          label: s.label,
+          position: i,
+          slot_type: slotType,
+          fixed_unit_id: slotType === 'fixed' ? fixedUnitId : null,
+        }
+      })
       .filter((r) => r.inventory_item_id)
     if (slotRows.length) {
       must('kit_slots', await db.from('kit_slots').insert(slotRows))

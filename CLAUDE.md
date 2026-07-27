@@ -26,12 +26,17 @@
 > `kits.category` + `kit_slots`, `20260726120000_kits.sql`). 3.2 staging window DONE (adding a kit to a
 > booking opens KitStagingModal: auto-resolves each slot to an available unit, add/remove/replace-from-
 > stock before final add, missing slot blocks confirm; edits affect only THIS add, not the kit template;
-> frontend-only, no migration). Next: 3.3 FIXED/GENERIC slot types + scan-to-assign, 3.4 barcode edit on
-> scan, 3.5 replace-on-add polish, 3.6 scenario lists.
+> frontend-only, no migration). 3.3 FIXED/GENERIC slot types + scan-to-assign DONE (slot definition vs
+> slot fill: FIXED pins one unit `fixed_unit_id` — auto-filled, conflict if taken, "Replace for this
+> pull" override; GENERIC starts empty, assigned by barcode scan (onKeyDown) or "use available", with
+> validation; confirm blocked while any slot unfilled. `20260727120000_kit_slot_types.sql` adds
+> `slot_type` + `fixed_unit_id` to kit_slots; `getKits` falls back to the pre-3.3 shape if columns
+> absent). Next: 3.4 barcode edit on scan, 3.5 replace-on-add polish, 3.6 scenario lists.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
-> (`20260726120000`). Apply with `db push`; seed via `npm run seed:supabase` (wipes+reseeds), or add rows
-> non-destructively. Every added frontend degrades gracefully if its table is absent (repairs/usage/kits
+> (`20260726120000`), 3.3 slot types (`20260727120000`). Apply with `db push`; seed via
+> `npm run seed:supabase` (wipes+reseeds), or add rows non-destructively (3.3 fixed slots were applied
+> to prod via a targeted UPDATE, not a wipe). Every added frontend degrades gracefully if its table is absent (repairs/usage/kits
 > fetched in separate try/caught queries), so deploying before a migration never breaks inventory.
 
 ## What this is
