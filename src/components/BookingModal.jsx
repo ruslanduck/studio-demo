@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
-import { availableCount } from '../lib/availability'
+import { availableCount, resolveUnitsForQuantities } from '../lib/availability'
 import { studioLabel } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -179,16 +179,15 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   }, [stagedUnits])
 
   function resolveUnitIds() {
-    const ids = []
-    for (const [itemId, qty] of Object.entries(selected)) {
-      if (qty <= 0) continue
-      const item = inventory.find((i) => i.id === itemId)
-      if (!item) continue
-      const candidates = item.units.filter(
-        (u) => (u.status === 'available' || bookingUnits.has(u.id)) && !stagedIds.has(u.id),
-      )
-      for (const u of candidates.slice(0, qty)) ids.push(u.id)
-    }
+    // Same shared resolver the order editor uses (5.6) — quantities become
+    // concrete unit ids under one rule, so nothing is promised twice.
+    const ids = resolveUnitsForQuantities(
+      Object.entries(selected)
+        .filter(([, qty]) => qty > 0)
+        .map(([itemId, qty]) => ({ itemId, quantity: qty })),
+      inventory,
+      { claimed: stagedIds, alsoFree: bookingUnits },
+    )
     // Merge in the units committed by staged kits (dedupe).
     for (const u of stagedUnits) if (!ids.includes(u.unitId)) ids.push(u.unitId)
     return ids

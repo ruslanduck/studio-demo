@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine, ClipboardList } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
+import { availableCount } from '../lib/availability'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import AddInventoryModal from './AddInventoryModal'
@@ -752,7 +753,7 @@ export default function Inventory() {
 
 function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, vendors, onSetVendor, onShowHistory, onShowRepair, onShowWorkHistory }) {
   const isBarcoded = item.kind === 'barcoded'
-  const available = item.units.filter((u) => u.status === 'available').length
+  const available = availableCount(item)
   const inRepair = item.units.filter((u) => u.status === 'in_repair').length
   const checkedOut = item.units.length - available - inRepair
 
@@ -1025,7 +1026,7 @@ function slotAvailability(item) {
   if (!item) return { text: 'not in stock', tone: 'text-rose-500' }
   const n =
     item.kind === 'barcoded'
-      ? item.units.filter((u) => u.status === 'available').length
+      ? availableCount(item)
       : item.quantity ?? 0
   const label = item.kind === 'barcoded' ? `${n} available` : `${n} on hand`
   return { text: label, tone: n > 0 ? 'text-emerald-600' : 'text-orange-500' }

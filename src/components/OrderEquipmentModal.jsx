@@ -16,7 +16,7 @@ import Modal from './Modal'
 import KitStagingModal from './KitStagingModal'
 import { applyScenarioList } from '../lib/scenarios'
 import { buildEstimate, money } from '../lib/estimate'
-import { availableCount, resolveUnitsForQuantities } from '../lib/availability'
+import { availableCount, freeUnitsOf, resolveUnitsForQuantities } from '../lib/availability'
 
 // Equipment entry for an order (epic #5, 5.3 + 5.6).
 //
@@ -255,9 +255,7 @@ export default function OrderEquipmentModal({
   function replaceStaged(unitId) {
     const line = stagedUnits.find((u) => u.unitId === unitId)
     const item = itemsById[line?.itemId]
-    const next = (item?.units ?? []).find(
-      (u) => u.status === 'available' && !stagedIds.has(u.id),
-    )
+    const next = freeUnitsOf(item, { claimed: stagedIds })[0]
     if (!next) return setError(`No other ${item?.name ?? 'unit'} is free.`)
     setStagedUnits((prev) =>
       prev.map((u) => (u.unitId === unitId ? { ...u, unitId: next.id, barcode: next.barcode } : u)),
