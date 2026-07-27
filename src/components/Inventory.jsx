@@ -54,6 +54,38 @@ function StatusBadge({ status }) {
   )
 }
 
+// Vendor picker for a sub-rented unit (4.5). A sub-rental came FROM some company,
+// and the company card lists that gear — so the vendor is chosen here. Only
+// companies we actually rent from (kind vendor/both) are offered; "—" clears it.
+function VendorPicker({ unit, vendors, disabled, onChange }) {
+  if (unit.ownership !== 'sub_rental') return <span className="text-slate-300">—</span>
+  const current = vendors.find((c) => c.id === unit.subRentalVendorId) ?? null
+  if (disabled)
+    return (
+      <span className={current ? 'text-slate-700' : 'text-slate-400'}>
+        {current?.name ?? 'no vendor'}
+      </span>
+    )
+  return (
+    <select
+      value={unit.subRentalVendorId ?? ''}
+      onChange={(e) => onChange(e.target.value || null)}
+      title="Which company we rent this unit from"
+      className={[
+        'max-w-[11rem] rounded-md border px-1.5 py-1 text-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100',
+        current ? 'border-slate-300 text-slate-700' : 'border-amber-300 text-amber-700',
+      ].join(' ')}
+    >
+      <option value="">no vendor</option>
+      {vendors.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function OwnershipBadge({ ownership, onToggle, disabled }) {
   const owned = ownership === 'owned'
   const base =
@@ -128,6 +160,9 @@ export default function Inventory() {
   const inventory = useStore((s) => s.inventory)
   const kits = useStore((s) => s.kits)
   const scenarios = useStore((s) => s.scenarios)
+  // 4.5 — sub-rental vendor picker in the units table.
+  const companies = useStore((s) => s.companies)
+  const setUnitVendor = useStore((s) => s.setUnitVendor)
   const toggleOwnership = useStore((s) => s.toggleOwnership)
   const sendToRepair = useStore((s) => s.sendToRepair)
   const returnFromRepair = useStore((s) => s.returnFromRepair)
@@ -169,6 +204,12 @@ export default function Inventory() {
         a.localeCompare(b),
       ),
     [inventory],
+  )
+
+  // Companies we actually rent from — the only sensible sub-rental vendors (4.5).
+  const vendors = useMemo(
+    () => companies.filter((c) => c.kind === 'vendor' || c.kind === 'both'),
+    [companies],
   )
 
   const query = search.trim().toLowerCase()
@@ -617,6 +658,8 @@ export default function Inventory() {
                 canEdit={can(CAP.INVENTORY_EDIT)}
                 onEdit={() => setItemModal({ open: true, item: selected })}
                 canToggleOwnership={can(CAP.UNIT_OWNERSHIP_TOGGLE)}
+                vendors={vendors}
+                onSetVendor={(unitId, companyId) => setUnitVendor(selected.id, unitId, companyId)}
                 onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
                 onShowHistory={(unit) => setHistoryUnit(unit)}
                 onShowRepair={(unit) => setRepairUnitId(unit.id)}
@@ -707,7 +750,7 @@ export default function Inventory() {
   )
 }
 
-function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, onShowHistory, onShowRepair, onShowWorkHistory }) {
+function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, vendors, onSetVendor, onShowHistory, onShowRepair, onShowWorkHistory }) {
   const isBarcoded = item.kind === 'barcoded'
   const available = item.units.filter((u) => u.status === 'available').length
   const inRepair = item.units.filter((u) => u.status === 'in_repair').length
@@ -796,6 +839,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
               <th className="px-3 py-2.5 font-medium">Status</th>
               <th className="px-3 py-2.5 font-medium">Location</th>
               <th className="px-3 py-2.5 font-medium">Ownership</th>
+              <th className="px-3 py-2.5 font-medium">Vendor</th>
               <th className="px-3 py-2.5 font-medium">History</th>
               <th className="px-5 py-2.5 font-medium">Repair</th>
             </tr>
@@ -831,6 +875,14 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                     ownership={unit.ownership}
                     disabled={!canToggleOwnership}
                     onToggle={() => onToggleOwnership(unit.id)}
+                  />
+                </td>
+                <td className="px-3 py-2.5">
+                  <VendorPicker
+                    unit={unit}
+                    vendors={vendors}
+                    disabled={!canToggleOwnership}
+                    onChange={(companyId) => onSetVendor(unit.id, companyId)}
                   />
                 </td>
                 <td className="px-3 py-2.5">

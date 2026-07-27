@@ -292,6 +292,7 @@ export default function People() {
                 </button>
                 <PersonDetail
                   person={selectedPerson}
+                  orders={orders}
                   canManage={can(CAP.PERSON_MANAGE)}
                   onEdit={() => setEditor({ open: true, person: selectedPerson })}
                   onOpenCompany={openCompany}
@@ -492,8 +493,19 @@ function CompanyList({ companies, people, selectedId, query, onSelect }) {
 
 // A person's card: contact info, the company hyperlink (4.1), profile links (4.2)
 // and the jobs they worked.
-function PersonDetail({ person, canManage, onEdit, onOpenCompany }) {
+function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany }) {
   const hasProfile = person.website || person.instagram || person.cvFilename
+
+  // 4.5 — the orders behind the jobs this person worked. A person isn't linked to
+  // an order directly (orders belong to a company); the chain is
+  // person → roster → set → set.order_id, so these are the orders that served
+  // their jobs. A direct person↔order link needs the Orders module (epic #5).
+  const personOrders = useMemo(() => {
+    const setIds = new Set(person.jobs.map((j) => j.id))
+    return (orders || [])
+      .filter((o) => o.setId && setIds.has(o.setId))
+      .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
+  }, [orders, person.jobs])
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -647,6 +659,16 @@ function PersonDetail({ person, canManage, onEdit, onOpenCompany }) {
           </h4>
           <JobList jobs={person.jobs} emptyText="No jobs yet." />
         </section>
+
+        {/* 4.5 — orders attached to those jobs */}
+        {personOrders.length > 0 && (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Orders on those jobs ({personOrders.length})
+            </h4>
+            <OrderList orders={personOrders} showCompany />
+          </section>
+        )}
       </div>
     </>
   )
@@ -882,7 +904,7 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
 
 // Order history rows (4.5). `kind` tells the direction: an order the company
 // placed with us, or gear we sub-rented from them.
-function OrderList({ orders }) {
+function OrderList({ orders, showCompany = false }) {
   if (orders.length === 0)
     return (
       <p className="text-sm text-slate-400">
@@ -925,7 +947,9 @@ function OrderList({ orders }) {
               </span>
             </div>
             <div className="mt-1 truncate text-xs text-slate-400">
-              {[o.orderedAt, o.setTitle].filter(Boolean).join(' · ')}
+              {[o.orderedAt, o.setTitle, showCompany ? o.companyName : null]
+                .filter(Boolean)
+                .join(' · ')}
             </div>
             {o.lines.length > 0 && (
               <div className="mt-1 truncate text-xs text-slate-600">

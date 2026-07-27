@@ -89,7 +89,10 @@
 > powers a "Sub-rented from them" block. ORDER_SEED (`src/data/orders.js`) supplies the history because the
 > Orders MODULE is epic #5 — only mapped items get a vendor, the rest stay unattributed on purpose so a
 > lighting house isn't shown renting us keyboards. Person work history stays roster-based (`roster_entries`
-> → `sets`); linking people to orders needs epic #5. Prod backfilled non-destructively again (companies
+> → `sets`), and a person card now also lists the ORDERS attached to those jobs (person → roster → set →
+> `sets.order_id`) — a direct person↔order link still needs epic #5. The sub-rental vendor is chosen in the
+> Inventory units table: a new Vendor column offers companies with `kind` vendor/both and writes through
+> `setUnitVendor`; toggling a unit back to Owned clears the vendor. Prod backfilled non-destructively (companies
 > UPDATEd by name, orders upserted by order_number, `sets.order_id` linked). Next: epic #5 (Orders).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

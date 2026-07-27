@@ -47,6 +47,7 @@ import {
   renameCompanyType as sbRenameCompanyType,
   deleteCompanyType as sbDeleteCompanyType,
   getOrders as sbGetOrders,
+  setUnitVendor as sbSetUnitVendor,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -575,7 +576,12 @@ export const useStore = create(
                 units: item.units.map((u) => {
                   if (u.id !== unitId) return u
                   next = u.ownership === 'owned' ? 'sub_rental' : 'owned'
-                  return { ...u, ownership: next }
+                  // Back to owned → the unit has no vendor any more (4.5).
+                  return {
+                    ...u,
+                    ownership: next,
+                    subRentalVendorId: next === 'owned' ? null : (u.subRentalVendorId ?? null),
+                  }
                 }),
               },
         )
@@ -583,6 +589,33 @@ export const useStore = create(
         if (usingSupabase) {
           sbToggleOwnership(unitId, next).catch((e) =>
             console.error('toggleOwnership failed:', e),
+          )
+          if (next === 'owned') {
+            sbSetUnitVendor(unitId, null).catch((e) =>
+              console.error('clear unit vendor failed:', e),
+            )
+          }
+        }
+      },
+
+      // Name the vendor a sub-rented unit came from (4.5). Clearing ownership back
+      // to 'owned' drops the vendor too — an owned unit has no vendor.
+      setUnitVendor: (itemId, unitId, companyId) => {
+        const state = get()
+        const inventory = state.inventory.map((item) =>
+          item.id !== itemId
+            ? item
+            : {
+                ...item,
+                units: item.units.map((u) =>
+                  u.id === unitId ? { ...u, subRentalVendorId: companyId || null } : u,
+                ),
+              },
+        )
+        set({ inventory })
+        if (usingSupabase) {
+          sbSetUnitVendor(unitId, companyId || null).catch((e) =>
+            console.error('setUnitVendor failed:', e),
           )
         }
       },
