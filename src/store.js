@@ -26,6 +26,12 @@ import {
   addInventoryItem as sbAddInventoryItem,
   updateInventoryItem as sbUpdateInventoryItem,
   deleteInventoryItem as sbDeleteInventoryItem,
+  createKit as sbCreateKit,
+  updateKit as sbUpdateKit,
+  deleteKit as sbDeleteKit,
+  createScenarioList as sbCreateScenarioList,
+  updateScenarioList as sbUpdateScenarioList,
+  deleteScenarioList as sbDeleteScenarioList,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -158,6 +164,86 @@ function slugify(name) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'item'
   )
+}
+
+// First free id of the form base, base-2, base-3… (local mode only; Supabase
+// hands out uuids).
+function uniqueId(base, existing) {
+  const taken = new Set(existing)
+  if (!taken.has(base)) return base
+  let n = 2
+  while (taken.has(`${base}-${n}`)) n++
+  return `${base}-${n}`
+}
+
+const trimmed = (v) => (typeof v === 'string' ? v.trim() || null : v || null)
+
+// Resolve an authored kit (3.6) into the shape the UI reads: component names
+// plus, for FIXED slots, the pinned unit's barcode. Accepts either editor slots
+// ({ itemId, label, slotType, fixedUnitId }) or already-resolved ones, so it can
+// re-resolve a kit after an edit. A slot whose pinned unit can't be found
+// degrades to GENERIC — mirroring the DB check constraint.
+function resolveKit(kit, inventory) {
+  const byId = Object.fromEntries(inventory.map((i) => [i.id, i]))
+  return {
+    id: kit.id,
+    name: kit.name,
+    category: trimmed(kit.category),
+    notes: trimmed(kit.notes),
+    slots: (kit.slots || [])
+      .filter((s) => s.itemId)
+      .map((s, i) => {
+        const it = byId[s.itemId]
+        const fixedUnit =
+          s.slotType === 'fixed' && s.fixedUnitId
+            ? (it?.units || []).find((u) => u.id === s.fixedUnitId) || null
+            : null
+        return {
+          id: s.id || `${kit.id}-slot-${i}`,
+          label: trimmed(s.label),
+          position: i,
+          slotType: fixedUnit ? 'fixed' : 'generic',
+          itemId: s.itemId,
+          itemName: it?.name || null,
+          itemCategory: it?.category || null,
+          itemKind: it?.kind || null,
+          fixedUnitId: fixedUnit?.id || null,
+          fixedBarcode: fixedUnit?.barcode || null,
+        }
+      }),
+  }
+}
+
+// Same for an authored scenario list (3.6). Kit entries are always quantity 1
+// (a kit is staged one at a time), matching the DB constraint.
+function resolveScenario(list, inventory, kits) {
+  const byId = Object.fromEntries(inventory.map((i) => [i.id, i]))
+  const kitById = Object.fromEntries(kits.map((k) => [k.id, k]))
+  return {
+    id: list.id,
+    name: list.name,
+    category: trimmed(list.category),
+    notes: trimmed(list.notes),
+    entries: (list.entries || [])
+      .filter((e) => (e.type === 'kit' ? e.kitId : e.itemId))
+      .map((e, i) => {
+        const isKit = e.type === 'kit'
+        const kit = isKit ? kitById[e.kitId] : null
+        const item = isKit ? null : byId[e.itemId]
+        return {
+          id: e.id || `${list.id}-entry-${i}`,
+          type: isKit ? 'kit' : 'item',
+          quantity: isKit ? 1 : Math.max(1, Number(e.quantity) || 1),
+          position: i,
+          note: trimmed(e.note),
+          itemId: item?.id || null,
+          itemName: item?.name || null,
+          itemKind: item?.kind || null,
+          kitId: kit?.id || null,
+          kitName: kit?.name || null,
+        }
+      }),
+  }
 }
 
 // Default chip colors cycled through for newly created bookings.
@@ -510,18 +596,24 @@ export const useStore = create(
         }
         const state = get()
         const { name, category, quantity, kind, ...fields } = changes
+        const inventory = state.inventory.map((item) => {
+          if (item.id !== id) return item
+          const next = { ...item }
+          if (name != null) next.name = name.trim()
+          if (category != null) next.category = category
+          for (const k of ['brand', 'assetType', 'placement', 'subcategory', 'purchaseDate', 'replacementPrice']) {
+            if (k in fields) next[k] = fields[k] || null
+          }
+          if (item.kind !== 'barcoded' && quantity != null) next.quantity = quantity
+          return next
+        })
+        // Kit slots and list entries cache the component's name/category, so
+        // re-resolve the presets after an item edit to avoid stale labels.
+        const kits = state.kits.map((k) => resolveKit(k, inventory))
         set({
-          inventory: state.inventory.map((item) => {
-            if (item.id !== id) return item
-            const next = { ...item }
-            if (name != null) next.name = name.trim()
-            if (category != null) next.category = category
-            for (const k of ['brand', 'assetType', 'placement', 'subcategory', 'purchaseDate', 'replacementPrice']) {
-              if (k in fields) next[k] = fields[k] || null
-            }
-            if (item.kind !== 'barcoded' && quantity != null) next.quantity = quantity
-            return next
-          }),
+          inventory,
+          kits,
+          scenarios: state.scenarios.map((l) => resolveScenario(l, inventory, kits)),
         })
       },
 
@@ -542,6 +634,118 @@ export const useStore = create(
             unitIds: (b.unitIds || []).filter((uid) => !unitIds.has(uid)),
           })),
         })
+      },
+
+      // ---- Kit authoring (3.6) ------------------------------------------
+      // Editor slots arrive as { itemId, label, slotType, fixedUnitId }; local
+      // mode resolves the display fields the UI reads (names, fixed barcode).
+      createKit: async ({ name, category, notes, slots }) => {
+        if (usingSupabase) {
+          await sbCreateKit({ name, category, notes, slots })
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const id = uniqueId(
+          slugify(name),
+          state.kits.map((k) => k.id),
+        )
+        set({
+          kits: [
+            ...state.kits,
+            resolveKit({ id, name: name.trim(), category, notes, slots }, state.inventory),
+          ].sort((a, b) => a.name.localeCompare(b.name)),
+        })
+        return id
+      },
+
+      updateKit: async (id, changes) => {
+        if (usingSupabase) {
+          await sbUpdateKit(id, changes)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const kits = state.kits
+          .map((k) => (k.id === id ? resolveKit({ ...k, ...changes, id }, state.inventory) : k))
+          .sort((a, b) => a.name.localeCompare(b.name))
+        // Scenario entries cache the kit's name for display — re-resolve them so a
+        // rename doesn't leave stale labels. (Supabase mode re-reads the join.)
+        set({
+          kits,
+          scenarios: state.scenarios.map((l) => resolveScenario(l, state.inventory, kits)),
+        })
+      },
+
+      // Deleting a kit also drops any scenario-list line pointing at it (the DB
+      // cascades; local mode mirrors that so the two sources agree).
+      deleteKit: async (id) => {
+        if (usingSupabase) {
+          await sbDeleteKit(id)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        set({
+          kits: state.kits.filter((k) => k.id !== id),
+          scenarios: state.scenarios.map((l) => ({
+            ...l,
+            entries: (l.entries || []).filter((e) => e.kitId !== id),
+          })),
+        })
+      },
+
+      // ---- Scenario list authoring (3.6) --------------------------------
+      // Editor entries arrive as { type, itemId|kitId, quantity, note }.
+      createScenario: async ({ name, category, notes, entries }) => {
+        if (usingSupabase) {
+          await sbCreateScenarioList({ name, category, notes, entries })
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        const id = uniqueId(
+          slugify(name),
+          state.scenarios.map((l) => l.id),
+        )
+        set({
+          scenarios: [
+            ...state.scenarios,
+            resolveScenario(
+              { id, name: name.trim(), category, notes, entries },
+              state.inventory,
+              state.kits,
+            ),
+          ].sort((a, b) => a.name.localeCompare(b.name)),
+        })
+        return id
+      },
+
+      updateScenario: async (id, changes) => {
+        if (usingSupabase) {
+          await sbUpdateScenarioList(id, changes)
+          await get().hydrate()
+          return
+        }
+        const state = get()
+        set({
+          scenarios: state.scenarios
+            .map((l) =>
+              l.id === id
+                ? resolveScenario({ ...l, ...changes, id }, state.inventory, state.kits)
+                : l,
+            )
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        })
+      },
+
+      deleteScenario: async (id) => {
+        if (usingSupabase) {
+          await sbDeleteScenarioList(id)
+          await get().hydrate()
+          return
+        }
+        set({ scenarios: get().scenarios.filter((l) => l.id !== id) })
       },
 
       // Create a booking and reserve its selected units.

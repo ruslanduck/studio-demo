@@ -479,3 +479,123 @@ export async function deleteInventoryItem(itemId) {
   const { error } = await supabase.from('inventory_items').delete().eq('id', itemId)
   if (error) throw error
 }
+
+// ---------------------------------------------------------------------------
+// Kit authoring (3.6). A kit's composition is its slot list, so saving a kit
+// means replacing its slots wholesale — simpler and safer than diffing, and the
+// slot ids aren't referenced anywhere outside the kit.
+// ---------------------------------------------------------------------------
+
+// Map an editor slot to a kit_slots row. Honours the DB check constraint:
+// FIXED must name a unit, GENERIC must not.
+function kitSlotRow(kitId, s, position) {
+  const fixed = s.slotType === 'fixed' && s.fixedUnitId
+  return {
+    kit_id: kitId,
+    inventory_item_id: s.itemId,
+    label: s.label?.trim() || null,
+    position,
+    slot_type: fixed ? 'fixed' : 'generic',
+    fixed_unit_id: fixed ? s.fixedUnitId : null,
+  }
+}
+
+async function replaceKitSlots(kitId, slots) {
+  const { error: delErr } = await supabase.from('kit_slots').delete().eq('kit_id', kitId)
+  if (delErr) throw delErr
+  const rows = (slots || []).filter((s) => s.itemId).map((s, i) => kitSlotRow(kitId, s, i))
+  if (!rows.length) return
+  const { error } = await supabase.from('kit_slots').insert(rows)
+  if (error) throw error
+}
+
+export async function createKit({ name, category, notes, slots }) {
+  const { data, error } = await supabase
+    .from('kits')
+    .insert({ name: name.trim(), category: category || null, notes: notes?.trim() || null })
+    .select('id')
+    .single()
+  if (error) throw error
+  await replaceKitSlots(data.id, slots)
+  return data.id
+}
+
+export async function updateKit(kitId, { name, category, notes, slots }) {
+  const patch = {}
+  if (name != null) patch.name = name.trim()
+  if (category !== undefined) patch.category = category || null
+  if (notes !== undefined) patch.notes = notes?.trim() || null
+  if (Object.keys(patch).length) {
+    const { error } = await supabase.from('kits').update(patch).eq('id', kitId)
+    if (error) throw error
+  }
+  if (slots) await replaceKitSlots(kitId, slots)
+}
+
+// Delete a kit. kit_slots cascade; scenario_list_entries pointing at it cascade
+// too (both declare on delete cascade), so lists lose that line cleanly.
+export async function deleteKit(kitId) {
+  const { error } = await supabase.from('kits').delete().eq('id', kitId)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Scenario list authoring (3.6). Same wholesale-replace approach for entries.
+// ---------------------------------------------------------------------------
+
+// Honours scenario_entry_target_ck: an entry points at exactly one target that
+// matches its type, and kit entries are always quantity 1.
+function scenarioEntryRow(listId, e, position) {
+  const isKit = e.type === 'kit'
+  return {
+    list_id: listId,
+    entry_type: isKit ? 'kit' : 'item',
+    inventory_item_id: isKit ? null : e.itemId,
+    kit_id: isKit ? e.kitId : null,
+    quantity: isKit ? 1 : Math.max(1, Number(e.quantity) || 1),
+    position,
+    note: e.note?.trim() || null,
+  }
+}
+
+async function replaceScenarioEntries(listId, entries) {
+  const { error: delErr } = await supabase
+    .from('scenario_list_entries')
+    .delete()
+    .eq('list_id', listId)
+  if (delErr) throw delErr
+  const rows = (entries || [])
+    .filter((e) => (e.type === 'kit' ? e.kitId : e.itemId))
+    .map((e, i) => scenarioEntryRow(listId, e, i))
+  if (!rows.length) return
+  const { error } = await supabase.from('scenario_list_entries').insert(rows)
+  if (error) throw error
+}
+
+export async function createScenarioList({ name, category, notes, entries }) {
+  const { data, error } = await supabase
+    .from('scenario_lists')
+    .insert({ name: name.trim(), category: category || null, notes: notes?.trim() || null })
+    .select('id')
+    .single()
+  if (error) throw error
+  await replaceScenarioEntries(data.id, entries)
+  return data.id
+}
+
+export async function updateScenarioList(listId, { name, category, notes, entries }) {
+  const patch = {}
+  if (name != null) patch.name = name.trim()
+  if (category !== undefined) patch.category = category || null
+  if (notes !== undefined) patch.notes = notes?.trim() || null
+  if (Object.keys(patch).length) {
+    const { error } = await supabase.from('scenario_lists').update(patch).eq('id', listId)
+    if (error) throw error
+  }
+  if (entries) await replaceScenarioEntries(listId, entries)
+}
+
+export async function deleteScenarioList(listId) {
+  const { error } = await supabase.from('scenario_lists').delete().eq('id', listId)
+  if (error) throw error
+}

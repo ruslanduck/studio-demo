@@ -18,6 +18,9 @@ export const CAP = {
   UNIT_WRITE_OFF: 'unit.write_off',
   UNIT_REPAIR: 'unit.repair',
   ITEM_USAGE_LOG: 'item.usage_log',
+  // Authoring the presets themselves (3.6): kit composition and scenario lists.
+  KIT_MANAGE: 'kit.manage',
+  SCENARIO_MANAGE: 'scenario.manage',
 }
 
 export const ALL_CAPS = Object.values(CAP)

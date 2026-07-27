@@ -44,7 +44,18 @@
 > and returns a normal editable selection. Unsatisfiable lines are reported, never silently dropped —
 > shortfalls ("2 of 4 available") and non-unit-tracked consumables ("take from stock") show in a banner.
 > Applying never mutates the list. Third Inventory tab "Lists" shows each list's pull list with live
-> availability; kit/item lines jump to their entry). Next: 3.6.
+> availability; kit/item lines jump to their entry). 3.6 kit + scenario-list AUTHORING DONE — closes the
+> last acceptance criterion ("создаётся кит и сценарный список"): until now presets were read-only, only
+> creatable via seed/SQL. `KitEditorModal` (name/category/notes + slot rows: pick component, label,
+> FIXED↔GENERIC toggle, unit picker for FIXED, reorder, remove; save blocked if a FIXED slot names no
+> unit, and a unit already pinned by another slot is hidden) and `ScenarioEditorModal` (lines mixing kits
+> and items with quantities; kit lines forced qty 1). Reached from the Inventory header — the primary
+> button follows the active tab (Add inventory / New kit / New list) — plus Edit in each detail header.
+> New caps `KIT_MANAGE`/`SCENARIO_MANAGE`; repository writes replace slots/entries wholesale (simpler
+> than diffing, and slot ids aren't referenced elsewhere) honouring both check constraints. NO migration —
+> the 3.1/3.3/3.5 tables already allow authenticated writes. Local mode mirrors the DB's cascade
+> (deleting a kit drops list lines that point at it) and re-resolves presets after a kit/item rename so
+> denormalized labels never go stale. Next: Build order #4 (undefined — #3 is complete).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`).

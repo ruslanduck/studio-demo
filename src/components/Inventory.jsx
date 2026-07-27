@@ -8,6 +8,8 @@ import AddInventoryModal from './AddInventoryModal'
 import UnitHistoryModal from './UnitHistoryModal'
 import RepairModal from './RepairModal'
 import WorkHistoryModal, { UsageStats } from './WorkHistoryModal'
+import KitEditorModal from './KitEditorModal'
+import ScenarioEditorModal from './ScenarioEditorModal'
 
 // Render `text` with the first occurrence of `query` (already lowercased) wrapped
 // in a highlight. Used to show what a name / barcode / serial search matched.
@@ -133,6 +135,12 @@ export default function Inventory() {
   const addInventoryItem = useStore((s) => s.addInventoryItem)
   const updateInventoryItem = useStore((s) => s.updateInventoryItem)
   const deleteInventoryItem = useStore((s) => s.deleteInventoryItem)
+  const createKit = useStore((s) => s.createKit)
+  const updateKit = useStore((s) => s.updateKit)
+  const deleteKit = useStore((s) => s.deleteKit)
+  const createScenario = useStore((s) => s.createScenario)
+  const updateScenario = useStore((s) => s.updateScenario)
+  const deleteScenario = useStore((s) => s.deleteScenario)
   const can = useCan()
 
   const [entryType, setEntryType] = useState('items') // 'items' | 'kits' | 'lists'
@@ -146,6 +154,8 @@ export default function Inventory() {
   const [selectedKitId, setSelectedKitId] = useState(() => kits[0]?.id ?? null)
   const [selectedListId, setSelectedListId] = useState(() => scenarios[0]?.id ?? null)
   const [itemModal, setItemModal] = useState({ open: false, item: null })
+  const [kitModal, setKitModal] = useState({ open: false, kit: null })
+  const [listModal, setListModal] = useState({ open: false, list: null })
   const [historyUnit, setHistoryUnit] = useState(null)
   const [repairUnitId, setRepairUnitId] = useState(null)
   const [workHistoryOpen, setWorkHistoryOpen] = useState(false)
@@ -287,16 +297,40 @@ export default function Inventory() {
             {totalUnits} units
           </p>
         </div>
-        {can(CAP.INVENTORY_ADD) && (
-          <button
-            type="button"
-            onClick={() => setItemModal({ open: true, item: null })}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
-          >
-            <Plus size={16} />
-            Add inventory
-          </button>
-        )}
+        {/* The primary action follows the active tab: add stock, author a kit
+            (3.6), or author a scenario list (3.6). */}
+        {entryType === 'kits'
+          ? can(CAP.KIT_MANAGE) && (
+              <button
+                type="button"
+                onClick={() => setKitModal({ open: true, kit: null })}
+                className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+              >
+                <Plus size={16} />
+                New kit
+              </button>
+            )
+          : entryType === 'lists'
+            ? can(CAP.SCENARIO_MANAGE) && (
+                <button
+                  type="button"
+                  onClick={() => setListModal({ open: true, list: null })}
+                  className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+                >
+                  <Plus size={16} />
+                  New list
+                </button>
+              )
+            : can(CAP.INVENTORY_ADD) && (
+                <button
+                  type="button"
+                  onClick={() => setItemModal({ open: true, item: null })}
+                  className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+                >
+                  <Plus size={16} />
+                  Add inventory
+                </button>
+              )}
       </div>
 
       {/* Body: list + detail (side-by-side on desktop; separate screens on
@@ -516,6 +550,8 @@ export default function Inventory() {
                   list={selectedList}
                   inventory={inventory}
                   kits={kits}
+                  canManage={can(CAP.SCENARIO_MANAGE)}
+                  onEdit={() => setListModal({ open: true, list: selectedList })}
                   onSelectItem={(id) => {
                     setEntryType('items')
                     setSearch('')
@@ -550,6 +586,8 @@ export default function Inventory() {
                 <KitDetail
                   kit={selectedKit}
                   inventory={inventory}
+                  canManage={can(CAP.KIT_MANAGE)}
+                  onEdit={() => setKitModal({ open: true, kit: selectedKit })}
                   onSelectItem={(id) => {
                     setEntryType('items')
                     setSearch('')
@@ -603,6 +641,40 @@ export default function Inventory() {
         onCreate={handleCreate}
         onSave={handleSave}
         onDelete={handleDelete}
+      />
+
+      {/* Kit / scenario-list authoring (3.6) */}
+      <KitEditorModal
+        open={kitModal.open}
+        kit={kitModal.kit}
+        inventory={inventory}
+        onClose={() => setKitModal({ open: false, kit: null })}
+        onCreate={async (payload) => {
+          const id = await createKit(payload)
+          if (id) setSelectedKitId(id)
+        }}
+        onSave={(id, payload) => updateKit(id, payload)}
+        onDelete={(id) => {
+          deleteKit(id)
+          setSelectedKitId((cur) => (cur === id ? null : cur))
+        }}
+      />
+
+      <ScenarioEditorModal
+        open={listModal.open}
+        list={listModal.list}
+        inventory={inventory}
+        kits={kits}
+        onClose={() => setListModal({ open: false, list: null })}
+        onCreate={async (payload) => {
+          const id = await createScenario(payload)
+          if (id) setSelectedListId(id)
+        }}
+        onSave={(id, payload) => updateScenario(id, payload)}
+        onDelete={(id) => {
+          deleteScenario(id)
+          setSelectedListId((cur) => (cur === id ? null : cur))
+        }}
       />
 
       <UnitHistoryModal
@@ -962,7 +1034,7 @@ function KitList({ kits, selectedId, query, onSelect }) {
 
 // Kit detail — the kit's composition (its slots) + each component's live
 // availability. Clicking a component jumps to that item in the Items tab.
-function KitDetail({ kit, inventory, onSelectItem }) {
+function KitDetail({ kit, inventory, canManage, onEdit, onSelectItem }) {
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -985,6 +1057,16 @@ function KitDetail({ kit, inventory, onSelectItem }) {
             </span>
           </div>
         </div>
+        {canManage && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:border-violet-300 hover:text-violet-600"
+          >
+            <Pencil size={14} />
+            Edit
+          </button>
+        )}
       </div>
 
       {kit.notes && (
@@ -1127,7 +1209,7 @@ function ScenarioListPane({ lists, selectedId, query, onSelect }) {
 
 // Scenario-list detail — everything the list pulls, with live availability.
 // Kit lines jump to the Kits tab; item lines jump to the item.
-function ScenarioDetail({ list, inventory, kits, onSelectItem, onSelectKit }) {
+function ScenarioDetail({ list, inventory, kits, canManage, onEdit, onSelectItem, onSelectKit }) {
   const totals = listTotals(list, kits)
   return (
     <>
@@ -1153,6 +1235,16 @@ function ScenarioDetail({ list, inventory, kits, onSelectItem, onSelectKit }) {
             </span>
           </div>
         </div>
+        {canManage && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:border-violet-300 hover:text-violet-600"
+          >
+            <Pencil size={14} />
+            Edit
+          </button>
+        )}
       </div>
 
       {list.notes && (
