@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useStore } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
+import { availableCount } from '../lib/availability'
 import { studioLabel } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -122,9 +123,8 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   // Units of an item that this booking may reserve (free + its own), minus any
   // already claimed by a staged kit.
   function availCount(item) {
-    return item.units.filter(
-      (u) => (u.status === 'available' || bookingUnits.has(u.id)) && !stagedIds.has(u.id),
-    ).length
+    // Shared availability rule (5.6) — same answer kits and lists get.
+    return availableCount(item, { claimed: stagedIds, alsoFree: bookingUnits })
   }
 
   function addItem(itemId) {

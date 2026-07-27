@@ -719,9 +719,10 @@ export async function getOrders() {
      photographer:contacts!photographer_contact_id ( id, full_name ),
      creator:profiles!created_by ( full_name ),
      company:companies ( id, name ),
-     order_lines ( id, quantity, kit_id, unit_id, slot_label,
+     order_lines ( id, quantity, kit_id, unit_id, slot_label, source, vendor_company_id,
                    item:inventory_items ( id, name, day_rate ),
-                   unit:units ( id, barcode ) ),
+                   unit:units ( id, barcode ),
+                   vendor:companies!vendor_company_id ( id, name ) ),
      sets ( id, title, date )`
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
@@ -764,6 +765,9 @@ export async function getOrders() {
       unitId: l.unit?.id ?? l.unit_id ?? null,
       barcode: l.unit?.barcode ?? null,
       slotLabel: l.slot_label ?? null,
+      source: l.source ?? 'in_house',
+      vendorId: l.vendor?.id ?? l.vendor_company_id ?? null,
+      vendorName: l.vendor?.name ?? null,
     })),
   }))
 }
@@ -966,6 +970,10 @@ export async function setOrderLines(orderId, lines) {
       kit_id: l.kitId || null,
       unit_id: l.unitId || null,
       slot_label: l.slotLabel?.trim() || null,
+      // 5.6 — in-house vs sub-rental, and the vendor it comes from. The DB check
+      // forbids a vendor on an in-house line, so it is cleared explicitly.
+      source: l.source === 'sub_rental' ? 'sub_rental' : 'in_house',
+      vendor_company_id: l.source === 'sub_rental' ? l.vendorId || null : null,
       notes: l.notes?.trim() || null,
     }))
   if (!rows.length) return

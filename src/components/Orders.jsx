@@ -14,11 +14,15 @@ import {
   Clock3,
   FileDown,
   Boxes,
+  CheckCircle2,
+  Undo2,
+  Truck,
 } from 'lucide-react'
 import { useStore } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
+import { ORDER_STATUS, ORDER_FLOW, orderStatusMeta } from '../data/orderStatus'
 import OrderEditorModal from './OrderEditorModal'
 import OrderEquipmentModal from './OrderEquipmentModal'
 import { buildEstimate, money } from '../lib/estimate'
@@ -36,24 +40,8 @@ import { downloadEstimatePdf } from '../lib/estimatePdf'
 // the costed estimate are the later sub-items of this epic — the detail pane
 // shows what an order already carries and says so.
 
-const STATUS = {
-  hold: { label: 'Hold', pill: 'bg-amber-100 text-amber-800 ring-amber-200', dot: 'bg-amber-400' },
-  confirmed: {
-    label: 'Confirmed',
-    pill: 'bg-emerald-100 text-emerald-800 ring-emerald-200',
-    dot: 'bg-emerald-500',
-  },
-  fulfilled: {
-    label: 'Fulfilled',
-    pill: 'bg-slate-100 text-slate-600 ring-slate-200',
-    dot: 'bg-slate-400',
-  },
-  draft: { label: 'Draft', pill: 'bg-slate-100 text-slate-500 ring-slate-200', dot: 'bg-slate-300' },
-  canceled: { label: 'Canceled', pill: 'bg-rose-100 text-rose-700 ring-rose-200', dot: 'bg-rose-400' },
-}
-
 function StatusPill({ status }) {
-  const s = STATUS[status] ?? STATUS.draft
+  const s = orderStatusMeta(status)
   return (
     <span
       className={[
@@ -93,6 +81,7 @@ export default function Orders() {
   const kits = useStore((s) => s.kits)
   const scenarios = useStore((s) => s.scenarios)
   const bookings = useStore((s) => s.bookings)
+  const companies = useStore((s) => s.companies)
   const setOrderLines = useStore((s) => s.setOrderLines)
   const createOrder = useStore((s) => s.createOrder)
   const updateOrder = useStore((s) => s.updateOrder)
@@ -198,7 +187,7 @@ export default function Orders() {
               <option value="All">All statuses</option>
               {statuses.map((s) => (
                 <option key={s} value={s}>
-                  {STATUS[s]?.label ?? s}
+                  {ORDER_STATUS[s]?.label ?? s}
                 </option>
               ))}
             </select>
@@ -288,6 +277,7 @@ export default function Orders() {
                 canManage={can(CAP.ORDER_MANAGE)}
                 onEdit={() => setEditor({ open: true, order: selected })}
                 onEditEquipment={() => setEqEditor({ open: true, order: selected })}
+                onSetStatus={(status) => updateOrder(selected.id, { status })}
                 onDownloadPdf={() =>
                   downloadEstimatePdf(selected, {
                     inventory,
@@ -330,6 +320,7 @@ export default function Orders() {
         inventory={inventory}
         kits={kits}
         scenarios={scenarios}
+        companies={companies}
         onClose={() => setEqEditor({ open: false, order: null })}
         onSave={(id, lines) => setOrderLines(id, lines)}
       />
@@ -347,7 +338,7 @@ function Row({ icon: Icon, label, children }) {
   )
 }
 
-function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDownloadPdf }) {
+function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDownloadPdf, onSetStatus }) {
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -380,6 +371,49 @@ function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDo
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
+        {/* 5.5 — the Hold → Confirmed move. Confirming is what opens packing /
+            scanning (epic #6); the pill colour is what epic #7 pulls into the
+            calendar. */}
+        {canManage && ORDER_FLOW.includes(order.status) && (
+          <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Status
+                </div>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {orderStatusMeta(order.status).meaning}
+                </p>
+              </div>
+              {order.status === 'hold' ? (
+                <button
+                  type="button"
+                  onClick={() => onSetStatus('confirmed')}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+                >
+                  <CheckCircle2 size={15} />
+                  Confirm order
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onSetStatus('hold')}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-amber-300 hover:text-amber-700"
+                >
+                  <Undo2 size={15} />
+                  Back to hold
+                </button>
+              )}
+            </div>
+            {order.status === 'hold' && estimate.lineCount === 0 && (
+              <p className="mt-2 text-xs text-amber-600">
+                No equipment on this order yet — confirming an empty order is allowed, but packing
+                will have nothing to pull.
+              </p>
+            )}
+          </section>
+        )}
+
         <section className="space-y-1.5">
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             The job
@@ -463,6 +497,15 @@ function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDo
                           {l.slotLabel && (
                             <span className="ml-1.5 text-[11px] uppercase tracking-wide text-slate-400">
                               {l.slotLabel}
+                            </span>
+                          )}
+                          {l.source === 'sub_rental' && (
+                            <span
+                              title={l.vendorName ? `Sub-rented from ${l.vendorName}` : 'Sub-rental'}
+                              className="ml-1.5 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
+                            >
+                              <Truck size={9} />
+                              {l.vendorName ?? 'sub-rental'}
                             </span>
                           )}
                         </span>

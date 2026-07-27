@@ -1292,6 +1292,12 @@ export const useStore = create(
             unitId: l.unitId ?? null,
             barcode: l.barcode ?? (l.unitId ? unitBarcode[l.unitId] ?? null : null),
             slotLabel: l.slotLabel ?? null,
+            source: l.source === 'sub_rental' ? 'sub_rental' : 'in_house',
+            vendorId: l.source === 'sub_rental' ? l.vendorId ?? null : null,
+            vendorName:
+              l.source === 'sub_rental'
+                ? state.companies.find((c) => c.id === l.vendorId)?.name ?? null
+                : null,
           }))
         set({
           orders: state.orders.map((o) => (o.id === orderId ? { ...o, lines: resolved } : o)),

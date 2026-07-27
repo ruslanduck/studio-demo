@@ -15,6 +15,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import Modal from './Modal'
+import { freeUnitsOf } from '../lib/availability'
 
 // Staging window (Build order #3, 3.2 + 3.3 + 3.4). Adding a kit to a set opens
 // this: the kit's slot *definitions* are resolved into slot *fills* for THIS add.
@@ -110,10 +111,13 @@ export default function KitStagingModal({
     return s
   }, [fills, reservedUnitIds])
 
-  const freeUnitsFor = (itemId) => {
-    const item = inventory.find((i) => i.id === itemId)
-    return (item?.units || []).filter((u) => u.status === 'available' && !usedIds.has(u.id))
-  }
+  // Availability comes from the shared rule (5.6) so a unit staged here can't
+  // also be taken by a list, another kit or an a-la-carte line.
+  const freeUnitsFor = (itemId) =>
+    freeUnitsOf(
+      inventory.find((i) => i.id === itemId),
+      { claimed: usedIds },
+    )
 
   // A fill accepts a scanned/manual unit when it still needs one and isn't a
   // still-pinned fixed slot (fixed slots take a unit only after "Replace").

@@ -11,12 +11,12 @@
 // Anything that can't be satisfied is reported in `warnings` rather than
 // silently dropped — the crew sees exactly what still has to be sourced.
 
-// Units of `item` this booking may take: free (or already its own) and not yet
-// claimed by a staged kit.
+import { freeUnitsOf } from './availability'
+
+// Units of `item` this booking may take. Delegates to the shared availability
+// rule (5.6): free (or already its own) and not yet claimed by a staged kit.
 function takeableUnits(item, { bookingUnits, claimed }) {
-  return (item?.units || []).filter(
-    (u) => (u.status === 'available' || bookingUnits.has(u.id)) && !claimed.has(u.id),
-  )
+  return freeUnitsOf(item, { claimed, alsoFree: bookingUnits })
 }
 
 // Resolve one kit's slots to concrete units, mirroring the staging window's
