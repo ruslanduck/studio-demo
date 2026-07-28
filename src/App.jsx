@@ -62,6 +62,8 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-800">
+      {/* Off-canvas only — navigation lives in the top bar, so no column is
+          reserved and every view gets the full window width. */}
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />

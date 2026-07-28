@@ -366,6 +366,17 @@
 > Rode #1009, Sandbags #0779/#0780, C-Stands #0767/#0768) with the Canon correctly SHORT (0959 in repair, 0960
 > held by Apple Product Shoot — no double-booking), JobPeek now lists the gear, view stayed put through both
 > toggles, 0 console errors. Order left Confirmed as it was found.
+> **LAYOUT — navigation moved into the top bar; the permanent sidebar is gone.** The top menus
+> (Admin / View / Generate / Inventory) were decorative — three did nothing and the fourth duplicated a nav
+> item's name — while the 256px sidebar column cost every view width the tables actually need. Now: the top bar
+> carries the brand + the workspace tabs (`src/data/nav.js` `WORKSPACE_NAV` is the one definition, shared by
+> the bar and the drawer), the only real action (Reset demo data) sits under a gear, and `Sidebar` is an
+> off-canvas DRAWER only (`fixed`, no `lg:static`), used below lg via the hamburger. Measured at 1024px: main
+> went 768 → **1024px** and the inventory units table **no longer needs horizontal scrolling**
+> (scrollWidth 960 < 1024) — before, HISTORY/REPAIR/UNIT sat off-screen. Also gave the drawer Esc-to-close,
+> which it never had. Frontend-only, no migration. Verified: desktop tabs switch views and highlight the
+> active one, below lg the tabs collapse to the hamburger and the drawer still navigates, gear → Reset demo
+> data, no page-level horizontal overflow, 0 console errors.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

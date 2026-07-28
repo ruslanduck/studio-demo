@@ -1,15 +1,13 @@
-import { Calendar, CalendarRange, Boxes, Users, ClipboardList, X } from 'lucide-react'
+import { useEffect } from 'react'
+import { X } from 'lucide-react'
 import { useStore } from '../store'
+import { WORKSPACE_NAV } from '../data/nav'
 import Logo, { BRAND_NAME } from './Logo'
 
-const NAV = [
-  { id: 'booking', label: 'Booking Calendar', icon: Calendar, disabled: true },
-  { id: 'calendar', label: 'Studio Calendar', icon: CalendarRange },
-  { id: 'orders', label: 'Orders', icon: ClipboardList },
-  { id: 'inventory', label: 'Inventory', icon: Boxes },
-  { id: 'people', label: 'People', icon: Users },
-]
-
+// Navigation for phone / iPad-portrait ONLY: an off-canvas drawer opened from the
+// hamburger. On desktop the same list lives in the top bar as tabs, which is why
+// this no longer becomes a permanent column — that column cost every view 256px
+// of width the tables would rather have.
 export default function Sidebar() {
   const activeView = useStore((s) => s.activeView)
   const setActiveView = useStore((s) => s.setActiveView)
@@ -18,15 +16,24 @@ export default function Sidebar() {
 
   function pick(id) {
     setActiveView(id)
-    setSidebarOpen(false) // close the drawer after navigating on mobile
+    setSidebarOpen(false) // close the drawer after navigating
   }
+
+  // Escape closes it, like every other overlay in the app.
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const onKey = (e) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sidebarOpen, setSidebarOpen])
 
   return (
     <>
-      {/* Backdrop (mobile drawer only) */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-slate-900/40"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -34,22 +41,17 @@ export default function Sidebar() {
 
       <aside
         className={[
-          'z-40 flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white',
-          // Off-canvas drawer below lg; static column at lg+
-          'fixed inset-y-0 left-0 transition-transform duration-200 lg:static lg:translate-x-0',
-          sidebarOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full lg:shadow-none',
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200',
+          sidebarOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full',
         ].join(' ')}
       >
         <div className="flex h-14 items-center gap-2.5 border-b border-slate-200 px-5">
           <Logo size={32} />
-          <span className="text-sm font-semibold tracking-tight text-slate-900">
-            {BRAND_NAME}
-          </span>
-          {/* Close (mobile drawer only) */}
+          <span className="text-sm font-semibold tracking-tight text-slate-900">{BRAND_NAME}</span>
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
-            className="ml-auto grid h-8 w-8 place-items-center rounded-md text-slate-400 hover:bg-slate-100 lg:hidden"
+            className="ml-auto grid h-8 w-8 place-items-center rounded-md text-slate-400 hover:bg-slate-100"
             aria-label="Close menu"
           >
             <X size={18} />
@@ -60,7 +62,7 @@ export default function Sidebar() {
           <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
             Workspace
           </p>
-          {NAV.map((item) => {
+          {WORKSPACE_NAV.map((item) => {
             const Icon = item.icon
             const active = activeView === item.id
             return (
