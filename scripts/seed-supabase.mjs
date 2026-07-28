@@ -31,12 +31,17 @@ function must(label, { error }) {
   if (error) throw new Error(`${label}: ${error.message}`)
 }
 
-// Wipe order avoids FK conflicts. set_units is deleted first: its DELETE
-// trigger writes to events, so events is cleared right after.
+// Wipe order avoids FK conflicts (children before parents). set_units is
+// deleted first: its DELETE trigger writes to events, so events is cleared right
+// after. kit_slots must precede units because `kit_slots.fixed_unit_id` (3.3)
+// references units with no cascade. Epic-6 tables (packing_signoffs,
+// order_addons, addon_lines) aren't listed: they ON DELETE CASCADE from orders,
+// and none blocks the units delete (addon_lines.unit_id is ON DELETE SET NULL).
 const WIPE_ORDER = [
   'set_units', 'events', 'roster_entries', 'order_lines', 'item_usage',
+  'kit_slots', 'kit_items',
   'sets', 'orders', 'repairs', 'units', 'scenario_list_entries', 'scenario_lists',
-  'kit_items', 'kit_slots', 'kits',
+  'kits',
   'inventory_items', 'contacts', 'companies',
 ]
 
