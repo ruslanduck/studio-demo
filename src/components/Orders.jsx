@@ -36,6 +36,7 @@ import OrderEditorModal from './OrderEditorModal'
 import OrderEquipmentModal from './OrderEquipmentModal'
 import { buildEstimate, money } from '../lib/estimate'
 import { downloadEstimatePdf } from '../lib/estimatePdf'
+import { downloadPackingListPdf } from '../lib/packingListPdf'
 
 // Orders / Estimates (epic #5, 5.1 + 5.2).
 //
@@ -420,6 +421,13 @@ export default function Orders() {
                     booking: bookings.find((b) => b.id === selected.setId) ?? null,
                   })
                 }
+                onDownloadPackingList={() =>
+                  downloadPackingListPdf(selected, {
+                    inventory,
+                    kits,
+                    booking: bookings.find((b) => b.id === selected.setId) ?? null,
+                  })
+                }
               />
             </>
           ) : (
@@ -473,7 +481,7 @@ function Row({ icon: Icon, label, children }) {
   )
 }
 
-function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDownloadPdf, onSetStatus }) {
+function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDownloadPdf, onDownloadPackingList, onSetStatus }) {
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -699,6 +707,37 @@ function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDo
             <FileDown size={15} />
             Download estimate PDF
           </button>
+        </section>
+
+        {/* 6.1 — packing list, generated only once the order is Confirmed */}
+        <section className="rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center gap-2">
+            <Package size={15} className="text-slate-500" />
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Packing list
+            </h4>
+          </div>
+          {order.status === 'confirmed' ? (
+            <>
+              <p className="mt-1 text-xs text-slate-500">
+                Printable pull sheet — every assigned line with its quantity, plus three initial
+                boxes per line (two at sign-out, one at return).
+                {estimate.lineCount === 0 && ' This order has no equipment yet.'}
+              </p>
+              <button
+                type="button"
+                onClick={onDownloadPackingList}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+              >
+                <FileDown size={15} />
+                Download packing list (PDF)
+              </button>
+            </>
+          ) : (
+            <p className="mt-1 text-xs text-amber-600">
+              Confirm the order to generate its packing list.
+            </p>
+          )}
         </section>
       </div>
     </>

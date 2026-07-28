@@ -159,7 +159,17 @@
 > ⚠️ Studio is a dropdown, NOT a free-text field: it used to be in the haystack as its label, which made
 > short numeric terms useless ("studio 2" matched nearly everything, because "2" is a substring of every
 > 2026 date). Caught by the test suite.
-> **Epic #5 COMPLETE** (5.1-5.7, all 4 acceptance criteria). Next: epic #6 (packing / scanning).
+> **Epic #5 COMPLETE** (5.1-5.7, all 4 acceptance criteria).
+> **Epic #6 (packing / scanning) IN PROGRESS:** 6.1 packing list generation (post-confirm) DONE —
+> `src/lib/packingListPdf.js` builds a printable pull sheet from a CONFIRMED order's assigned EQ. It
+> reuses `buildEstimate`'s kit/a-la-carte grouping + `estimatePdf`'s jsPDF setup + `pdfSafe`, but drops
+> money and adds three initial boxes per line (OUT / OUT / RET — two at sign-out, one at return) plus a
+> detail cell (slot label · #barcode · sub-rental vendor). In the Orders detail a new "Packing list"
+> section shows a Download button ONLY when `status==='confirmed'`, else "confirm to generate its packing
+> list". Frontend-only, NO migration (generates from existing order lines). Verified headless (2-page
+> pagination, empty-order safe), PDF-byte content grep (all sections/sign columns/vendor present), and
+> browser UI gating (hold→hint, confirmed→button, click→no error). Next in #6: signature capture / digital
+> iPad checklist, Add-On packing lists, and the scanning page (scan-out/in log + close-order).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
