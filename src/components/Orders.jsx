@@ -97,6 +97,9 @@ export default function Orders() {
   const setOrderLines = useStore((s) => s.setOrderLines)
   const signPackingLine = useStore((s) => s.signPackingLine)
   const clearPackingSignoff = useStore((s) => s.clearPackingSignoff)
+  const createAddon = useStore((s) => s.createAddon)
+  const setAddonLines = useStore((s) => s.setAddonLines)
+  const deleteAddon = useStore((s) => s.deleteAddon)
   const createOrder = useStore((s) => s.createOrder)
   const updateOrder = useStore((s) => s.updateOrder)
   const deleteOrder = useStore((s) => s.deleteOrder)
@@ -116,6 +119,8 @@ export default function Orders() {
   const [editor, setEditor] = useState({ open: false, order: null })
   const [eqEditor, setEqEditor] = useState({ open: false, order: null })
   const [checklistOpen, setChecklistOpen] = useState(false)
+  const [addonEqId, setAddonEqId] = useState(null) // add-on being equipment-edited
+  const [addonChecklistId, setAddonChecklistId] = useState(null) // add-on whose checklist is open
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
   // Highlight marks the first search term; matching itself is multi-term (5.7).
@@ -168,6 +173,19 @@ export default function Orders() {
   const selectedEstimate = useMemo(
     () => (selected ? buildEstimate(selected, { inventory, kits, booking: selectedBooking }) : null),
     [selected, inventory, kits, selectedBooking],
+  )
+
+  // Live add-on objects for the equipment editor / checklist (re-derived so they
+  // reflect store edits). The add-on is fed to the reused modals as an
+  // "order-like" object carrying the parent's dates for the estimate footer.
+  const editingAddon = selected?.addons?.find((a) => a.id === addonEqId) ?? null
+  const checklistAddon = selected?.addons?.find((a) => a.id === addonChecklistId) ?? null
+  const addonEstimate = useMemo(
+    () =>
+      checklistAddon
+        ? buildEstimate({ ...selected, lines: checklistAddon.lines }, { inventory, kits, booking: selectedBooking })
+        : null,
+    [checklistAddon, selected, inventory, kits, selectedBooking],
   )
 
   const statuses = useMemo(() => [...new Set(orders.map((o) => o.status))], [orders])
@@ -433,6 +451,23 @@ export default function Orders() {
                   downloadPackingListPdf(selected, { inventory, kits, booking: selectedBooking })
                 }
                 onOpenChecklist={() => setChecklistOpen(true)}
+                onCreateAddon={async (label) => {
+                  const id = await createAddon(selected.id, label)
+                  if (id) setAddonEqId(id)
+                }}
+                onEditAddon={(addon) => setAddonEqId(addon.id)}
+                onAddonChecklist={(addon) => setAddonChecklistId(addon.id)}
+                onDeleteAddon={(addon) => deleteAddon(selected.id, addon.id)}
+                onDownloadAddon={(addon) =>
+                  downloadPackingListPdf(
+                    buildEstimate(
+                      { ...selected, lines: addon.lines },
+                      { inventory, kits, booking: selectedBooking },
+                    ),
+                    undefined,
+                    { docTitle: 'ADD-ON PACKING LIST', addonLabel: addon.label || 'Add-on' },
+                  )
+                }
               />
             </>
           ) : (
@@ -483,6 +518,41 @@ export default function Orders() {
         onClear={(lineKey, slot) => clearPackingSignoff(selected.id, lineKey, slot)}
         onClose={() => setChecklistOpen(false)}
       />
+
+      {/* 6.4 — add-on equipment editor (reuses the order equipment modal) */}
+      <OrderEquipmentModal
+        open={!!editingAddon}
+        order={
+          editingAddon
+            ? {
+                id: editingAddon.id,
+                lines: editingAddon.lines,
+                startsOn: selected?.startsOn,
+                endsOn: selected?.endsOn,
+              }
+            : null
+        }
+        inventory={inventory}
+        kits={kits}
+        scenarios={scenarios}
+        companies={companies}
+        onClose={() => setAddonEqId(null)}
+        onSave={(addonId, lines) => setAddonLines(selected.id, addonId, lines)}
+      />
+
+      {/* 6.4 — add-on digital checklist (namespaced sign-off keys) */}
+      <PackingChecklistModal
+        open={!!checklistAddon}
+        order={selected}
+        estimate={addonEstimate}
+        title={checklistAddon ? `Checklist — ${checklistAddon.label || 'Add-on'}` : 'Packing checklist'}
+        keyPrefix={checklistAddon ? `addon:${checklistAddon.id}::` : ''}
+        onSign={(lineKey, slot, initials, itemName) =>
+          signPackingLine(selected.id, lineKey, slot, initials, itemName)
+        }
+        onClear={(lineKey, slot) => clearPackingSignoff(selected.id, lineKey, slot)}
+        onClose={() => setAddonChecklistId(null)}
+      />
     </div>
   )
 }
@@ -497,11 +567,27 @@ function Row({ icon: Icon, label, children }) {
   )
 }
 
-function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDownloadPdf, onDownloadPackingList, onOpenChecklist, onSetStatus }) {
+function OrderDetail({
+  order,
+  estimate,
+  canManage,
+  onEdit,
+  onEditEquipment,
+  onDownloadPdf,
+  onDownloadPackingList,
+  onOpenChecklist,
+  onCreateAddon,
+  onEditAddon,
+  onAddonChecklist,
+  onDeleteAddon,
+  onDownloadAddon,
+  onSetStatus,
+}) {
   const packProg = packingProgress(
     estimate.groups.flatMap((g) => g.lines),
     order.packing || {},
   )
+  const [addonLabel, setAddonLabel] = useState('')
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -781,6 +867,113 @@ function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDo
             </p>
           )}
         </section>
+
+        {/* 6.4 — Add-On packing lists (day-of additions, main list untouched) */}
+        {order.status === 'confirmed' && (
+          <section className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center gap-2">
+              <Package size={15} className="text-slate-500" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Add-ons
+              </h4>
+              {order.addons?.length > 0 && (
+                <span className="text-xs text-slate-400">{order.addons.length}</span>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Extra pull sheets for gear added on the shoot day — the main list stays as printed.
+            </p>
+
+            {order.addons?.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {order.addons.map((a) => {
+                  const pcs = (a.lines || []).reduce((n, l) => n + (l.quantity || 1), 0)
+                  const p = packingProgress(a.lines || [], order.packing || {}, `addon:${a.id}::`)
+                  return (
+                    <li
+                      key={a.id}
+                      className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-slate-800">
+                          {a.label || 'Add-on'}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {(a.lines || []).length} lines · {pcs} pcs
+                          {p.total > 0 && ` · ${p.out}/${p.total} out · ${p.ret}/${p.total} ret`}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {canManage && (
+                          <button
+                            type="button"
+                            onClick={() => onEditAddon(a)}
+                            title="Edit equipment"
+                            className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-violet-600"
+                          >
+                            <Boxes size={15} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onAddonChecklist(a)}
+                          title="Digital checklist"
+                          className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-violet-600"
+                        >
+                          <ClipboardList size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDownloadAddon(a)}
+                          title="Print add-on PDF"
+                          className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                        >
+                          <FileDown size={15} />
+                        </button>
+                        {canManage && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteAddon(a)}
+                            title="Delete add-on"
+                            className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+                          >
+                            <X size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            {canManage && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  onCreateAddon(addonLabel.trim() || 'Add-on')
+                  setAddonLabel('')
+                }}
+                className="mt-2 flex gap-2"
+              >
+                <input
+                  type="text"
+                  value={addonLabel}
+                  onChange={(e) => setAddonLabel(e.target.value)}
+                  placeholder="New add-on (e.g. Day 2 extras)"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                />
+                <button
+                  type="submit"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-violet-300 hover:text-violet-600"
+                >
+                  <Plus size={15} />
+                  Add-on
+                </button>
+              </form>
+            )}
+          </section>
+        )}
       </div>
     </>
   )

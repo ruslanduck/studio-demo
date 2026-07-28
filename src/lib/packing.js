@@ -8,17 +8,18 @@ export const PACKING_SLOTS = ['out1', 'out2', 'ret']
 // A stable key for a packing-list line. Order lines are replaced wholesale when
 // equipment is edited, so we key sign-offs by the line's content, not its id.
 // item + slot label + barcode is unique per line (a-la-carte is one line per
-// item; kit slots each carry their own assigned unit's barcode).
-export const packingLineKey = (line) =>
-  `${line.itemId ?? ''}::${line.slotLabel ?? ''}::${line.barcode ?? ''}`
+// item; kit slots each carry their own assigned unit's barcode). `prefix`
+// namespaces an add-on's lines (6.4) so they don't collide with the main list.
+export const packingLineKey = (line, prefix = '') =>
+  `${prefix}${line.itemId ?? ''}::${line.slotLabel ?? ''}::${line.barcode ?? ''}`
 
 // A line is "out" once BOTH sign-out slots are initialled; "returned" once the
 // return slot is. Returns counts over a flat list of estimate lines.
-export function packingProgress(lines = [], packing = {}) {
+export function packingProgress(lines = [], packing = {}, prefix = '') {
   let out = 0
   let ret = 0
   for (const l of lines) {
-    const s = packing[packingLineKey(l)] || {}
+    const s = packing[packingLineKey(l, prefix)] || {}
     if (s.out1?.initials && s.out2?.initials) out += 1
     if (s.ret?.initials) ret += 1
   }

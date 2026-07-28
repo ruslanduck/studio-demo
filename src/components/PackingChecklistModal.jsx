@@ -48,17 +48,27 @@ function SignBox({ signoff, onSign, onClear }) {
 // Digital packing checklist (epic #6, 6.2 + 6.5). The on-screen / iPad form of
 // the packing list: each line has the three sign-off boxes (two at sign-out,
 // one at return). Sign-offs are optimistic + auto-saved via the store.
-export default function PackingChecklistModal({ open, order, estimate, onSign, onClear, onClose }) {
+export default function PackingChecklistModal({
+  open,
+  order,
+  estimate,
+  title = 'Packing checklist',
+  keyPrefix = '',
+  onSign,
+  onClear,
+  onClose,
+}) {
   const packing = order?.packing || {}
   const groups = estimate?.groups || []
   const allLines = groups.flatMap((g) => g.lines)
-  const prog = packingProgress(allLines, packing)
+  const prog = packingProgress(allLines, packing, keyPrefix)
 
-  const sign = (line, slot, initials) => onSign(packingLineKey(line), slot, initials, line.itemName)
-  const clear = (line, slot) => onClear(packingLineKey(line), slot)
+  const sign = (line, slot, initials) =>
+    onSign(packingLineKey(line, keyPrefix), slot, initials, line.itemName)
+  const clear = (line, slot) => onClear(packingLineKey(line, keyPrefix), slot)
 
   return (
-    <Modal open={open} onClose={onClose} size="lg" title="Packing checklist">
+    <Modal open={open} onClose={onClose} size="lg" title={title}>
       <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
         {order && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-4 py-3">
@@ -117,7 +127,7 @@ export default function PackingChecklistModal({ open, order, estimate, onSign, o
                   </div>
                   <ul className="space-y-1">
                     {g.lines.map((l, i) => {
-                      const key = packingLineKey(l)
+                      const key = packingLineKey(l, keyPrefix)
                       const s = packing[key] || {}
                       const returned = !!s.ret?.initials
                       const out = !!(s.out1?.initials && s.out2?.initials)

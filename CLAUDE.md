@@ -184,8 +184,21 @@
 > (checklist starts empty; you sign live). Verified local: sign records initials+time, box greens,
 > persists, progress updates, clear un-signs others untouched, 0 console errors.
 > ⚠️ jsPDF was missing from node_modules (added in 5.4 after an older `npm ci`) → `npm install` after syncing.
-> Next in #6: 6.4 Add-On packing lists (day-of additions without rewriting the main list) + the scanning
-> page (scan-out/in log with who+time, close-order once all EQ returned).
+> 6.4 Add-On packing lists DONE — `20260804120000_order_addons.sql` adds `order_addons` + `addon_lines`
+> (addon_lines mirror order_lines). An add-on is a labelled supplementary list on an order; the main
+> `order_lines` are NEVER touched. Heavy reuse: the add-on equipment editor is the SAME OrderEquipmentModal
+> (fed an order-like `{id, lines, startsOn, endsOn}`, onSave→`setAddonLines`), the PDF is `packingListPdf`
+> with `opts.docTitle='ADD-ON PACKING LIST'` + `opts.addonLabel`, and the digital checklist is the SAME
+> `PackingChecklistModal` with a `keyPrefix='addon:<id>::'` so its sign-offs live in the same
+> `packing_signoffs` table (order_id = parent) without colliding with the main list's line keys
+> (`packingLineKey`/`packingProgress` now take a prefix arg). Repository `getAddonsByOrder` attaches
+> `order.addons` via a separate try/caught fetch; store `createAddon`/`setAddonLines`/`deleteAddon`.
+> Orders detail gains an "Add-ons" section (confirmed only): New-add-on label input → opens the eq editor;
+> each add-on row has Edit EQ / Checklist / Print PDF / Delete + a pcs + out/ret progress line. No seed.
+> Verified local: create→eq→save (main untouched), namespaced checklist sign-off, add-on PDF, delete;
+> 0 console errors. Note: add-on availability reuses the shared rule but doesn't subtract the main list's
+> reservations (minor demo edge — a day-of add could in theory re-pick a unit the main list holds).
+> Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

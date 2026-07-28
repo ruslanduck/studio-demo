@@ -56,6 +56,9 @@ import {
   setOrderLines as sbSetOrderLines,
   setPackingSignoff as sbSetPackingSignoff,
   clearPackingSignoff as sbClearPackingSignoff,
+  createAddon as sbCreateAddon,
+  setAddonLines as sbSetAddonLines,
+  deleteAddon as sbDeleteAddon,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -243,6 +246,7 @@ function buildSeedData() {
       setId: set?.id ?? null,
       setTitle: set?.title ?? o.setTitle ?? null,
       packing: {}, // digital packing checklist sign-offs (6.2 / 6.5), by lineKey
+      addons: [], // add-on packing lists (6.4): [{ id, label, createdAt, lines }]
       lines: o.lines.map(([itemId, quantity]) => ({
         itemId,
         itemName: byId[itemId]?.name ?? null,
@@ -1352,6 +1356,85 @@ export const useStore = create(
           sbClearPackingSignoff(orderId, lineKey, slot).catch((e) =>
             console.error('packing clear failed:', e),
           )
+      },
+
+      // Add-on packing lists (6.4). Create an empty add-on (returns its id so the
+      // UI can open the equipment editor on it), replace its lines, or delete it.
+      // The order's main lines are never touched.
+      createAddon: async (orderId, label) => {
+        if (usingSupabase) {
+          const id = await sbCreateAddon(orderId, label)
+          await get().hydrate()
+          return id
+        }
+        const id = `addon-${orderId}-${Date.now().toString(36)}`
+        set({
+          orders: get().orders.map((o) =>
+            o.id !== orderId
+              ? o
+              : {
+                  ...o,
+                  addons: [
+                    ...(o.addons || []),
+                    { id, label: (label || '').trim() || null, createdAt: new Date().toISOString(), lines: [] },
+                  ],
+                },
+          ),
+        })
+        return id
+      },
+
+      setAddonLines: async (orderId, addonId, lines) => {
+        if (usingSupabase) {
+          await sbSetAddonLines(addonId, lines)
+          await get().hydrate()
+          return { ok: true }
+        }
+        const state = get()
+        const byId = Object.fromEntries(state.inventory.map((i) => [i.id, i]))
+        const unitBarcode = {}
+        for (const item of state.inventory)
+          for (const u of item.units || []) unitBarcode[u.id] = u.barcode
+        const resolved = (lines || [])
+          .filter((l) => l.itemId)
+          .map((l, i) => ({
+            id: l.id ?? `addline-${addonId}-${i}`,
+            itemId: l.itemId,
+            itemName: byId[l.itemId]?.name ?? l.itemName ?? null,
+            quantity: Math.max(1, Number(l.quantity) || 1),
+            dayRate: byId[l.itemId]?.dayRate ?? null,
+            kitId: l.kitId ?? null,
+            unitId: l.unitId ?? null,
+            barcode: l.barcode ?? (l.unitId ? unitBarcode[l.unitId] ?? null : null),
+            slotLabel: l.slotLabel ?? null,
+            source: l.source === 'sub_rental' ? 'sub_rental' : 'in_house',
+            vendorId: l.source === 'sub_rental' ? l.vendorId ?? null : null,
+            vendorName:
+              l.source === 'sub_rental'
+                ? state.companies.find((c) => c.id === l.vendorId)?.name ?? null
+                : null,
+          }))
+        set({
+          orders: state.orders.map((o) =>
+            o.id !== orderId
+              ? o
+              : { ...o, addons: (o.addons || []).map((a) => (a.id === addonId ? { ...a, lines: resolved } : a)) },
+          ),
+        })
+        return { ok: true }
+      },
+
+      deleteAddon: async (orderId, addonId) => {
+        if (usingSupabase) {
+          await sbDeleteAddon(addonId)
+          await get().hydrate()
+          return
+        }
+        set({
+          orders: get().orders.map((o) =>
+            o.id !== orderId ? o : { ...o, addons: (o.addons || []).filter((a) => a.id !== addonId) },
+          ),
+        })
       },
 
       // Scrapping an order leaves its Set alone (sets.order_id is ON DELETE SET

@@ -33,16 +33,22 @@ const OUT1 = { x1: OUT2.x1 - SIGN_GAP - SIGN_W, x2: OUT2.x1 - SIGN_GAP }
 const COL = { item: M, detail: M + 150, qtyRight: OUT1.x1 - 12 }
 const mid = (b) => (b.x1 + b.x2) / 2
 
-export function packingListFileName(order) {
-  const job = (order.jobName || order.setTitle || 'order')
+const slug = (s) =>
+  (s || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+
+export function packingListFileName(order, opts = {}) {
+  const job = slug(order.jobName || order.setTitle || 'order') || 'order'
   const po = order.poNumber ? `-${order.poNumber}` : ''
-  return `packing-list-${job || 'order'}${po}.pdf`.replace(/--+/g, '-')
+  const addon = opts.addonLabel ? `-addon-${slug(opts.addonLabel) || 'extra'}` : ''
+  return `packing-list-${job}${po}${addon}.pdf`.replace(/--+/g, '-')
 }
 
-export function buildPackingListPdf(orderOrEstimate, context) {
+// `opts.docTitle` overrides the header (default "PACKING LIST"); `opts.addonLabel`
+// prints an add-on line under the job name — both used for Add-On lists (6.4).
+export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
   const est = orderOrEstimate?.groups ? orderOrEstimate : buildEstimate(orderOrEstimate, context)
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   let y = M
@@ -93,7 +99,7 @@ export function buildPackingListPdf(orderOrEstimate, context) {
   text('AnnTaylor Rental', M, y + 4)
   doc.setFontSize(9)
   setInk(INK.accent)
-  right('PACKING LIST', PAGE.w - M, y - 4)
+  right(opts.docTitle || 'PACKING LIST', PAGE.w - M, y - 4)
   doc.setFont('helvetica', 'normal')
   setInk(INK.muted)
   right('CONFIRMED', PAGE.w - M, y + 9)
@@ -107,6 +113,14 @@ export function buildPackingListPdf(orderOrEstimate, context) {
   setInk(INK.text)
   text(est.order.jobName, M, y)
   y += 20
+
+  if (opts.addonLabel) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    setInk(INK.accent)
+    text(`ADD-ON — ${opts.addonLabel}`, M, y)
+    y += 18
+  }
 
   const meta = [
     ['PO number', est.order.poNumber || '—'],
@@ -216,8 +230,8 @@ export function buildPackingListPdf(orderOrEstimate, context) {
   return doc
 }
 
-export function downloadPackingListPdf(order, context) {
+export function downloadPackingListPdf(order, context, opts = {}) {
   const est = order?.groups ? order : buildEstimate(order, context)
-  const doc = buildPackingListPdf(est)
-  doc.save(packingListFileName(est.order))
+  const doc = buildPackingListPdf(est, undefined, opts)
+  doc.save(packingListFileName(est.order, opts))
 }

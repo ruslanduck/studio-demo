@@ -731,6 +731,51 @@ async function getPackingSignoffs() {
   return map
 }
 
+// Map a DB order/addon line row to the app's line shape (shared by orders and
+// add-ons, since add-on lines mirror order_lines).
+function mapLineRow(l) {
+  return {
+    id: l.id ?? null,
+    itemId: l.item?.id ?? null,
+    itemName: l.item?.name ?? null,
+    quantity: l.quantity,
+    dayRate: l.item?.day_rate != null ? Number(l.item.day_rate) : null,
+    kitId: l.kit_id ?? null,
+    unitId: l.unit?.id ?? l.unit_id ?? null,
+    barcode: l.unit?.barcode ?? null,
+    slotLabel: l.slot_label ?? null,
+    source: l.source ?? 'in_house',
+    vendorId: l.vendor?.id ?? l.vendor_company_id ?? null,
+    vendorName: l.vendor?.name ?? null,
+  }
+}
+
+// Add-on packing lists grouped by order id (6.4). Fetched separately so orders
+// still load if the 6.4 migration hasn't run yet.
+async function getAddonsByOrder() {
+  const { data, error } = await supabase
+    .from('order_addons')
+    .select(
+      `id, order_id, label, created_at,
+       addon_lines ( id, quantity, kit_id, unit_id, slot_label, source, vendor_company_id,
+                     item:inventory_items ( id, name, day_rate ),
+                     unit:units ( id, barcode ),
+                     vendor:companies!vendor_company_id ( id, name ) )`,
+    )
+    .order('created_at')
+  if (error) return {}
+  const map = {}
+  for (const a of data || []) {
+    ;(map[a.order_id] ||= []).push({
+      id: a.id,
+      label: a.label,
+      createdAt: a.created_at,
+      lines: (a.addon_lines || []).map(mapLineRow),
+    })
+  }
+  return map
+}
+
 export async function getOrders() {
   // Layered: the epic-5 shape first, then the 4.5 shape, then the stub — so a
   // database that hasn't run the newer migrations still renders history.
@@ -755,7 +800,7 @@ export async function getOrders() {
   if (error) ({ data, error } = await supabase.from('orders').select(withoutKind).order('ordered_at'))
   if (error) return []
 
-  const packing = await getPackingSignoffs()
+  const [packing, addonsByOrder] = await Promise.all([getPackingSignoffs(), getAddonsByOrder()])
 
   return (data || []).map((o) => ({
     id: o.id,
@@ -778,20 +823,8 @@ export async function getOrders() {
     createdBy: o.creator?.full_name ?? null,
     createdAt: o.created_at ?? null,
     packing: packing[o.id] || {},
-    lines: (o.order_lines || []).map((l) => ({
-      id: l.id ?? null,
-      itemId: l.item?.id ?? null,
-      itemName: l.item?.name ?? null,
-      quantity: l.quantity,
-      dayRate: l.item?.day_rate != null ? Number(l.item.day_rate) : null,
-      kitId: l.kit_id ?? null,
-      unitId: l.unit?.id ?? l.unit_id ?? null,
-      barcode: l.unit?.barcode ?? null,
-      slotLabel: l.slot_label ?? null,
-      source: l.source ?? 'in_house',
-      vendorId: l.vendor?.id ?? l.vendor_company_id ?? null,
-      vendorName: l.vendor?.name ?? null,
-    })),
+    addons: addonsByOrder[o.id] || [],
+    lines: (o.order_lines || []).map(mapLineRow),
   }))
 }
 
@@ -1033,5 +1066,44 @@ export async function clearPackingSignoff(orderId, lineKey, slot) {
   const { error } = await supabase
     .from('packing_signoffs')
     .upsert(row, { onConflict: 'order_id,line_key' })
+  if (error) throw error
+}
+
+// Add-on packing lists (6.4). Add-ons are their own labelled line lists on an
+// order; the main order_lines are never touched.
+export async function createAddon(orderId, label) {
+  const { data, error } = await supabase
+    .from('order_addons')
+    .insert({ order_id: orderId, label: label?.trim() || null })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+// Replace an add-on's lines (same delete-then-insert as setOrderLines).
+export async function setAddonLines(addonId, lines) {
+  const { error: delErr } = await supabase.from('addon_lines').delete().eq('addon_id', addonId)
+  if (delErr) throw delErr
+  const rows = (lines || [])
+    .filter((l) => l.itemId)
+    .map((l) => ({
+      addon_id: addonId,
+      inventory_item_id: l.itemId,
+      quantity: Math.max(1, Number(l.quantity) || 1),
+      kit_id: l.kitId || null,
+      unit_id: l.unitId || null,
+      slot_label: l.slotLabel?.trim() || null,
+      source: l.source === 'sub_rental' ? 'sub_rental' : 'in_house',
+      vendor_company_id: l.source === 'sub_rental' ? l.vendorId || null : null,
+      notes: l.notes?.trim() || null,
+    }))
+  if (!rows.length) return
+  const { error } = await supabase.from('addon_lines').insert(rows)
+  if (error) throw error
+}
+
+export async function deleteAddon(addonId) {
+  const { error } = await supabase.from('order_addons').delete().eq('id', addonId)
   if (error) throw error
 }
