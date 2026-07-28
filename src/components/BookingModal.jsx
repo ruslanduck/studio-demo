@@ -127,14 +127,13 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
     return availableCount(item, { claimed: stagedIds, alsoFree: bookingUnits })
   }
 
+  // Adding is NOT capped by what's free. The crew has to be able to put a job on
+  // paper before the gear is back — the honest answer is to let it through and
+  // say what won't be reserved (see `shortage` below), not to refuse the click.
   function addItem(itemId) {
     const item = inventory.find((i) => i.id === itemId)
     if (!item) return
-    const max = availCount(item)
-    setSelected((s) => {
-      const next = Math.min((s[itemId] ?? 0) + 1, max)
-      return next <= 0 ? s : { ...s, [itemId]: next }
-    })
+    setSelected((s) => ({ ...s, [itemId]: (s[itemId] ?? 0) + 1 }))
   }
 
   function setQty(itemId, qty) {
@@ -143,9 +142,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
         const { [itemId]: _drop, ...rest } = s
         return rest
       }
-      const item = inventory.find((i) => i.id === itemId)
-      const max = item ? availCount(item) : qty
-      return { ...s, [itemId]: Math.min(qty, max) }
+      return { ...s, [itemId]: qty }
     })
   }
 
@@ -159,6 +156,21 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
 
   const totalUnits =
     Object.values(selected).reduce((n, q) => n + q, 0) + stagedUnits.length
+
+  // How many requested pieces have nothing free behind them. The resolver only
+  // ever picks free units, so these would silently NOT be reserved — which is
+  // exactly why the number has to be on screen.
+  // Only barcoded stock is unit-tracked; consumables aren't reserved at all.
+  const shortage = useMemo(() => {
+    let short = 0
+    for (const [itemId, qty] of Object.entries(selected)) {
+      const item = inventory.find((i) => i.id === itemId)
+      if (!item || item.kind !== 'barcoded') continue
+      short += Math.max(0, qty - availableCount(item, { claimed: stagedIds, alsoFree: bookingUnits }))
+    }
+    return short
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, inventory, stagedIds, bookingUnits])
 
   // Reserved unit ids already spoken for (a-la-carte + staged) — passed to the
   // staging window so it never re-assigns a unit this booking already holds.
@@ -321,9 +333,30 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
             <label className={labelClass}>
               Inventory{' '}
               <span className="font-normal text-slate-400">
-                · {totalUnits} unit{totalUnits === 1 ? '' : 's'} reserved
+                · {totalUnits - shortage} of {totalUnits} unit
+                {totalUnits === 1 ? '' : 's'} reserved
               </span>
+              {shortage > 0 && (
+                <span className="font-medium text-amber-600">
+                  {' '}
+                  · {shortage} over capacity
+                </span>
+              )}
             </label>
+
+            {/* The consequence, spelled out: over-capacity pieces stay on the
+                list but no unit is held for them, so nobody discovers it at the
+                packing table. */}
+            {shortage > 0 && (
+              <p className="mb-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span>
+                  {shortage} piece(s) have nothing free behind them — they stay on this list but
+                  won&apos;t be reserved. Free them from another job, or raise them as a sub-rental
+                  on the order.
+                </span>
+              </p>
+            )}
 
             {/* Predefined scenario list (3.5) — one pick instead of adding
                 every line by hand; the result stays fully editable below. */}
@@ -448,10 +481,16 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                 {Object.entries(selected).map(([itemId, qty]) => {
                   const item = inventory.find((i) => i.id === itemId)
                   if (!item) return null
+                  const free = availCount(item)
+                  // Over capacity only means something for unit-tracked stock.
+                  const over = item.kind === 'barcoded' ? Math.max(0, qty - free) : 0
                   return (
                     <li
                       key={itemId}
-                      className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5"
+                      className={[
+                        'flex items-center gap-2 rounded-lg px-3 py-1.5',
+                        over > 0 ? 'bg-amber-50 ring-1 ring-amber-200' : 'bg-slate-50',
+                      ].join(' ')}
                     >
                       <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
                         {item.name}
@@ -470,15 +509,23 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                         <button
                           type="button"
                           onClick={() => addItem(itemId)}
-                          disabled={qty >= availCount(item)}
-                          className="grid h-6 w-6 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-white disabled:opacity-30"
+                          className="grid h-6 w-6 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-white"
                         >
                           <Plus size={13} />
                         </button>
                       </div>
-                      <span className="w-14 text-right text-xs text-slate-400">
-                        /{availCount(item)} free
-                      </span>
+                      {over > 0 ? (
+                        <span
+                          title={`Only ${free} free — ${over} piece(s) won't be reserved`}
+                          className="whitespace-nowrap text-right text-xs font-medium text-amber-700"
+                        >
+                          /{free} free · {over} short
+                        </span>
+                      ) : (
+                        <span className="w-14 text-right text-xs text-slate-400">
+                          /{free} free
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => setQty(itemId, 0)}
@@ -508,20 +555,31 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                 <ul className="absolute z-10 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                   {searchResults.map((item) => {
                     const free = availCount(item)
-                    const disabled = (selected[item.id] ?? 0) >= free
+                    // Exhausted stock stays CLICKABLE — it just says so. Refusing
+                    // the click is what made this a dead end.
+                    const none = (selected[item.id] ?? 0) >= free
                     return (
                       <li key={item.id}>
                         <button
                           type="button"
-                          disabled={disabled}
                           onClick={() => addItem(item.id)}
-                          className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white"
+                          title={
+                            none
+                              ? 'Nothing free — adds it anyway, and the shortfall is flagged'
+                              : undefined
+                          }
+                          className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
                         >
                           <span className="min-w-0 truncate text-slate-700">
                             {item.name}
                           </span>
-                          <span className="shrink-0 text-xs text-slate-400">
-                            {free} free
+                          <span
+                            className={[
+                              'shrink-0 text-xs',
+                              none ? 'font-medium text-amber-600' : 'text-slate-400',
+                            ].join(' ')}
+                          >
+                            {free} free{none ? ' · add anyway' : ''}
                           </span>
                         </button>
                       </li>

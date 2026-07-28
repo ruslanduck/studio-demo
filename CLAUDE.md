@@ -413,6 +413,25 @@
 > and the gear-puller deliberately DIFFERENT people. Verified in both modes: supabase (real DB rows carry
 > `actor_id`, "Equipment by Ann Taylor" flips on edit, feed shows the diff) and local (persist v4, "Demo user"
 > entry survives reload); lint clean except one pre-existing `KitStagingModal` hooks error; build clean.
+> **CHANGE — over capacity is allowed, but never silent.** Reported: an item with 0 free was greyed out in the
+> booking modal's inventory search, a dead end ("должна быть возможность добавить, даже если 0, просто должен
+> быть об этом сигнал"). The crew has to be able to write a job down before the gear is back. Both pickers now
+> let it through and SAY SO instead of refusing the click:
+> `BookingModal` — the search row stays clickable and reads "0 free · add anyway" in amber; `addItem`/`setQty`
+> lost their `Math.min(…, availCount)` caps; the selected line goes amber with "/N free · N short"; the header
+> reads "X of Y units reserved · N over capacity"; and a banner spells out the consequence — over-capacity
+> pieces stay on the list but **no unit is held for them** (`resolveUnitsForQuantities` only ever picks free
+> units, so previously a request beyond stock would have been silently under-reserved).
+> `OrderEquipmentModal` — the 5.6 zero-availability block gained a third choice, **"Add anyway"**, beside
+> "Add as sub-rental" / "Choose another"; the line then shows "N over capacity" instead of "N left" and the
+> footer totals it. `blocked` now carries an `intent` ('add' | 'switch') + index, because the same dialog is
+> raised by `switchSource`: forcing there must MOVE the line in-house ("Switch anyway"), not bolt an extra
+> quantity onto the order. Over-capacity is computed per ITEM, not per line (two lines of one item share a
+> stock pool), and only for `barcoded` stock — consumables aren't unit-reserved at all.
+> Frontend-only, no migration. Verified in supabase mode: order editor → Canon EOS R5 (0 available: one in
+> repair, one held by Apple) → "Add anyway" → line "1 over capacity" + footer "· 1 over capacity"; booking
+> modal → "0 free · add anyway" → header "10 of 11 units reserved · 1 over capacity" + amber banner + line
+> "/0 free · 1 short". Both cancelled, so prod data is unchanged. Build + lint clean.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

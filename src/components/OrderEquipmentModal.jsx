@@ -110,6 +110,15 @@ export default function OrderEquipmentModal({
   const remainingFor = (item) =>
     Math.max(0, availableCount(item, { claimed: stagedIds }) - inHouseQty(item?.id))
 
+  // How much this order's in-house lines exceed what's actually free. Over
+  // capacity is ALLOWED (you can't always wait for the gear to come back), but it
+  // must be visible on the line and in the footer — the resolver reserves only
+  // what exists, so the difference is simply not held.
+  const overFor = (item) =>
+    item?.kind === 'barcoded'
+      ? Math.max(0, inHouseQty(item.id) - availableCount(item, { claimed: stagedIds }))
+      : 0
+
   const lines = useMemo(
     () => [
       ...stagedUnits.map((u) => ({
@@ -192,9 +201,11 @@ export default function OrderEquipmentModal({
 
   // 5.6 — the zero-availability block. Adding in-house is refused when nothing is
   // left; the sub-rental route is offered right there.
-  function addItem(itemId, source = IN_HOUSE) {
+  function addItem(itemId, source = IN_HOUSE, { force = false } = {}) {
     const item = itemsById[itemId]
-    if (source === IN_HOUSE && remainingFor(item) <= 0) {
+    // Nothing free: offer the choices instead of adding silently. `force` is the
+    // "Add anyway" answer — over capacity is allowed, it just has to be visible.
+    if (source === IN_HOUSE && !force && remainingFor(item) <= 0) {
       setBlocked({ itemId, name: item.name })
       setPicker(false)
       return
@@ -231,20 +242,22 @@ export default function OrderEquipmentModal({
     if (next <= 0) return removeLine(index)
     // In-house is capped by what's actually free; a vendor's stock is not ours to cap.
     if (line.source === IN_HOUSE && delta > 0 && remainingFor(item) <= 0) {
-      setBlocked({ itemId: line.itemId, name: item.name })
+      setBlocked({ itemId: line.itemId, name: item.name, intent: 'add' })
       return
     }
     updateLine(index, { quantity: next })
   }
 
   // Switching a line to sub-rental frees the in-house units it was holding.
-  function switchSource(index, source) {
+  function switchSource(index, source, { force = false } = {}) {
     const line = itemLines[index]
-    if (source === IN_HOUSE) {
+    if (source === IN_HOUSE && !force) {
       const item = itemsById[line.itemId]
       const free = availableCount(item, { claimed: stagedIds }) - inHouseQty(line.itemId)
       if (free < line.quantity) {
-        setBlocked({ itemId: line.itemId, name: item.name })
+        // Same warning, but remember it was a SWITCH: "Add anyway" must move this
+        // line in-house, not bolt an extra quantity onto the order.
+        setBlocked({ itemId: line.itemId, name: item.name, intent: 'switch', index })
         return
       }
     }
@@ -293,6 +306,20 @@ export default function OrderEquipmentModal({
 
   const subRentalCount = itemLines.filter((l) => l.source === SUB_RENTAL).length
 
+  // Total pieces on in-house lines that nothing free backs. Counted per ITEM (two
+  // lines of the same item share one stock pool), hence the de-duplication.
+  const overCapacity = useMemo(() => {
+    const seen = new Set()
+    let over = 0
+    for (const l of itemLines) {
+      if (l.source === SUB_RENTAL || seen.has(l.itemId)) continue
+      seen.add(l.itemId)
+      over += overFor(itemsById[l.itemId])
+    }
+    return over
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemLines, itemsById, stagedIds])
+
   return (
     <>
       <Modal open={open} onClose={onClose} size="lg" title="Order equipment">
@@ -340,8 +367,9 @@ export default function OrderEquipmentModal({
               <div className="flex items-start gap-2 text-amber-900">
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span>
-                  <strong>{blocked.name}</strong> has 0 available for these dates. Pick a different
-                  item, or raise it as a sub-rental from a vendor.
+                  <strong>{blocked.name}</strong> has 0 available for these dates. Raise it as a
+                  sub-rental, pick a different item — or put it on the order anyway and settle the
+                  shortfall later.
                 </span>
               </div>
               <div className="mt-2 flex gap-2">
@@ -352,6 +380,20 @@ export default function OrderEquipmentModal({
                 >
                   <Truck size={12} />
                   Add as sub-rental
+                </button>
+                {/* Refusing outright was a dead end: the crew needs to be able to
+                    write the job down before the gear is back. Added in-house it
+                    stays flagged as over capacity on the line and in the footer. */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    blocked.intent === 'switch'
+                      ? switchSource(blocked.index, IN_HOUSE, { force: true })
+                      : addItem(blocked.itemId, IN_HOUSE, { force: true })
+                  }
+                  className="rounded-md border border-amber-300 px-2.5 py-1 font-medium text-amber-800 transition hover:bg-amber-100"
+                >
+                  {blocked.intent === 'switch' ? 'Switch anyway' : 'Add anyway'}
                 </button>
                 <button
                   type="button"
@@ -448,9 +490,28 @@ export default function OrderEquipmentModal({
                         <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
                           {item?.name ?? 'Item'}
                         </span>
-                        <span className="shrink-0 text-[11px] text-slate-400">
-                          {isSub ? 'from vendor' : `${remainingFor(item)} left`}
-                        </span>
+                        {(() => {
+                          const over = isSub ? 0 : overFor(item)
+                          return (
+                            <span
+                              title={
+                                over > 0
+                                  ? `${over} piece(s) beyond what's free — they won't be reserved`
+                                  : undefined
+                              }
+                              className={[
+                                'shrink-0 whitespace-nowrap text-[11px]',
+                                over > 0 ? 'font-medium text-amber-600' : 'text-slate-400',
+                              ].join(' ')}
+                            >
+                              {isSub
+                                ? 'from vendor'
+                                : over > 0
+                                  ? `${over} over capacity`
+                                  : `${remainingFor(item)} left`}
+                            </span>
+                          )
+                        })()}
                         <div className="flex shrink-0 items-center gap-1">
                           <button
                             type="button"
@@ -644,6 +705,14 @@ export default function OrderEquipmentModal({
             <span className="font-semibold text-slate-800">{money(estimate.total)}</span>
             {subRentalCount > 0 && (
               <span className="ml-1 text-amber-600">({subRentalCount} sub-rental)</span>
+            )}
+            {overCapacity > 0 && (
+              <span
+                title="These pieces exceed what's free, so no unit will be held for them"
+                className="ml-1 font-medium text-amber-600"
+              >
+                · {overCapacity} over capacity
+              </span>
             )}
           </div>
           <div className="flex gap-2">
