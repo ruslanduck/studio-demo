@@ -619,6 +619,22 @@ export const useStore = create(
       activeView: 'calendar', // 'calendar' | 'inventory'
       setActiveView: (view) => set({ activeView: view }),
 
+      // Cross-view drill-in: "show me this item's history". Any screen that
+      // renders inventory (an order's equipment, a packing line, a vendor's gear)
+      // can call focusInventory to jump to the item in the Inventory view — and,
+      // when a concrete unit is known, straight into that unit's history. Not
+      // persisted; cleared once the Inventory view consumes it.
+      inventoryFocus: null, // { itemId, unitId, ts } | null
+      focusInventory: ({ itemId, unitId = null } = {}) => {
+        if (!itemId) return
+        set({
+          inventoryFocus: { itemId, unitId, ts: Date.now() },
+          activeView: 'inventory',
+          sidebarOpen: false,
+        })
+      },
+      clearInventoryFocus: () => set({ inventoryFocus: null }),
+
       // Mobile/tablet off-canvas sidebar drawer.
       sidebarOpen: false,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),

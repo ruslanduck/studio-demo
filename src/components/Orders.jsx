@@ -583,6 +583,7 @@ function OrderDetail({
   onDownloadAddon,
   onSetStatus,
 }) {
+  const focusInventory = useStore((s) => s.focusInventory)
   const packProg = packingProgress(
     estimate.groups.flatMap((g) => g.lines),
     order.packing || {},
@@ -741,17 +742,30 @@ function OrderDetail({
                         className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
                       >
                         <Package size={14} className="shrink-0 text-slate-400" />
-                        <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
-                          {l.itemName}
+                        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                          {l.itemId ? (
+                            <button
+                              type="button"
+                              onClick={() => focusInventory({ itemId: l.itemId, unitId: l.unitId })}
+                              title="Open this item’s history"
+                              className="min-w-0 truncate text-left text-sm font-medium text-slate-800 hover:text-violet-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-violet-400"
+                            >
+                              {l.itemName}
+                            </button>
+                          ) : (
+                            <span className="min-w-0 truncate text-sm text-slate-800">
+                              {l.itemName}
+                            </span>
+                          )}
                           {l.slotLabel && (
-                            <span className="ml-1.5 text-[11px] uppercase tracking-wide text-slate-400">
+                            <span className="shrink-0 text-[11px] uppercase tracking-wide text-slate-400">
                               {l.slotLabel}
                             </span>
                           )}
                           {l.source === 'sub_rental' && (
                             <span
                               title={l.vendorName ? `Sub-rented from ${l.vendorName}` : 'Sub-rental'}
-                              className="ml-1.5 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
+                              className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
                             >
                               <Truck size={9} />
                               {l.vendorName ?? 'sub-rental'}

@@ -679,6 +679,7 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany }) {
 // People, and work history — orders in both directions, the gear we currently
 // hold from them as a vendor, and the jobs its people worked.
 function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, onOpenPerson }) {
+  const focusInventory = useStore((s) => s.focusInventory)
   const staff = people.filter((p) => p.companyId === company.id)
   const jobs = useMemo(() => {
     const seen = new Set()
@@ -883,7 +884,14 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
                   className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
                 >
                   <Package size={14} className="shrink-0 text-slate-400" />
-                  <span className="min-w-0 flex-1 truncate text-sm text-slate-800">{g.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => focusInventory({ itemId: g.itemId })}
+                    title="Open this item’s history"
+                    className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-800 hover:text-violet-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-violet-400"
+                  >
+                    {g.name}
+                  </button>
                   <span className="shrink-0 text-xs font-medium text-slate-500">×{g.count}</span>
                 </li>
               ))}

@@ -177,6 +177,8 @@ export default function Inventory() {
   const createScenario = useStore((s) => s.createScenario)
   const updateScenario = useStore((s) => s.updateScenario)
   const deleteScenario = useStore((s) => s.deleteScenario)
+  const inventoryFocus = useStore((s) => s.inventoryFocus)
+  const clearInventoryFocus = useStore((s) => s.clearInventoryFocus)
   const can = useCan()
 
   const [entryType, setEntryType] = useState('items') // 'items' | 'kits' | 'lists'
@@ -197,6 +199,29 @@ export default function Inventory() {
   const [workHistoryOpen, setWorkHistoryOpen] = useState(false)
   // On phone/tablet-portrait the list and detail are separate screens.
   const [showDetailMobile, setShowDetailMobile] = useState(false)
+
+  // Drill-in from another view (e.g. clicking an item in an order's equipment):
+  // select the item and, when a concrete unit was named, open its history.
+  useEffect(() => {
+    if (!inventoryFocus?.itemId) return
+    const item = inventory.find((i) => i.id === inventoryFocus.itemId)
+    if (item) {
+      setEntryType('items')
+      setSearch('')
+      setCategory('All')
+      setBrand('All')
+      setKind('All')
+      setSelectedId(item.id)
+      setShowDetailMobile(true)
+      if (inventoryFocus.unitId) {
+        const unit = (item.units || []).find(
+          (u) => u.id === inventoryFocus.unitId || u.barcode === inventoryFocus.unitId,
+        )
+        if (unit) setHistoryUnit(unit)
+      }
+    }
+    clearInventoryFocus()
+  }, [inventoryFocus, inventory, clearInventoryFocus])
 
   // Distinct brands present in the inventory (for the Brand filter).
   const brands = useMemo(

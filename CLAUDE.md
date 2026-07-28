@@ -229,6 +229,16 @@
 > Verified: reproduced (Canon filter wiped on tab switch), then after the fix the filter survives repeated
 > tab switches with no loader flash, 0 console errors. NOTE: an explicit mutation (e.g. edit order → hydrate)
 > still flashes the loader and would reset filters — that's a deliberate refetch, left as-is.
+> **FEATURE — drill into any item's history from anywhere it's shown.** New store action `focusInventory
+> ({ itemId, unitId? })` sets a transient `inventoryFocus` (+ `activeView:'inventory'`); Inventory.jsx
+> consumes it in an effect (selects the item, resets filters so it's visible, and if a unit was named opens
+> that unit's history). Wired the read-only inventory surfaces: an order's EQUIPMENT lines (Orders.jsx —
+> a-la-carte + kit-unit lines; the item name is now a link, unit-specific lines jump straight to the unit's
+> history) and the company card's "Sub-rented from them" gear (People.jsx). Kit-detail slots and scenario-list
+> lines already jumped to the item (within Inventory). Editing/workflow surfaces (BookingModal,
+> OrderEquipmentModal, KitStagingModal, PackingChecklistModal) are deliberately NOT linked — navigating away
+> mid-edit would lose work. `inventoryFocus` is not persisted (whitelist partialize). Frontend-only, no
+> migration. Verified in supabase mode: order line → item history, vendor card → item history, 0 console errors.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
