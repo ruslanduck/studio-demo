@@ -54,6 +54,8 @@ import {
   createSetForOrder as sbCreateSetForOrder,
   countSetsOn as sbCountSetsOn,
   setOrderLines as sbSetOrderLines,
+  setPackingSignoff as sbSetPackingSignoff,
+  clearPackingSignoff as sbClearPackingSignoff,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 
@@ -240,6 +242,7 @@ function buildSeedData() {
       companyName: companies.find((c) => c.id === o.company)?.name ?? null,
       setId: set?.id ?? null,
       setTitle: set?.title ?? o.setTitle ?? null,
+      packing: {}, // digital packing checklist sign-offs (6.2 / 6.5), by lineKey
       lines: o.lines.map(([itemId, quantity]) => ({
         itemId,
         itemName: byId[itemId]?.name ?? null,
@@ -1303,6 +1306,52 @@ export const useStore = create(
           orders: state.orders.map((o) => (o.id === orderId ? { ...o, lines: resolved } : o)),
         })
         return { ok: true }
+      },
+
+      // Digital packing checklist (6.2 / 6.5). Optimistic — the sign-off shows
+      // instantly and persists to Supabase in the background (a packing station
+      // shouldn't wait on a round-trip). Initials are the "who"; `at` is the when.
+      signPackingLine: (orderId, lineKey, slot, initials, itemName) => {
+        const ini = (initials || '').trim().toUpperCase()
+        if (!ini) return
+        const at = new Date().toISOString()
+        set({
+          orders: get().orders.map((o) =>
+            o.id !== orderId
+              ? o
+              : {
+                  ...o,
+                  packing: {
+                    ...(o.packing || {}),
+                    [lineKey]: { ...((o.packing || {})[lineKey] || {}), [slot]: { initials: ini, at } },
+                  },
+                },
+          ),
+        })
+        if (usingSupabase)
+          sbSetPackingSignoff(orderId, lineKey, slot, ini, itemName).catch((e) =>
+            console.error('packing sign-off failed:', e),
+          )
+      },
+
+      clearPackingSignoff: (orderId, lineKey, slot) => {
+        set({
+          orders: get().orders.map((o) =>
+            o.id !== orderId
+              ? o
+              : {
+                  ...o,
+                  packing: {
+                    ...(o.packing || {}),
+                    [lineKey]: { ...((o.packing || {})[lineKey] || {}), [slot]: null },
+                  },
+                },
+          ),
+        })
+        if (usingSupabase)
+          sbClearPackingSignoff(orderId, lineKey, slot).catch((e) =>
+            console.error('packing clear failed:', e),
+          )
       },
 
       // Scrapping an order leaves its Set alone (sets.order_id is ON DELETE SET

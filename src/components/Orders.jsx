@@ -34,9 +34,11 @@ import {
 import DateField from './DateField'
 import OrderEditorModal from './OrderEditorModal'
 import OrderEquipmentModal from './OrderEquipmentModal'
+import PackingChecklistModal from './PackingChecklistModal'
 import { buildEstimate, money } from '../lib/estimate'
 import { downloadEstimatePdf } from '../lib/estimatePdf'
 import { downloadPackingListPdf } from '../lib/packingListPdf'
+import { packingProgress } from '../lib/packing'
 
 // Orders / Estimates (epic #5, 5.1 + 5.2).
 //
@@ -93,6 +95,8 @@ export default function Orders() {
   const bookings = useStore((s) => s.bookings)
   const companies = useStore((s) => s.companies)
   const setOrderLines = useStore((s) => s.setOrderLines)
+  const signPackingLine = useStore((s) => s.signPackingLine)
+  const clearPackingSignoff = useStore((s) => s.clearPackingSignoff)
   const createOrder = useStore((s) => s.createOrder)
   const updateOrder = useStore((s) => s.updateOrder)
   const deleteOrder = useStore((s) => s.deleteOrder)
@@ -111,6 +115,7 @@ export default function Orders() {
   const [selectedId, setSelectedId] = useState(() => orders[0]?.id ?? null)
   const [editor, setEditor] = useState({ open: false, order: null })
   const [eqEditor, setEqEditor] = useState({ open: false, order: null })
+  const [checklistOpen, setChecklistOpen] = useState(false)
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
   // Highlight marks the first search term; matching itself is multi-term (5.7).
@@ -153,6 +158,17 @@ export default function Orders() {
   }
 
   const selected = orders.find((o) => o.id === selectedId) ?? null
+
+  // Built once and shared by the detail card, the estimate/packing PDFs and the
+  // digital checklist so they all read the same grouped lines.
+  const selectedBooking = useMemo(
+    () => bookings.find((b) => b.id === selected?.setId) ?? null,
+    [bookings, selected],
+  )
+  const selectedEstimate = useMemo(
+    () => (selected ? buildEstimate(selected, { inventory, kits, booking: selectedBooking }) : null),
+    [selected, inventory, kits, selectedBooking],
+  )
 
   const statuses = useMemo(() => [...new Set(orders.map((o) => o.status))], [orders])
 
@@ -405,29 +421,18 @@ export default function Orders() {
               </button>
               <OrderDetail
                 order={selected}
-                estimate={buildEstimate(selected, {
-                  inventory,
-                  kits,
-                  booking: bookings.find((b) => b.id === selected.setId) ?? null,
-                })}
+                estimate={selectedEstimate}
                 canManage={can(CAP.ORDER_MANAGE)}
                 onEdit={() => setEditor({ open: true, order: selected })}
                 onEditEquipment={() => setEqEditor({ open: true, order: selected })}
                 onSetStatus={(status) => updateOrder(selected.id, { status })}
                 onDownloadPdf={() =>
-                  downloadEstimatePdf(selected, {
-                    inventory,
-                    kits,
-                    booking: bookings.find((b) => b.id === selected.setId) ?? null,
-                  })
+                  downloadEstimatePdf(selected, { inventory, kits, booking: selectedBooking })
                 }
                 onDownloadPackingList={() =>
-                  downloadPackingListPdf(selected, {
-                    inventory,
-                    kits,
-                    booking: bookings.find((b) => b.id === selected.setId) ?? null,
-                  })
+                  downloadPackingListPdf(selected, { inventory, kits, booking: selectedBooking })
                 }
+                onOpenChecklist={() => setChecklistOpen(true)}
               />
             </>
           ) : (
@@ -467,6 +472,17 @@ export default function Orders() {
         onClose={() => setEqEditor({ open: false, order: null })}
         onSave={(id, lines) => setOrderLines(id, lines)}
       />
+
+      <PackingChecklistModal
+        open={checklistOpen && !!selected}
+        order={selected}
+        estimate={selectedEstimate}
+        onSign={(lineKey, slot, initials, itemName) =>
+          signPackingLine(selected.id, lineKey, slot, initials, itemName)
+        }
+        onClear={(lineKey, slot) => clearPackingSignoff(selected.id, lineKey, slot)}
+        onClose={() => setChecklistOpen(false)}
+      />
     </div>
   )
 }
@@ -481,7 +497,11 @@ function Row({ icon: Icon, label, children }) {
   )
 }
 
-function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDownloadPdf, onDownloadPackingList, onSetStatus }) {
+function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDownloadPdf, onDownloadPackingList, onOpenChecklist, onSetStatus }) {
+  const packProg = packingProgress(
+    estimate.groups.flatMap((g) => g.lines),
+    order.packing || {},
+  )
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -720,18 +740,40 @@ function OrderDetail({ order, estimate, canManage, onEdit, onEditEquipment, onDo
           {order.status === 'confirmed' ? (
             <>
               <p className="mt-1 text-xs text-slate-500">
-                Printable pull sheet — every assigned line with its quantity, plus three initial
-                boxes per line (two at sign-out, one at return).
+                Two forms of the same pull sheet: print a PDF, or run the digital checklist on the
+                iPad — three sign-offs per line (two at sign-out, one at return).
                 {estimate.lineCount === 0 && ' This order has no equipment yet.'}
               </p>
-              <button
-                type="button"
-                onClick={onDownloadPackingList}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-              >
-                <FileDown size={15} />
-                Download packing list (PDF)
-              </button>
+              {estimate.lineCount > 0 && (
+                <p className="mt-1.5 text-xs text-slate-500">
+                  <span className="font-medium text-slate-700">
+                    {packProg.out}/{packProg.total}
+                  </span>{' '}
+                  signed out ·{' '}
+                  <span className="font-medium text-slate-700">
+                    {packProg.ret}/{packProg.total}
+                  </span>{' '}
+                  returned
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={onOpenChecklist}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+                >
+                  <ClipboardList size={15} />
+                  Digital checklist
+                </button>
+                <button
+                  type="button"
+                  onClick={onDownloadPackingList}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                >
+                  <FileDown size={15} />
+                  Print PDF
+                </button>
+              </div>
             </>
           ) : (
             <p className="mt-1 text-xs text-amber-600">

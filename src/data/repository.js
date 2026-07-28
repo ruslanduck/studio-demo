@@ -711,6 +711,26 @@ export async function deleteCompany(id) {
 
 // Orders, used by 4.5 as the work-history source for company cards. Epic #5 owns
 // the orders module; a missing kind column or table degrades to [].
+// Packing sign-offs grouped by order id → { [lineKey]: { out1, out2, ret } },
+// each slot { initials, at } or null. Fetched separately (like repairs/usage)
+// so orders still load if the 6.2 migration hasn't run yet.
+async function getPackingSignoffs() {
+  const { data, error } = await supabase
+    .from('packing_signoffs')
+    .select('order_id, line_key, out1_initials, out1_at, out2_initials, out2_at, ret_initials, ret_at')
+  if (error) return {}
+  const map = {}
+  const slot = (ini, at) => (ini ? { initials: ini, at } : null)
+  for (const r of data || []) {
+    ;(map[r.order_id] ||= {})[r.line_key] = {
+      out1: slot(r.out1_initials, r.out1_at),
+      out2: slot(r.out2_initials, r.out2_at),
+      ret: slot(r.ret_initials, r.ret_at),
+    }
+  }
+  return map
+}
+
 export async function getOrders() {
   // Layered: the epic-5 shape first, then the 4.5 shape, then the stub — so a
   // database that hasn't run the newer migrations still renders history.
@@ -735,6 +755,8 @@ export async function getOrders() {
   if (error) ({ data, error } = await supabase.from('orders').select(withoutKind).order('ordered_at'))
   if (error) return []
 
+  const packing = await getPackingSignoffs()
+
   return (data || []).map((o) => ({
     id: o.id,
     number: o.order_number,
@@ -755,6 +777,7 @@ export async function getOrders() {
     photographer: o.photographer?.full_name ?? null,
     createdBy: o.creator?.full_name ?? null,
     createdAt: o.created_at ?? null,
+    packing: packing[o.id] || {},
     lines: (o.order_lines || []).map((l) => ({
       id: l.id ?? null,
       itemId: l.item?.id ?? null,
@@ -978,5 +1001,37 @@ export async function setOrderLines(orderId, lines) {
     }))
   if (!rows.length) return
   const { error } = await supabase.from('order_lines').insert(rows)
+  if (error) throw error
+}
+
+// Packing checklist sign-offs (6.2 / 6.5). Upsert one slot of a line; the
+// partial payload leaves the other two slots untouched on conflict.
+export async function setPackingSignoff(orderId, lineKey, slot, initials, itemName) {
+  const nowIso = new Date().toISOString()
+  const row = {
+    order_id: orderId,
+    line_key: lineKey,
+    item_name: itemName ?? null,
+    updated_at: nowIso,
+    [`${slot}_initials`]: initials,
+    [`${slot}_at`]: nowIso,
+  }
+  const { error } = await supabase
+    .from('packing_signoffs')
+    .upsert(row, { onConflict: 'order_id,line_key' })
+  if (error) throw error
+}
+
+export async function clearPackingSignoff(orderId, lineKey, slot) {
+  const row = {
+    order_id: orderId,
+    line_key: lineKey,
+    updated_at: new Date().toISOString(),
+    [`${slot}_initials`]: null,
+    [`${slot}_at`]: null,
+  }
+  const { error } = await supabase
+    .from('packing_signoffs')
+    .upsert(row, { onConflict: 'order_id,line_key' })
   if (error) throw error
 }

@@ -168,8 +168,24 @@
 > section shows a Download button ONLY when `status==='confirmed'`, else "confirm to generate its packing
 > list". Frontend-only, NO migration (generates from existing order lines). Verified headless (2-page
 > pagination, empty-order safe), PDF-byte content grep (all sections/sign columns/vendor present), and
-> browser UI gating (hold→hint, confirmed→button, click→no error). Next in #6: signature capture / digital
-> iPad checklist, Add-On packing lists, and the scanning page (scan-out/in log + close-order).
+> browser UI gating (hold→hint, confirmed→button, click→no error).
+> 6.3 vendor assignment on line items — ALREADY DELIVERED by 5.6 (per-line in-house/sub-rental switch +
+> vendor picker in OrderEquipmentModal, shown in the order detail and on the 6.1 packing PDF). Nothing new.
+> 6.2 sign-off initials + 6.5 PDF/digital checklist DONE (built together as the digital packing checklist)
+> — `20260803120000_packing_signoffs.sql` adds `packing_signoffs` (one row per line: two sign-out + one
+> return, each initials+timestamp). Keyed by a STABLE line signature `itemId::slotLabel::barcode`
+> (`src/lib/packing.js` `packingLineKey`) — NOT the order_line id, which is replaced wholesale on EQ edit.
+> `PackingChecklistModal` is the iPad/digital form beside the 6.1 PDF: per-line initial boxes (green when
+> signed, tooltip shows who+when), live "N/N signed out · N/N returned" progress, opened from the Orders
+> "Packing list" section (Digital checklist + Print PDF buttons, confirmed only). Store actions
+> `signPackingLine`/`clearPackingSignoff` are OPTIMISTIC (instant, background Supabase upsert — a packing
+> station shouldn't wait; the partial upsert leaves the other two slots untouched). `getOrders` attaches
+> `order.packing` from a separate try/caught fetch, so orders still load if the table is absent. No seed
+> (checklist starts empty; you sign live). Verified local: sign records initials+time, box greens,
+> persists, progress updates, clear un-signs others untouched, 0 console errors.
+> ⚠️ jsPDF was missing from node_modules (added in 5.4 after an older `npm ci`) → `npm install` after syncing.
+> Next in #6: 6.4 Add-On packing lists (day-of additions without rewriting the main list) + the scanning
+> page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
