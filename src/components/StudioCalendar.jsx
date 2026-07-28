@@ -20,6 +20,7 @@ import { studioLabel, studioColor } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import BookingModal from './BookingModal'
+import OrderEditorModal from './OrderEditorModal'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -49,14 +50,21 @@ function chipStyle(color) {
 export default function StudioCalendar() {
   const studios = useStore((s) => s.studios)
   const bookings = useStore((s) => s.bookings)
+  const photographers = useStore((s) => s.photographers)
   const selectedDate = useStore((s) => s.selectedDate)
   const setSelectedDate = useStore((s) => s.setSelectedDate)
   const calendarMode = useStore((s) => s.calendarMode)
   const setCalendarMode = useStore((s) => s.setCalendarMode)
+  const createOrder = useStore((s) => s.createOrder)
+  const openOrder = useStore((s) => s.openOrder)
   const can = useCan()
   const canCreate = can(CAP.BOOKING_CREATE)
 
+  // A shoot on the calendar IS an order: creating one opens the order editor
+  // (which books the Set), and clicking a shoot opens its order. The booking
+  // modal stays only as a fallback for legacy order-less shoots.
   const [modal, setModal] = useState({ open: false, booking: null, prefill: null })
+  const [orderEditor, setOrderEditor] = useState({ open: false, prefill: null })
 
   const refDate = useMemo(() => parseISO(selectedDate), [selectedDate])
 
@@ -71,7 +79,7 @@ export default function StudioCalendar() {
     for (const list of map.values()) {
       list.sort(
         (a, b) =>
-          a.startTime.localeCompare(b.startTime) ||
+          (a.startTime || '').localeCompare(b.startTime || '') ||
           String(a.studioId).localeCompare(String(b.studioId)),
       )
     }
@@ -94,11 +102,18 @@ export default function StudioCalendar() {
       ),
     )
 
+  // Create = a new order (booked onto this studio/day). The order starts on Hold
+  // and its Set lands on the calendar; equipment is added from the order.
   const openCreate = (studioId, iso) => {
     if (!canCreate) return
-    setModal({ open: true, booking: null, prefill: { studioId, date: iso } })
+    setOrderEditor({ open: true, prefill: { studioId, startsOn: iso } })
   }
-  const openEdit = (booking) => setModal({ open: true, booking, prefill: null })
+  // Click a shoot → open its order. A legacy shoot with no order still opens in
+  // the booking modal so it can be edited/deleted.
+  const openEdit = (booking) => {
+    if (booking.orderId) openOrder(booking.orderId)
+    else setModal({ open: true, booking, prefill: null })
+  }
   const closeModal = () => setModal((m) => ({ ...m, open: false }))
   const jumpToWeek = (day) => {
     setSelectedDate(format(day, 'yyyy-MM-dd'))
@@ -131,7 +146,7 @@ export default function StudioCalendar() {
               className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
             >
               <Plus size={16} />
-              New booking
+              New order
             </button>
           )}
           <button
@@ -185,6 +200,17 @@ export default function StudioCalendar() {
         onClose={closeModal}
         booking={modal.booking}
         prefill={modal.prefill}
+      />
+
+      {/* Create a shoot = create its order (books the Set onto the calendar). */}
+      <OrderEditorModal
+        open={orderEditor.open}
+        order={null}
+        prefill={orderEditor.prefill}
+        studios={studios}
+        photographers={photographers}
+        onClose={() => setOrderEditor({ open: false, prefill: null })}
+        onCreate={createOrder}
       />
     </div>
   )
@@ -293,7 +319,7 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
           <div
             key={day.iso}
             onClick={() => onOpenCreate(studioId, day.iso)}
-            title={`Add booking · ${studioLabel(studioId)} · ${day.iso}`}
+            title={`New order · ${studioLabel(studioId)} · ${day.iso}`}
             className={[
               'group relative min-h-[92px] cursor-pointer space-y-1 border-b border-r border-slate-200 p-1.5 transition hover:bg-slate-50/70',
               colTint(day),

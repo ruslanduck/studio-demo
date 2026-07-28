@@ -225,7 +225,7 @@ export async function getBookings() {
   const { data, error } = await supabase
     .from('sets')
     .select(
-      `id, title, studio_id, date, start_time, end_time, status, color, notes,
+      `id, title, studio_id, date, start_time, end_time, status, color, notes, order_id,
        created_by, creator:profiles!created_by ( full_name ),
        set_units ( unit_id ),
        roster_entries ( role, contact:contacts ( full_name ) )`,
@@ -246,6 +246,9 @@ export async function getBookings() {
       status: s.status,
       color: s.color || studioColor(s.studio_id),
       notes: s.notes,
+      // The set's driving (client) order, so the calendar can open it — a shoot
+      // IS its order. Null for a legacy order-less booking.
+      orderId: s.order_id || null,
       unitIds: (s.set_units || []).map((su) => su.unit_id),
       photographer: byRole('photographer'),
       model: byRole('model'),
@@ -877,6 +880,10 @@ export async function createSetForOrder(orderId, { jobName, studioId, date }) {
       title: jobName.trim(),
       studio_id: studioId,
       date,
+      // Default working hours so the calendar chip has a time range (the order
+      // editor doesn't collect times; the grid is studio×day, not hourly).
+      start_time: '09:00',
+      end_time: '18:00',
       status: 'active',
       order_id: orderId,
     })

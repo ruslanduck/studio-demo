@@ -635,6 +635,16 @@ export const useStore = create(
       },
       clearInventoryFocus: () => set({ inventoryFocus: null }),
 
+      // Cross-view drill-in for orders: a shoot on the calendar IS its order, so
+      // clicking it opens that order in the Orders view. Not persisted; cleared
+      // once the Orders view consumes it.
+      orderFocus: null, // { orderId, ts } | null
+      openOrder: (orderId) => {
+        if (!orderId) return
+        set({ orderFocus: { orderId, ts: Date.now() }, activeView: 'orders', sidebarOpen: false })
+      },
+      clearOrderFocus: () => set({ orderFocus: null }),
+
       // Mobile/tablet off-canvas sidebar drawer.
       sidebarOpen: false,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),

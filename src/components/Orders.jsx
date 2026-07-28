@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Search,
   Plus,
@@ -103,6 +103,8 @@ export default function Orders() {
   const createOrder = useStore((s) => s.createOrder)
   const updateOrder = useStore((s) => s.updateOrder)
   const deleteOrder = useStore((s) => s.deleteOrder)
+  const orderFocus = useStore((s) => s.orderFocus)
+  const clearOrderFocus = useStore((s) => s.clearOrderFocus)
   const can = useCan()
 
   const [search, setSearch] = useState('')
@@ -122,6 +124,17 @@ export default function Orders() {
   const [addonEqId, setAddonEqId] = useState(null) // add-on being equipment-edited
   const [addonChecklistId, setAddonChecklistId] = useState(null) // add-on whose checklist is open
   const [showDetailMobile, setShowDetailMobile] = useState(false)
+
+  // Opened from the calendar (a shoot IS its order): select that order + show
+  // its detail on mobile.
+  useEffect(() => {
+    if (!orderFocus?.orderId) return
+    if (orders.some((o) => o.id === orderFocus.orderId)) {
+      setSelectedId(orderFocus.orderId)
+      setShowDetailMobile(true)
+    }
+    clearOrderFocus()
+  }, [orderFocus, orders, clearOrderFocus])
 
   // Highlight marks the first search term; matching itself is multi-term (5.7).
   const query = search.trim().toLowerCase().split(/\s+/)[0] ?? ''

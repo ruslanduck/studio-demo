@@ -239,6 +239,20 @@
 > OrderEquipmentModal, KitStagingModal, PackingChecklistModal) are deliberately NOT linked — navigating away
 > mid-edit would lose work. `inventoryFocus` is not persisted (whitelist partialize). Frontend-only, no
 > migration. Verified in supabase mode: order line → item history, vendor card → item history, 0 console errors.
+> **CHANGE — the calendar is order-centric (a shoot IS its order).** The Studio Calendar used to create/edit
+> its own bare bookings via BookingModal, separate from Orders — so you could make a calendar entry with no
+> order (the stray "TEST" shoot). Now: the "New booking" button is **"New order"** and clicking it (or an empty
+> cell) opens the SAME `OrderEditorModal` in place on the calendar — `createOrder` builds the Set, so the shoot
+> lands on the grid (new Sets default to 09:00–18:00). Clicking a shoot **opens its order** in the Orders view
+> (store `openOrder` → transient `orderFocus`, consumed by Orders.jsx like `focusInventory`). A legacy
+> order-less shoot still opens in BookingModal (kept only as the fallback) so it can be edited/deleted.
+> `getBookings` now selects `order_id` → `booking.orderId` (was missing in supabase mode, so chips couldn't
+> find their order). ⚠️ Fixed a latent crash surfaced by this: `createSetForOrder` never set
+> `start_time`/`end_time`, so an order-created Set had null times and the calendar's `a.startTime.localeCompare`
+> threw — added default times + made the sort null-safe (`(a.startTime||'')`). Frontend-only, no migration.
+> Verified in supabase mode: New order from calendar → Hold order + shoot on grid; chip → its order; order-less
+> fallback → BookingModal; 0 console errors. NOTE: deleting an order leaves its shoot on the calendar
+> (`sets.order_id` ON DELETE SET NULL) as an order-less booking — existing "the shoot stays booked" behaviour.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
