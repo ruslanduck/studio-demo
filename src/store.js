@@ -638,7 +638,20 @@ export const useStore = create(
       initAuth: () => {
         if (!usingSupabase) return
         supabase.auth.onAuthStateChange((_event, session) => {
+          const prev = get().session
           set({ session })
+          // Token refreshes and tab-focus re-fires (supabase re-validates the
+          // session when the tab becomes visible) land here too. Re-fetching the
+          // profile + re-hydrating on each one flashes the full-screen loader,
+          // which unmounts the active view and wipes its in-view filters. So only
+          // (re)load when the signed-in user actually changed — first load, a real
+          // sign-in, or sign-out. A refresh for the already-loaded user is a no-op.
+          const sameUser =
+            prev?.user?.id && session?.user?.id && prev.user.id === session.user.id
+          if (session && sameUser && get().profile) {
+            if (!get().authReady) set({ authReady: true })
+            return
+          }
           // Defer supabase calls out of the auth callback (avoids a lock deadlock).
           setTimeout(async () => {
             if (session) {

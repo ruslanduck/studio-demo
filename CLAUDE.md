@@ -219,6 +219,16 @@
 > 2 sub-rental Asteras excluded), hold↔confirm toggles inventory live, build clean, 0 console errors.
 > Note: supabase LIVE confirm→reserve (writing set_units on confirm in prod) is still a gap — the reseed makes
 > the initial prod state coherent, which is what the demo needs.
+> **FIX — filters reset on tab refocus (supabase mode).** Switching away from the tab and back reloaded the
+> app and wiped in-view filters. Cause: `supabase.auth.onAuthStateChange` fires on token-refresh / tab-focus
+> re-validation too, and the handler re-fetched the profile + `hydrate()` every time; `hydrate` sets
+> `loading:true`, and App.jsx swaps the whole view for a full-screen loader — unmounting Inventory/Orders/People
+> and destroying their local `useState` filters. Fix (`store.js` `initAuth`): only (re)load when the signed-in
+> user actually changed (first load / real sign-in / sign-out); a refresh for the already-loaded user is a no-op
+> (guarded by comparing `prev.session.user.id` to the new one + `get().profile`). Frontend-only, no migration.
+> Verified: reproduced (Canon filter wiped on tab switch), then after the fix the filter survives repeated
+> tab switches with no loader flash, 0 console errors. NOTE: an explicit mutation (e.g. edit order → hydrate)
+> still flashes the loader and would reset filters — that's a deliberate refetch, left as-is.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
