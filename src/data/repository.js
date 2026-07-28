@@ -113,10 +113,23 @@ export async function getScenarioLists() {
 // a missing `repairs` relation degrades to "no repairs" rather than failing
 // the whole query.
 async function getRepairsByUnit() {
-  const { data, error } = await supabase
+  // `created_by` / `returned_by` were stored from the start (the second by a DB
+  // trigger) but never selected, so the UI could never say who sent a unit out
+  // or who took it back. Embedded here under two distinct aliases.
+  const withActors = `id, unit_id, vendor, issue, sent_at, returned_at, resolution,
+     sender:profiles!created_by ( full_name ),
+     returner:profiles!returned_by ( full_name )`
+  let { data, error } = await supabase
     .from('repairs')
-    .select('id, unit_id, vendor, issue, sent_at, returned_at, resolution')
+    .select(withActors)
     .order('sent_at', { ascending: false })
+  if (error) {
+    // Pre-2.6 shape (or no profiles): fall back to the plain columns.
+    ;({ data, error } = await supabase
+      .from('repairs')
+      .select('id, unit_id, vendor, issue, sent_at, returned_at, resolution')
+      .order('sent_at', { ascending: false }))
+  }
   if (error) return {} // table absent / not yet migrated → no repairs
   const map = {}
   for (const r of data || []) {
@@ -127,6 +140,8 @@ async function getRepairsByUnit() {
       sentAt: r.sent_at,
       returnedAt: r.returned_at,
       resolution: r.resolution,
+      sentBy: r.sender?.full_name ?? null,
+      returnedBy: r.returner?.full_name ?? null,
     })
   }
   return map
@@ -135,10 +150,19 @@ async function getRepairsByUnit() {
 // Usage events grouped by item id, newest first. Fetched separately (like
 // repairs) so inventory still loads if the 2.7 migration hasn't run yet.
 async function getUsageByItem() {
-  const { data, error } = await supabase
+  // Same story as repairs: `created_by` was recorded and thrown away on read.
+  const withActor = `inventory_item_id, job_title, studio_id, quantity, used_on,
+     logger:profiles!created_by ( full_name )`
+  let { data, error } = await supabase
     .from('item_usage')
-    .select('inventory_item_id, job_title, studio_id, quantity, used_on')
+    .select(withActor)
     .order('used_on', { ascending: false })
+  if (error) {
+    ;({ data, error } = await supabase
+      .from('item_usage')
+      .select('inventory_item_id, job_title, studio_id, quantity, used_on')
+      .order('used_on', { ascending: false }))
+  }
   if (error) return {} // table absent / not yet migrated → no usage
   const map = {}
   for (const u of data || []) {
@@ -147,6 +171,7 @@ async function getUsageByItem() {
       studioId: u.studio_id,
       quantity: u.quantity,
       usedOn: u.used_on,
+      loggedBy: u.logger?.full_name ?? null,
     })
   }
   return map
@@ -371,6 +396,104 @@ export async function updateBooking(setId, changes) {
 export async function deleteBooking(setId) {
   const { error } = await supabase.from('sets').delete().eq('id', setId)
   if (error) throw error
+}
+
+// --- activity log ----------------------------------------------------------
+//
+// `events` was already an append-only history with an actor and timeline
+// indexes, fed by a trigger on set_units and read by nobody. These two turn it
+// into the app's activity log.
+//
+// Writing NEVER blocks or fails the action it describes: a missing migration (or
+// a missing INSERT policy) degrades to "no history", not a broken save. The
+// actor is passed in rather than defaulted, because the column has no default —
+// the RLS check (actor_id = auth.uid()) is what stops it being spoofed.
+export async function logEvent(
+  { eventType, entityType, entityId, unitId = null, setId = null, data = {} } = {},
+  actorId = null,
+) {
+  if (!eventType || !entityType || !entityId) return false
+  try {
+    const { error } = await supabase.from('events').insert({
+      event_type: eventType,
+      entity_type: entityType,
+      entity_id: entityId,
+      unit_id: unitId,
+      set_id: setId,
+      actor_id: actorId,
+      data,
+    })
+    if (error) throw error
+    return true
+  } catch (e) {
+    console.warn('activity log skipped:', e.message)
+    return false
+  }
+}
+
+// One entity's history, newest first, with the actor resolved to a name.
+export async function getEvents({ entityType, entityId, limit = 60 } = {}) {
+  if (!entityType || !entityId) return []
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, occurred_at, event_type, entity_type, entity_id, unit_id, set_id, data, actor:profiles!actor_id ( full_name )')
+      .eq('entity_type', entityType)
+      .eq('entity_id', entityId)
+      .order('occurred_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return (data || []).map(mapEventRow)
+  } catch {
+    return [] // table/FK absent → no history rather than a broken card
+  }
+}
+
+// Events for MANY units at once (an item's units), so the item card can show
+// unit-level activity without a query per unit.
+export async function getEventsForUnits(unitIds, limit = 60) {
+  const ids = [...new Set(unitIds || [])].filter(Boolean)
+  if (!ids.length) return []
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, occurred_at, event_type, entity_type, entity_id, unit_id, set_id, data, actor:profiles!actor_id ( full_name )')
+      .in('unit_id', ids)
+      .order('occurred_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    return (data || []).map(mapEventRow)
+  } catch {
+    return []
+  }
+}
+
+function mapEventRow(e) {
+  return {
+    id: e.id,
+    at: e.occurred_at,
+    type: e.event_type,
+    entityType: e.entity_type,
+    entityId: e.entity_id,
+    unitId: e.unit_id,
+    setId: e.set_id,
+    actorName: e.actor?.full_name ?? null,
+    data: e.data || {},
+  }
+}
+
+// Stamp who last changed an order's equipment (the denormalised headline the
+// order list and card read; `events` keeps the full trail).
+export async function touchOrderEquipment(orderId, actorId) {
+  try {
+    const { error } = await supabase
+      .from('orders')
+      .update({ eq_updated_by: actorId ?? null, eq_updated_at: new Date().toISOString() })
+      .eq('id', orderId)
+    if (error) throw error
+  } catch (e) {
+    console.warn('eq attribution skipped:', e.message)
+  }
 }
 
 export async function toggleOwnership(unitId, next) {
@@ -798,16 +921,22 @@ function mapLineRow(l) {
 // Add-on packing lists grouped by order id (6.4). Fetched separately so orders
 // still load if the 6.4 migration hasn't run yet.
 async function getAddonsByOrder() {
-  const { data, error } = await supabase
-    .from('order_addons')
-    .select(
-      `id, order_id, label, created_at,
-       addon_lines ( id, quantity, kit_id, unit_id, slot_label, source, vendor_company_id,
+  const lines = `addon_lines ( id, quantity, kit_id, unit_id, slot_label, source, vendor_company_id,
                      item:inventory_items ( id, name, day_rate ),
                      unit:units ( id, barcode ),
-                     vendor:companies!vendor_company_id ( id, name ) )`,
-    )
+                     vendor:companies!vendor_company_id ( id, name ) )`
+  // `created_by` was stored and never read — an add-on is the most day-of,
+  // most disputable action in the app, so it should say who added it.
+  let { data, error } = await supabase
+    .from('order_addons')
+    .select(`id, order_id, label, created_at, author:profiles!created_by ( full_name ), ${lines}`)
     .order('created_at')
+  if (error) {
+    ;({ data, error } = await supabase
+      .from('order_addons')
+      .select(`id, order_id, label, created_at, ${lines}`)
+      .order('created_at'))
+  }
   if (error) return {}
   const map = {}
   for (const a of data || []) {
@@ -815,6 +944,7 @@ async function getAddonsByOrder() {
       id: a.id,
       label: a.label,
       createdAt: a.created_at,
+      createdBy: a.author?.full_name ?? null,
       lines: (a.addon_lines || []).map(mapLineRow),
     })
   }
@@ -824,7 +954,7 @@ async function getAddonsByOrder() {
 export async function getOrders() {
   // Layered: the epic-5 shape first, then the 4.5 shape, then the stub — so a
   // database that hasn't run the newer migrations still renders history.
-  const full = `id, order_number, status, ordered_at, kind, company_id,
+  const fullNoEq = `id, order_number, status, ordered_at, kind, company_id,
      job_name, studio_id, starts_on, ends_on, po_number, created_at,
      photographer:contacts!photographer_contact_id ( id, full_name ),
      creator:profiles!created_by ( full_name ),
@@ -834,6 +964,11 @@ export async function getOrders() {
                    unit:units ( id, barcode ),
                    vendor:companies!vendor_company_id ( id, name ) ),
      sets ( id, title, date )`
+  // Who last changed the equipment (a second, distinct alias on profiles). Its
+  // own layer so a database without the activity-log migration falls back to the
+  // shape WITH creator/created_at instead of skipping straight past it — that
+  // used to turn a real author into "unknown".
+  const full = `${fullNoEq}, eq_updated_at, eq_editor:profiles!eq_updated_by ( full_name )`
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
      order_lines ( quantity, item:inventory_items ( id, name ) ),
@@ -841,6 +976,7 @@ export async function getOrders() {
   const withoutKind = withKind.replace('kind, ', '')
 
   let { data, error } = await supabase.from('orders').select(full).order('ordered_at')
+  if (error) ({ data, error } = await supabase.from('orders').select(fullNoEq).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withKind).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withoutKind).order('ordered_at'))
   if (error) return []
@@ -867,6 +1003,9 @@ export async function getOrders() {
     photographer: o.photographer?.full_name ?? null,
     createdBy: o.creator?.full_name ?? null,
     createdAt: o.created_at ?? null,
+    // Who last touched this order's equipment (null on a pre-activity-log DB).
+    eqUpdatedBy: o.eq_editor?.full_name ?? null,
+    eqUpdatedAt: o.eq_updated_at ?? null,
     packing: packing[o.id] || {},
     addons: addonsByOrder[o.id] || [],
     lines: (o.order_lines || []).map(mapLineRow),
@@ -921,9 +1060,17 @@ export async function deleteOrder(id) {
 // hold clears them. Deleting the old rows fires the 'released' event trigger and
 // inserting fires 'reserved', so the audit log reads as a real release/re-take.
 export async function setReservationsForSet(setId, unitIds, { from = null, to = null } = {}) {
+  const wanted = [...new Set(unitIds || [])]
+  // No-op guard. Every delete+insert here fires the set_units trigger, so a
+  // re-save that changes nothing would otherwise spray a released+reserved pair
+  // per unit into the activity log (and churn the DB for nothing).
+  const { data: current } = await supabase.from('set_units').select('unit_id').eq('set_id', setId)
+  const held = new Set((current || []).map((r) => r.unit_id))
+  if (held.size === wanted.length && wanted.every((id) => held.has(id))) return wanted.length
+
   const { error: delErr } = await supabase.from('set_units').delete().eq('set_id', setId)
   if (delErr) throw delErr
-  const rows = [...new Set(unitIds || [])].map((unit_id) => ({
+  const rows = wanted.map((unit_id) => ({
     set_id: setId,
     unit_id,
     status: 'reserved',

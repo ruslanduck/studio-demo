@@ -12,6 +12,8 @@ import WorkHistoryModal, { UsageStats } from './WorkHistoryModal'
 import KitEditorModal from './KitEditorModal'
 import ScenarioEditorModal from './ScenarioEditorModal'
 import UnitEditorModal from './UnitEditorModal'
+import ActivityList from './ActivityList'
+import { useActivity } from '../lib/useActivity'
 
 // Render `text` with the first occurrence of `query` (already lowercased) wrapped
 // in a highlight. Used to show what a name / barcode / serial search matched.
@@ -1105,11 +1107,40 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
             })}
           </tbody>
         </table>
+
+        {/* Who changed what on this item — inside the SAME scroll container as
+            the table, so it scrolls with it instead of fighting flex-1. */}
+        <ItemActivity item={item} />
       </div>
       ) : (
-        <NonBarcodedBody item={item} onShowWorkHistory={onShowWorkHistory} />
+        <>
+          <NonBarcodedBody item={item} onShowWorkHistory={onShowWorkHistory} />
+          <div className="shrink-0 overflow-auto">
+            <ItemActivity item={item} />
+          </div>
+        </>
       )}
     </>
+  )
+}
+
+// The item's own history: item edits, unit add/edit/write-off, barcode,
+// ownership, vendor, repairs — plus each unit's reservations.
+function ItemActivity({ item }) {
+  const unitIds = useMemo(() => (item.units || []).map((u) => u.id), [item.units])
+  const { events, loading } = useActivity({ itemId: item.id, unitIds })
+  return (
+    <section className="border-t border-slate-200 px-5 py-4">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        Activity
+      </h4>
+      <ActivityList
+        events={events}
+        loading={loading}
+        limit={5}
+        emptyText="No changes recorded for this item yet."
+      />
+    </section>
   )
 }
 

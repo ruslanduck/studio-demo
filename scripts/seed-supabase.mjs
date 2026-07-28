@@ -387,6 +387,19 @@ async function main() {
     }
   }
 
+  // Attribution + activity history. A wipe/reseed writes everything as
+  // service_role, so auth.uid() is null and every author/actor column comes out
+  // blank — which the UI now shows ("seed data", "Not recorded"). The backfill
+  // script fills them in and narrates a believable history, and it is idempotent,
+  // so running it here keeps a fresh reseed as rich as a backfilled one.
+  console.log('Attribution + activity…')
+  try {
+    const { backfillAttribution } = await import('./backfill-attribution.mjs')
+    await backfillAttribution(db)
+  } catch (e) {
+    console.log(`  skipped: ${e.message}`)
+  }
+
   const totalUnits = Object.values(itemUnits).reduce((n, a) => n + a.length, 0)
   console.log('\nDone:')
   console.log(`  companies: ${companyRows.length}, contacts: ${contactRows.length}`)

@@ -34,6 +34,9 @@ import {
 } from '../lib/orderSearch'
 import DateField from './DateField'
 import OrderEditorModal from './OrderEditorModal'
+import ActivityList from './ActivityList'
+import { useActivity } from '../lib/useActivity'
+import { orderFeed } from '../lib/activity'
 import OrderEquipmentModal from './OrderEquipmentModal'
 import PackingChecklistModal from './PackingChecklistModal'
 import { buildEstimate, money } from '../lib/estimate'
@@ -626,6 +629,7 @@ function OrderDetail({
   reserveNote,
 }) {
   const peek = useStore((s) => s.peek)
+  const { events: activityEvents, loading: activityLoading } = useActivity({ orderId: order.id })
   // Resolve the typed photographer name to a real person so it can be opened.
   const peopleList = useStore((s) => s.people)
   const photographerPerson = order.photographer
@@ -769,16 +773,37 @@ function OrderDetail({
           )}
         </section>
 
-        {/* 5.2 — who raised it and when */}
+        {/* 5.2 who raised it + who last touched the gear (the attribution block) */}
         <section className="space-y-1.5">
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Raised by
+            Attribution
           </h4>
           <Row icon={UserRound} label="Created by">
-            {order.createdBy || <span className="text-slate-400">unknown</span>}
+            {order.createdBy || (
+              // Null means the seed script raised it, not a mystery — say so.
+              <span className="text-slate-400">seed data</span>
+            )}
           </Row>
           <Row icon={Clock3} label="Created">
-            {order.createdAt ? String(order.createdAt).slice(0, 10) : '—'}
+            {order.createdAt ? new Date(order.createdAt).toLocaleString() : '—'}
+          </Row>
+          {/* The question this whole block exists to answer. */}
+          <Row icon={Boxes} label="Equipment by">
+            {order.eqUpdatedBy ? (
+              <>
+                {order.eqUpdatedBy}
+                {order.eqUpdatedAt && (
+                  <span className="text-slate-400">
+                    {' · '}
+                    {new Date(order.eqUpdatedAt).toLocaleString()}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-slate-400">
+                {estimate.lineCount > 0 ? 'not recorded yet' : 'no equipment added yet'}
+              </span>
+            )}
           </Row>
         </section>
 
@@ -1073,6 +1098,20 @@ function OrderDetail({
             )}
           </section>
         )}
+
+        {/* Who changed what on this order. Reservation churn is filtered out —
+            confirming rewrites every set_units row, which would bury the feed. */}
+        <section>
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Activity
+          </h4>
+          <ActivityList
+            events={orderFeed(activityEvents)}
+            loading={activityLoading}
+            limit={6}
+            emptyText="No changes recorded yet."
+          />
+        </section>
       </div>
     </>
   )

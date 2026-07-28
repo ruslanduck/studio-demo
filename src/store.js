@@ -23,6 +23,10 @@ import {
   toggleOwnership as sbToggleOwnership,
   setUnitBarcode as sbSetUnitBarcode,
   setReservationsForSet as sbSetReservationsForSet,
+  logEvent as sbLogEvent,
+  getEvents as sbGetEvents,
+  getEventsForUnits as sbGetEventsForUnits,
+  touchOrderEquipment as sbTouchOrderEquipment,
   addUnits as sbAddUnits,
   updateUnit as sbUpdateUnit,
   deleteUnit as sbDeleteUnit,
@@ -66,8 +70,12 @@ import {
 } from './data/repository'
 import { supabase } from './lib/supabase'
 import { reservedUnitsForOrder } from './lib/availability'
+import { EVENT, diffOrderLines } from './lib/activity'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
+
+// Local demo mode has no auth, so activity is attributed to the machine's user.
+const LOCAL_ACTOR = 'Demo user'
 
 // Build a fresh copy of the seeded data: clone the inventory, resolve booking
 // dates to the current week, and reserve units (status -> checked_out,
@@ -685,6 +693,67 @@ export const useStore = create(
       },
       clearOrderFocus: () => set({ orderFocus: null }),
 
+      // --- activity log: who did what ---------------------------------------
+      //
+      // One entry point for every action worth attributing. In Supabase mode it
+      // appends to the `events` table (actor = the signed-in user, enforced by
+      // RLS); in local mode there is no DB, so entries go into a persisted array
+      // and the same UI reads them. Logging is FIRE-AND-FORGET: it must never
+      // block or fail the action it describes.
+      activity: [], // local mode only: [{ id, at, type, entityType, entityId, unitId, actorName, data }]
+      // Bumped on every write so an open card refetches its feed. NOT persisted,
+      // and deliberately not keyed on `orders` — that changes on every quiet
+      // hydrate and would refetch constantly.
+      activityVersion: 0,
+
+      logActivity: ({ type, entityType, entityId, unitId = null, setId = null, data = {} } = {}) => {
+        if (!type || !entityType || !entityId) return
+        const state = get()
+        set({ activityVersion: state.activityVersion + 1 })
+        if (usingSupabase) {
+          sbLogEvent(
+            { eventType: type, entityType, entityId, unitId, setId, data },
+            state.session?.user?.id ?? null,
+          ).catch(() => {})
+          return
+        }
+        // Local demo: whoever is at the machine. There's no auth in this mode.
+        const entry = {
+          id: `act-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`,
+          at: new Date().toISOString(),
+          type,
+          entityType,
+          entityId,
+          unitId,
+          setId,
+          actorName: state.profile?.full_name || LOCAL_ACTOR,
+          data,
+        }
+        set({ activity: [entry, ...state.activity].slice(0, 500) })
+      },
+
+      // One entity's history, newest first. Supabase mode fetches on demand (the
+      // caller holds the result in state); local mode filters the array.
+      activityFor: (entityType, entityId) =>
+        get().activity.filter((e) => e.entityType === entityType && e.entityId === entityId),
+
+      // Same for a set of units (an item's units), used by the item card.
+      activityForUnits: (unitIds) => {
+        const ids = new Set((unitIds || []).filter(Boolean))
+        return get().activity.filter((e) => e.unitId && ids.has(e.unitId))
+      },
+
+      // Supabase-mode fetchers, so a card can pull its own history.
+      fetchActivity: async (entityType, entityId) =>
+        usingSupabase
+          ? await sbGetEvents({ entityType, entityId })
+          : get().activityFor(entityType, entityId),
+
+      fetchActivityForUnits: async (unitIds) =>
+        usingSupabase
+          ? await sbGetEventsForUnits(unitIds)
+          : get().activityForUnits(unitIds),
+
       // --- peek stack: look at related data WITHOUT leaving the page ---------
       //
       // Anything related is clickable, and clicking it opens a card layered over
@@ -840,6 +909,9 @@ export const useStore = create(
       // Optimistic in both modes; persisted to Supabase in the background.
       toggleOwnership: (itemId, unitId) => {
         const state = get()
+        const before = state.inventory
+          .find((i) => i.id === itemId)
+          ?.units?.find((u) => u.id === unitId)
         let next = 'owned'
         const inventory = state.inventory.map((item) =>
           item.id !== itemId
@@ -859,6 +931,13 @@ export const useStore = create(
               },
         )
         set({ inventory })
+        get().logActivity({
+          type: EVENT.UNIT_OWNERSHIP,
+          entityType: 'item',
+          entityId: itemId,
+          unitId,
+          data: { from: before?.ownership ?? null, to: next, barcode: before?.barcode ?? null },
+        })
         if (usingSupabase) {
           sbToggleOwnership(unitId, next).catch((e) =>
             console.error('toggleOwnership failed:', e),
@@ -903,6 +982,9 @@ export const useStore = create(
           item.units?.some((u) => u.id !== unitId && u.barcode === code),
         )
         if (clash) return { error: `#${code} is already used by another unit.` }
+        const wasCode = state.inventory
+          .find((i) => i.id === itemId)
+          ?.units?.find((u) => u.id === unitId)?.barcode ?? null
         const inventory = state.inventory.map((item) =>
           item.id !== itemId
             ? item
@@ -912,6 +994,13 @@ export const useStore = create(
               },
         )
         set({ inventory })
+        get().logActivity({
+          type: EVENT.UNIT_BARCODE_SET,
+          entityType: 'item',
+          entityId: itemId,
+          unitId,
+          data: { from: wasCode, to: code },
+        })
         if (usingSupabase) {
           sbSetUnitBarcode(unitId, code).catch((e) => console.error('setUnitBarcode failed:', e))
         }
@@ -974,15 +1063,28 @@ export const useStore = create(
           repairs: [],
         }))
 
+        // One event per physical copy registered — the item card's feed.
+        const logAdds = () => {
+          for (const u of units)
+            get().logActivity({
+              type: EVENT.UNIT_ADDED,
+              entityType: 'item',
+              entityId: itemId,
+              data: { barcode: u.barcode, serial: u.serial, itemName: item.name },
+            })
+        }
+
         if (usingSupabase) {
           try {
             await sbAddUnits(itemId, units)
           } catch (e) {
             return { error: e.message }
           }
+          logAdds()
           await get().hydrate({ quiet: true })
           return { ok: true, count: units.length }
         }
+        logAdds()
         set({
           inventory: state.inventory.map((it) =>
             it.id === itemId ? { ...it, units: [...it.units, ...units] } : it,
@@ -1003,15 +1105,32 @@ export const useStore = create(
         )
         if (clash) return { error: `#${code} is already used by another unit.` }
 
+        const was = state.inventory
+          .find((i) => i.id === itemId)
+          ?.units?.find((u) => u.id === unitId)
+        const logEdit = () =>
+          get().logActivity({
+            type: EVENT.UNIT_UPDATED,
+            entityType: 'item',
+            entityId: itemId,
+            unitId,
+            data: {
+              from: { barcode: was?.barcode ?? null, serial: was?.serial ?? null },
+              to: { barcode: code, serial: ser },
+            },
+          })
+
         if (usingSupabase) {
           try {
             await sbUpdateUnit(unitId, { barcode: code, serial: ser })
           } catch (e) {
             return { error: e.message }
           }
+          logEdit()
           await get().hydrate({ quiet: true })
           return { ok: true }
         }
+        logEdit()
         set({
           inventory: state.inventory.map((it) =>
             it.id !== itemId
@@ -1046,15 +1165,28 @@ export const useStore = create(
             error: `#${unit.barcode} is the fixed unit of kit “${pinnedBy.name}”. Change that slot first.`,
           }
 
+        // Logged BEFORE the delete so the barcode/serial can still be read — the
+        // event has to stay readable after the unit is gone.
+        const logWriteOff = () =>
+          get().logActivity({
+            type: EVENT.UNIT_WRITTEN_OFF,
+            entityType: 'item',
+            entityId: itemId,
+            unitId,
+            data: { barcode: unit.barcode, serial: unit.serial, itemName: item?.name ?? null },
+          })
+
         if (usingSupabase) {
           try {
             await sbDeleteUnit(unitId)
           } catch (e) {
             return { error: e.message }
           }
+          logWriteOff()
           await get().hydrate({ quiet: true })
           return { ok: true }
         }
+        logWriteOff()
         const inventory = state.inventory.map((it) =>
           it.id === itemId ? { ...it, units: it.units.filter((u) => u.id !== unitId) } : it,
         )
@@ -1071,11 +1203,27 @@ export const useStore = create(
       // Send a unit out for repair. Opens a repair entry; the unit becomes
       // 'in_repair' (unavailable) until it's returned.
       sendToRepair: async (itemId, unitId, details = {}) => {
+        const barcodeOf = (uid) =>
+          get()
+            .inventory.find((i) => i.id === itemId)
+            ?.units?.find((u) => u.id === uid)?.barcode ?? null
+        const logOut = (barcode) =>
+          get().logActivity({
+            type: EVENT.UNIT_REPAIR_OUT,
+            entityType: 'item',
+            entityId: itemId,
+            unitId,
+            data: { vendor: details.vendor ?? null, issue: details.issue ?? null, barcode },
+          })
+
         if (usingSupabase) {
+          const barcode = barcodeOf(unitId)
           await sbSendToRepair(unitId, details)
+          logOut(barcode)
           await get().hydrate({ quiet: true })
           return
         }
+        logOut(barcodeOf(unitId))
         const state = get()
         const repair = {
           id: `rep-${Date.now().toString(36)}`,
@@ -1103,11 +1251,27 @@ export const useStore = create(
       // Close a unit's open repair (returned date + resolution). The unit frees
       // up unless it's still reserved by an active booking.
       returnFromRepair: async (itemId, unitId, repairId, details = {}) => {
+        const logBack = () =>
+          get().logActivity({
+            type: EVENT.UNIT_REPAIR_BACK,
+            entityType: 'item',
+            entityId: itemId,
+            unitId,
+            data: {
+              resolution: details.resolution ?? null,
+              barcode:
+                get()
+                  .inventory.find((i) => i.id === itemId)
+                  ?.units?.find((u) => u.id === unitId)?.barcode ?? null,
+            },
+          })
         if (usingSupabase) {
           await sbReturnFromRepair(repairId, details)
+          logBack()
           await get().hydrate({ quiet: true })
           return
         }
+        logBack()
         const state = get()
         const returnedAt = details.returnedAt || format(new Date(), 'yyyy-MM-dd')
         const inventory = state.inventory.map((item) =>
@@ -1634,9 +1798,18 @@ export const useStore = create(
             error: `${studioLabel(studioId)} already has ${used} sets on ${startsOn} (max ${MAX_SETS_PER_DAY}). Pick another studio or date.`,
           }
 
+        const logNew = (id) =>
+          get().logActivity({
+            type: EVENT.ORDER_CREATED,
+            entityType: 'order',
+            entityId: id,
+            data: { jobName: jobName.trim(), studioId, startsOn, poNumber: order.poNumber ?? null },
+          })
+
         if (usingSupabase) {
           const id = await sbCreateOrder({ ...order, status: order.status || 'hold' })
           await sbCreateSetForOrder(id, { jobName, studioId, date: startsOn })
+          logNew(id)
           await get().hydrate({ quiet: true })
           return { ok: true, id }
         }
@@ -1685,6 +1858,24 @@ export const useStore = create(
       },
 
       updateOrder: async (id, changes) => {
+        // Status moves are the interesting ones: confirming is what commits gear.
+        const before = get().orders.find((o) => o.id === id)
+        const statusMoved = changes.status && before && changes.status !== before.status
+        const logStatus = (res) =>
+          get().logActivity({
+            type:
+              changes.status === 'confirmed'
+                ? EVENT.ORDER_CONFIRMED
+                : changes.status === 'hold'
+                  ? EVENT.ORDER_HELD
+                  : EVENT.ORDER_UPDATED,
+            entityType: 'order',
+            entityId: id,
+            data: res
+              ? { reserved: res.reserved ?? 0, short: res.short ?? 0 }
+              : { changed: Object.keys(changes) },
+          })
+
         if (usingSupabase) {
           await sbUpdateOrder(id, changes)
           // Reservations follow the order: hydrate first so the sync sees the new
@@ -1697,8 +1888,10 @@ export const useStore = create(
           } catch (e) {
             console.error('reservation sync failed:', e)
           }
+          logStatus(statusMoved ? res : null)
           return { ok: true, ...res }
         }
+        logStatus(null)
         const state = get()
         const orders = state.orders
           .map((o) => (o.id === id ? resolveOrder({ ...o, ...changes, id }, state.companies) : o))
@@ -1731,8 +1924,21 @@ export const useStore = create(
       // { itemId, quantity, kitId?, unitId?, slotLabel? }; names and day rates are
       // resolved here so the estimate and the PDF read the same numbers.
       setOrderLines: async (orderId, lines) => {
+        // "The order is attributed to whoever last added inventory to it" — this
+        // is that moment, and until now it left no trace at all. The lines are
+        // replaced wholesale, so diff against the previous ones: the log has to
+        // say WHAT changed, not just that something did.
+        const prevLines = get().orders.find((o) => o.id === orderId)?.lines ?? []
+        const eqStats = diffOrderLines(prevLines, lines)
         if (usingSupabase) {
           await sbSetOrderLines(orderId, lines)
+          await sbTouchOrderEquipment(orderId, get().session?.user?.id ?? null)
+          get().logActivity({
+            type: EVENT.EQ_CHANGED,
+            entityType: 'order',
+            entityId: orderId,
+            data: eqStats,
+          })
           await get().hydrate({ quiet: true })
           // Editing a CONFIRMED order's gear changes what it holds.
           let res = { reserved: 0, short: 0 }
@@ -1744,6 +1950,12 @@ export const useStore = create(
           }
           return { ok: true, ...res }
         }
+        get().logActivity({
+          type: EVENT.EQ_CHANGED,
+          entityType: 'order',
+          entityId: orderId,
+          data: eqStats,
+        })
         const state = get()
         const byId = Object.fromEntries(state.inventory.map((i) => [i.id, i]))
         const unitBarcode = {}
@@ -1770,7 +1982,15 @@ export const useStore = create(
                 : null,
           }))
         const nextOrders = state.orders.map((o) =>
-          o.id === orderId ? { ...o, lines: resolved } : o,
+          o.id === orderId
+            ? {
+                ...o,
+                lines: resolved,
+                // Same headline as the Supabase columns, kept in memory.
+                eqUpdatedBy: state.profile?.full_name || LOCAL_ACTOR,
+                eqUpdatedAt: new Date().toISOString(),
+              }
+            : o,
         )
         // Changing a confirmed order's lines changes what it reserves.
         const bookings = reservationsFromOrders(
@@ -1803,6 +2023,15 @@ export const useStore = create(
                 },
           ),
         })
+        // The initials stay hand-typed (that's the paper-equivalent), but the
+        // ACT of signing is now attributed to the signed-in account — so "AT" is
+        // backed by a name instead of being anonymous free text.
+        get().logActivity({
+          type: EVENT.PACKING_SIGNED,
+          entityType: 'order',
+          entityId: orderId,
+          data: { slot, initials: ini, itemName: itemName ?? null, lineKey },
+        })
         if (usingSupabase)
           sbSetPackingSignoff(orderId, lineKey, slot, ini, itemName).catch((e) =>
             console.error('packing sign-off failed:', e),
@@ -1823,6 +2052,13 @@ export const useStore = create(
                 },
           ),
         })
+        // Un-signing used to erase the only "who" the packing flow had.
+        get().logActivity({
+          type: EVENT.PACKING_CLEARED,
+          entityType: 'order',
+          entityId: orderId,
+          data: { slot, lineKey },
+        })
         if (usingSupabase)
           sbClearPackingSignoff(orderId, lineKey, slot).catch((e) =>
             console.error('packing clear failed:', e),
@@ -1833,11 +2069,20 @@ export const useStore = create(
       // UI can open the equipment editor on it), replace its lines, or delete it.
       // The order's main lines are never touched.
       createAddon: async (orderId, label) => {
+        const logNew = () =>
+          get().logActivity({
+            type: EVENT.ADDON_CREATED,
+            entityType: 'order',
+            entityId: orderId,
+            data: { label: (label || '').trim() || null },
+          })
         if (usingSupabase) {
           const id = await sbCreateAddon(orderId, label)
+          logNew()
           await get().hydrate({ quiet: true })
           return id
         }
+        logNew()
         const id = `addon-${orderId}-${Date.now().toString(36)}`
         set({
           orders: get().orders.map((o) =>
@@ -1856,11 +2101,26 @@ export const useStore = create(
       },
 
       setAddonLines: async (orderId, addonId, lines) => {
+        // An add-on IS equipment added to the order, so it counts as "who last
+        // changed the gear" too — that's the day-of addition people argue about.
+        const order = get().orders.find((o) => o.id === orderId)
+        const addon = (order?.addons || []).find((a) => a.id === addonId)
+        const diff = diffOrderLines(addon?.lines ?? [], lines)
+        const logEq = () =>
+          get().logActivity({
+            type: EVENT.EQ_CHANGED,
+            entityType: 'order',
+            entityId: orderId,
+            data: { ...diff, source: 'addon', addonId, addonLabel: addon?.label ?? null },
+          })
         if (usingSupabase) {
           await sbSetAddonLines(addonId, lines)
+          await sbTouchOrderEquipment(orderId, get().session?.user?.id ?? null)
+          logEq()
           await get().hydrate({ quiet: true })
           return { ok: true }
         }
+        logEq()
         const state = get()
         const byId = Object.fromEntries(state.inventory.map((i) => [i.id, i]))
         const unitBarcode = {}
@@ -1896,11 +2156,23 @@ export const useStore = create(
       },
 
       deleteAddon: async (orderId, addonId) => {
+        const label =
+          (get().orders.find((o) => o.id === orderId)?.addons || []).find((a) => a.id === addonId)
+            ?.label ?? null
+        const logGone = () =>
+          get().logActivity({
+            type: EVENT.ADDON_DELETED,
+            entityType: 'order',
+            entityId: orderId,
+            data: { label },
+          })
         if (usingSupabase) {
           await sbDeleteAddon(addonId)
+          logGone()
           await get().hydrate({ quiet: true })
           return
         }
+        logGone()
         set({
           orders: get().orders.map((o) =>
             o.id !== orderId ? o : { ...o, addons: (o.addons || []).filter((a) => a.id !== addonId) },
@@ -1996,9 +2268,11 @@ export const useStore = create(
       // v2 added people/companies; v3 added orders' epic-5 fields and the day
       // rates the estimate multiplies. An older snapshot has neither, and a
       // half-filled shape would quietly total $0.00 — so it is reseeded.
-      version: 3,
+      // v4 adds the local-mode activity log: a v3 snapshot has no `activity`, so
+      // the seeded "who did what" narrative would be missing forever.
+      version: 4,
       migrate: (persisted, version) => {
-        if (version >= 3) return persisted
+        if (version >= 4) return persisted
         return usingSupabase
           ? { activeView: persisted?.activeView ?? 'calendar' }
           : { ...buildSeedData(), activeView: persisted?.activeView ?? 'calendar' }
@@ -2017,6 +2291,7 @@ export const useStore = create(
               companies: state.companies,
               companyTypes: state.companyTypes,
               orders: state.orders,
+              activity: state.activity,
               activeView: state.activeView,
             },
     },

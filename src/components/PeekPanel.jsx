@@ -24,6 +24,9 @@ import { orderStatusMeta } from '../data/orderStatus'
 import { buildEstimate, money } from '../lib/estimate'
 import { itemCount, kindLabel } from '../data/inventory'
 import { availableCount } from '../lib/availability'
+import ActivityList from './ActivityList'
+import { useActivity } from '../lib/useActivity'
+import { orderFeed } from '../lib/activity'
 
 // Layered detail cards ("peeks").
 //
@@ -374,7 +377,35 @@ function OrderPeek({ id }) {
           <div className="text-base font-semibold text-slate-900">{money(estimate.total)}</div>
         </div>
       </Section>
+
+      <OrderActivity orderId={order.id} eqBy={order.eqUpdatedBy} eqAt={order.eqUpdatedAt} />
     </>
+  )
+}
+
+// Who last touched the gear + the recent trail, on the layered card too.
+function OrderActivity({ orderId, eqBy, eqAt }) {
+  const { events, loading } = useActivity({ orderId })
+  return (
+    <Section title="Activity">
+      <p className="mb-2 text-xs text-slate-400">
+        {eqBy ? (
+          <>
+            Equipment last changed by <span className="font-medium text-slate-600">{eqBy}</span>
+            {eqAt ? ` · ${new Date(eqAt).toLocaleString()}` : ''}
+          </>
+        ) : (
+          'No equipment change recorded yet.'
+        )}
+      </p>
+      <ActivityList
+        events={orderFeed(events)}
+        loading={loading}
+        limit={5}
+        dense
+        emptyText="No changes recorded yet."
+      />
+    </Section>
   )
 }
 
@@ -488,6 +519,8 @@ function ItemPeek({ id, unitId }) {
         </Section>
       )}
 
+      <ItemActivitySection itemId={item.id} unitIds={(item.units || []).map((u) => u.id)} />
+
       <Section title="On orders" count={usedByOrders.length}>
         {usedByOrders.length === 0 ? (
           <Empty text="Not on any order." />
@@ -509,6 +542,21 @@ function ItemPeek({ id, unitId }) {
         )}
       </Section>
     </>
+  )
+}
+
+function ItemActivitySection({ itemId, unitIds }) {
+  const { events, loading } = useActivity({ itemId, unitIds })
+  return (
+    <Section title="Activity">
+      <ActivityList
+        events={events}
+        loading={loading}
+        limit={5}
+        dense
+        emptyText="No changes recorded for this item yet."
+      />
+    </Section>
   )
 }
 
@@ -750,6 +798,25 @@ function JobPeek({ id }) {
   const openCalendarOn = useStore((s) => s.openCalendarOn)
 
   const booking = bookings.find((b) => b.id === id) ?? null
+
+  // The gear actually on this shoot, grouped by item. Computed BEFORE the early
+  // return: a hook after a conditional return changes the hook order between
+  // renders (React would mismatch state the moment the booking disappears while
+  // the card is open).
+  const gear = useMemo(() => {
+    const unitIds = booking?.unitIds || []
+    if (!unitIds.length) return []
+    const byItem = new Map()
+    for (const item of inventory)
+      for (const u of item.units || [])
+        if (unitIds.includes(u.id)) {
+          const cur = byItem.get(item.id) || { itemId: item.id, name: item.name, units: [] }
+          cur.units.push(u)
+          byItem.set(item.id, cur)
+        }
+    return [...byItem.values()]
+  }, [inventory, booking?.unitIds])
+
   if (!booking) return <div className="p-4"><Empty text="This shoot is gone." /></div>
 
   const order = orders.find((o) => o.setId === booking.id) ?? null
@@ -760,18 +827,6 @@ function JobPeek({ id }) {
   ]
     .filter(([, name]) => !!name)
     .map(([role, name]) => ({ role, name, person: people.find((p) => p.name === name) ?? null }))
-  // The gear actually on this shoot, grouped by item.
-  const gear = useMemo(() => {
-    const byItem = new Map()
-    for (const item of inventory)
-      for (const u of item.units || [])
-        if ((booking.unitIds || []).includes(u.id)) {
-          const cur = byItem.get(item.id) || { itemId: item.id, name: item.name, units: [] }
-          cur.units.push(u)
-          byItem.set(item.id, cur)
-        }
-    return [...byItem.values()]
-  }, [inventory, booking.unitIds])
 
   return (
     <>

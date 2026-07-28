@@ -238,8 +238,20 @@ export default function RepairModal({ open, onClose, unit, itemName, canManage, 
                   </div>
                   {r.issue && <p className="mt-1 pl-6 text-sm text-slate-600">{r.issue}</p>}
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 pl-6 text-xs text-slate-500">
-                    <span>Sent {r.sentAt}</span>
-                    {done && <span>Returned {r.returnedAt}</span>}
+                    {/* The DB stored who sent and who took it back from the very
+                        first migration; it was simply never selected until now. */}
+                    <span>
+                      Sent {r.sentAt}
+                      {r.sentBy && <span className="text-slate-400"> by {r.sentBy}</span>}
+                    </span>
+                    {done && (
+                      <span>
+                        Returned {r.returnedAt}
+                        {r.returnedBy && (
+                          <span className="text-slate-400"> by {r.returnedBy}</span>
+                        )}
+                      </span>
+                    )}
                   </div>
                   {done && r.resolution && (
                     <p className="mt-1.5 flex items-start gap-1 pl-6 text-xs text-emerald-700">

@@ -380,6 +380,39 @@
 > which it never had. Frontend-only, no migration. Verified: desktop tabs switch views and highlight the
 > active one, below lg the tabs collapse to the hamburger and the drawer still navigates, gear → Reset demo
 > data, no page-level horizontal overflow, 0 console errors.
+> **FEATURE — activity log / attribution ("who added what to which order").** Reported: no way to see who put
+> inventory into an order. The audit found the foundation existed and was INVISIBLE: `events` was written on
+> every reservation (with an actor) and read by **zero lines of code**; `repairs.created_by`/`returned_by`,
+> `item_usage.created_by`, `order_addons.created_by` were stored and dropped on read; and the key action —
+> `setOrderLines` — left **no trace at all** (`order_lines` has no actor and no `created_at`).
+> `20260805120000_activity_log.sql`: FK `events.actor_id → profiles` (PostgREST can't embed a name without it;
+> verified 0 orphans first), an INSERT policy `with check (actor_id = auth.uid())` — the table was SELECT-only,
+> so the app literally could not append — an `(actor_id, occurred_at desc)` index, and denormalised
+> `orders.eq_updated_by/eq_updated_at` for the headline (the full trail stays in `events`).
+> `src/lib/activity.js` is PURE (Node-assertable, 9 assertions): the `EVENT` vocabulary, `describeEvent` →
+> sentences, `orderFeed` (hides reservation churn), and **`diffOrderLines`** — lines are replaced wholesale, so
+> without a diff a save that bumped one quantity would log "removed everything, added everything"; it now reads
+> "Arri 2K Open Face 2 → 3". Repository `logEvent`/`getEvents`/`getEventsForUnits`/`touchOrderEquipment`, all
+> try/caught so a missing migration degrades to "no history" and never fails the user's action; `getOrders`
+> gained a `fullNoEq` fallback layer so a pre-migration DB doesn't silently lose `creator`/`created_at` (that
+> was an existing bug behind "unknown"). Store `logActivity`/`activityFor`/`fetchActivity` + `activityVersion`
+> (bumped per write so open cards refetch, NOT keyed on `orders` which churns on every quiet hydrate); local
+> mode keeps the same events in a persisted `activity` array (**persist v4**, added to the `partialize`
+> whitelist). ~15 write paths instrumented incl. packing sign-off — the initials stay hand-typed but the ACT is
+> now tied to an account. UI: `ActivityList` + `lib/useActivity` on the order card (Attribution block gains
+> "Equipment by X · when"; null renders "seed data", not "unknown") and the item card (inside the units table's
+> scroll container), plus both peek cards and sent-by/returned-by in RepairModal.
+> ⚠️ Added a NO-OP GUARD to `setReservationsForSet`: it deletes+reinserts every row, and each fires the
+> set_units trigger, so one confirm toggle sprayed ~10 reserved/released events. It now returns early when the
+> set already holds exactly those units.
+> Fixed while here: a rules-of-hooks violation in `JobPeek` (useMemo after an early return — would mismatch
+> state if the booking vanished mid-view) and moved the hook out of `ActivityList` (fast-refresh warning).
+> `scripts/backfill-attribution.mjs` (`npm run backfill:attribution`) is **idempotent** (verified: a second run
+> changed nothing) and is imported by `seed-supabase.mjs` so a reseed stays as rich: it filled 13 orders,
+> 11 sets, 4 repairs, 235 usage rows, 71 anonymous events, and narrated 12 orders (36 events) with the raiser
+> and the gear-puller deliberately DIFFERENT people. Verified in both modes: supabase (real DB rows carry
+> `actor_id`, "Equipment by Ann Taylor" flips on edit, feed shows the diff) and local (persist v4, "Demo user"
+> entry survives reload); lint clean except one pre-existing `KitStagingModal` hooks error; build clean.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
