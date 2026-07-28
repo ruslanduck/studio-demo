@@ -12,6 +12,7 @@ import { jsPDF } from 'jspdf'
 // (and estimate.js) runnable under plain Node, which is how the PDF is tested.
 import { buildEstimate, money } from './estimate.js'
 import { studioLabel } from '../data/studios.js'
+import { BRAND_NAME } from './brand.js'
 
 const PAGE = { w: 595.28, h: 841.89 } // A4 portrait, points
 const M = 48 // page margin
@@ -104,7 +105,7 @@ export function buildEstimatePdf(estimateOrOrder, context) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
   setInk(INK.text)
-  text('AnnTaylor Rental', M, y + 4)
+  text(BRAND_NAME, M, y + 4)
 
   doc.setFontSize(9)
   setInk(INK.accent)

@@ -22,15 +22,17 @@ export const COMPANY_TYPES = [
 // opening hours (free text — how the crew writes them), website, email, phone.
 export const COMPANY_SEED = [
   {
+    // The slug stays as-is: it's an internal seed key (referenced by the people
+    // below) and never shown. Only the display fields carry the brand.
     id: 'anntaylor-rental',
-    name: 'AnnTaylor Rental',
+    name: 'Kitbay',
     companyType: 'Studio',
     kind: 'both',
     notes: 'Us — the studio and its own gear pool.',
     address: '412 W 27th St, New York, NY 10001',
     openingHours: 'Mon–Fri 8:00–20:00 · Sat 10:00–16:00',
-    website: 'https://anntaylor-rental.example.com',
-    email: 'studio@anntaylor.demo',
+    website: 'https://kitbay.example.com',
+    email: 'studio@kitbay.demo',
     phone: '+1 212 555 0100',
   },
   {

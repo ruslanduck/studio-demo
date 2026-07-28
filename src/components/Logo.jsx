@@ -1,12 +1,15 @@
 import { Package } from 'lucide-react'
+import { BRAND_NAME } from '../lib/brand'
 
-// The product name and its mark, in one place.
+// The brand MARK. The name itself lives in lib/brand.js (kept JSX-free so the
+// PDF builders can print it too) and is re-exported here, so UI code can grab
+// the mark and the name from one import.
 //
 // The mark is a PLACEHOLDER: a violet rounded square with an icon, standing in
 // until the real Kitbay logo arrives. Swapping it is a one-file change — replace
 // the icon below with an <img src="/logo.svg" /> or an inline SVG and every
 // screen that shows the brand (sidebar, mobile top bar, login) follows.
-export const BRAND_NAME = 'Kitbay'
+export { BRAND_NAME }
 
 export default function Logo({ size = 32, radius = 'rounded-lg', className = '' }) {
   return (

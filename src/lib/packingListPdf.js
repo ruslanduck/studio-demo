@@ -12,6 +12,7 @@ import { jsPDF } from 'jspdf'
 import { buildEstimate } from './estimate.js'
 import { pdfSafe } from './estimatePdf.js'
 import { studioLabel } from '../data/studios.js'
+import { BRAND_NAME } from './brand.js'
 
 const PAGE = { w: 595.28, h: 841.89 } // A4 portrait, points
 const M = 48
@@ -96,7 +97,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
   setInk(INK.text)
-  text('AnnTaylor Rental', M, y + 4)
+  text(BRAND_NAME, M, y + 4)
   doc.setFontSize(9)
   setInk(INK.accent)
   right(opts.docTitle || 'PACKING LIST', PAGE.w - M, y - 4)
