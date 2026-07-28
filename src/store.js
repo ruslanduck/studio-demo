@@ -61,6 +61,7 @@ import {
   deleteAddon as sbDeleteAddon,
 } from './data/repository'
 import { supabase } from './lib/supabase'
+import { reservedUnitsForOrder } from './lib/availability'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
 
@@ -99,34 +100,24 @@ function buildSeedData() {
     }
   }
 
-  const bookings = BOOKING_TEMPLATES.map((t, idx) => {
-    const date = format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd')
-    const location = `${t.title} — ${studioLabel(t.studioId)}`
-    const unitIds = []
-    for (const [itemId, count] of t.reserve) {
-      const item = byId[itemId]
-      if (!item) continue
-      const free = item.units.filter((u) => u.status === 'available').slice(0, count)
-      for (const u of free) {
-        u.status = 'checked_out'
-        u.location = location
-        unitIds.push(u.id)
-      }
-    }
-    return {
-      id: `set-${String(idx + 1).padStart(3, '0')}`,
-      title: t.title,
-      studioId: t.studioId,
-      date,
-      startTime: t.startTime,
-      endTime: t.endTime,
-      photographer: t.photographer,
-      model: t.model,
-      unitIds,
-      status: 'active',
-      color: t.color,
-    }
-  })
+  // Sets (studio-calendar shoots). Gear is NO LONGER reserved here — a Set's
+  // reserved units derive from its CONFIRMED order's in-house lines further down
+  // (reservationsFromOrders), so inventory and orders can't disagree. Bookings
+  // start with no units; `orderId` links back to the driving order once built.
+  const bookings = BOOKING_TEMPLATES.map((t, idx) => ({
+    id: `set-${String(idx + 1).padStart(3, '0')}`,
+    title: t.title,
+    studioId: t.studioId,
+    date: format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd'),
+    startTime: t.startTime,
+    endTime: t.endTime,
+    photographer: t.photographer,
+    model: t.model,
+    unitIds: [],
+    orderId: null,
+    status: 'active',
+    color: t.color,
+  }))
 
   // Kits (entry type #2): resolve each slot's component item for display.
   const kits = KIT_SEED.map((k) => ({
@@ -220,8 +211,11 @@ function buildSeedData() {
     }
   }
 
-  // Orders (4.5 history + epic #5). The linked booking is the Set and its title
-  // is the Job name, so studio / dates / photographer come from it.
+  // Orders (4.5 history + epics #5/#6). The linked booking is the Set and its
+  // title is the Job name, so studio / dates / photographer come from it. Line
+  // form in the seed:
+  //   [itemId, qty]                  → in-house line (our stock)
+  //   [itemId, qty, vendorCompanyId] → sub-rental from that vendor (reserves none)
   const bookingByTitle = Object.fromEntries(bookings.map((b) => [b.title, b]))
   const orders = ORDER_SEED.map((o, i) => {
     const set = o.setTitle ? bookingByTitle[o.setTitle] : null
@@ -247,15 +241,52 @@ function buildSeedData() {
       setTitle: set?.title ?? o.setTitle ?? null,
       packing: {}, // digital packing checklist sign-offs (6.2 / 6.5), by lineKey
       addons: [], // add-on packing lists (6.4): [{ id, label, createdAt, lines }]
-      lines: o.lines.map(([itemId, quantity]) => ({
-        itemId,
-        itemName: byId[itemId]?.name ?? null,
-        quantity,
-      })),
+      lines: o.lines.map(([itemId, quantity, vendorId], li) => {
+        const source = vendorId ? 'sub_rental' : 'in_house'
+        return {
+          id: `line-order-${i}-${li}`,
+          itemId,
+          itemName: byId[itemId]?.name ?? null,
+          quantity,
+          dayRate: byId[itemId]?.dayRate ?? null,
+          kitId: null,
+          unitId: null,
+          barcode: null,
+          slotLabel: null,
+          source,
+          vendorId: source === 'sub_rental' ? vendorId : null,
+          vendorName:
+            source === 'sub_rental' ? companies.find((c) => c.id === vendorId)?.name ?? null : null,
+        }
+      }),
     }
-  }).sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
+  })
 
-  return { inventory, bookings, kits, scenarios, people, companies, companyTypes, orders }
+  // Link each Set back to its driving CLIENT order (sub-rental history orders
+  // reference the Set for context but don't own it). First client order wins.
+  for (const o of orders) {
+    if (o.kind !== 'client' || !o.setId) continue
+    const b = bookings.find((x) => x.id === o.setId)
+    if (b && !b.orderId) b.orderId = o.id
+  }
+
+  // "Orders drive reservations": assign each order-linked Set the units its
+  // CONFIRMED order reserves, then project status/location onto inventory. Fixed
+  // kit units are pre-claimed so a loose line never grabs a unit pinned to a kit.
+  const reservedBookings = reservationsFromOrders(bookings, orders, inventory, fixedUnitIdsOf(kits))
+  const reservedInventory = withReservations(inventory, reservedBookings)
+  orders.sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
+
+  return {
+    inventory: reservedInventory,
+    bookings: reservedBookings,
+    kits,
+    scenarios,
+    people,
+    companies,
+    companyTypes,
+    orders,
+  }
 }
 
 function slugify(name) {
@@ -482,6 +513,47 @@ function withReservations(inventory, bookings) {
       return { ...u, status: 'available', location: 'Available' }
     }),
   }))
+}
+
+// Unit ids pinned to a kit's FIXED slots. These are physically dedicated to
+// their kit (bolted to the cart), so an order's loose quantity line must never
+// reserve them.
+function fixedUnitIdsOf(kits) {
+  const ids = []
+  for (const k of kits || [])
+    for (const s of k.slots || []) if (s.fixedUnitId) ids.push(s.fixedUnitId)
+  return ids
+}
+
+// "Orders drive reservations" (epic #6 fix): give every order-linked Set the
+// units its CONFIRMED order reserves. A Set referenced by no order keeps its own
+// unitIds (a hand-made calendar booking). Resolution runs against a RAW
+// availability view — repairs + fixed kit pins only — NOT the live checked-out
+// projection, since that projection is exactly what we're recomputing; a shared
+// `claimed` set (seeded with the fixed units) stops any unit being promised
+// twice across orders.
+function reservationsFromOrders(bookings, orders, inventory, fixedUnitIds = []) {
+  const rawInventory = inventory.map((item) => ({
+    ...item,
+    units: (item.units || []).map((u) =>
+      (u.repairs || []).some((r) => !r.returnedAt)
+        ? { ...u, status: 'in_repair' }
+        : { ...u, status: 'available', location: 'Available' },
+    ),
+  }))
+  const claimed = new Set(fixedUnitIds)
+  const bySet = new Map()
+  const orderedSets = new Set()
+  for (const o of orders || []) {
+    if (o.setId) orderedSets.add(o.setId)
+    if (o.status !== 'confirmed') continue
+    const ids = reservedUnitsForOrder(o, rawInventory, claimed)
+    if (!o.setId) continue
+    bySet.set(o.setId, (bySet.get(o.setId) || []).concat(ids))
+  }
+  return bookings.map((b) =>
+    orderedSets.has(b.id) ? { ...b, unitIds: bySet.get(b.id) || [] } : b,
+  )
 }
 
 export const useStore = create(
@@ -1233,12 +1305,22 @@ export const useStore = create(
           color: BOOKING_COLORS[state.bookings.length % BOOKING_COLORS.length],
           orderId: id,
         }
+        const nextOrders = [
+          ...state.orders,
+          resolveOrder({ ...order, id, setId, setTitle: jobName.trim() }, state.companies),
+        ].sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
+        // A new order is a Hold (reserves nothing), but recompute anyway so the
+        // one path stays correct if it ever arrives confirmed.
+        const nextBookings = reservationsFromOrders(
+          [...state.bookings, booking],
+          nextOrders,
+          state.inventory,
+          fixedUnitIdsOf(state.kits),
+        )
         set({
-          bookings: [...state.bookings, booking],
-          orders: [
-            ...state.orders,
-            resolveOrder({ ...order, id, setId, setTitle: jobName.trim() }, state.companies),
-          ].sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1)),
+          bookings: nextBookings,
+          orders: nextOrders,
+          inventory: withReservations(state.inventory, nextBookings),
         })
         return { ok: true, id }
       },
@@ -1250,25 +1332,30 @@ export const useStore = create(
           return { ok: true }
         }
         const state = get()
-        const orders = state.orders.map((o) =>
-          o.id === id ? resolveOrder({ ...o, ...changes, id }, state.companies) : o,
-        )
+        const orders = state.orders
+          .map((o) => (o.id === id ? resolveOrder({ ...o, ...changes, id }, state.companies) : o))
+          .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
         // The Set mirrors the order's job name, studio and first working date.
         const target = orders.find((o) => o.id === id)
-        set({
-          orders: orders.sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1)),
-          bookings: state.bookings.map((b) =>
-            target?.setId && b.id === target.setId
-              ? {
-                  ...b,
-                  title: target.jobName ?? b.title,
-                  studioId: target.studioId ?? b.studioId,
-                  date: target.startsOn ?? b.date,
-                  photographer: target.photographer ?? b.photographer,
-                }
-              : b,
-          ),
-        })
+        const mirrored = state.bookings.map((b) =>
+          target?.setId && b.id === target.setId
+            ? {
+                ...b,
+                title: target.jobName ?? b.title,
+                studioId: target.studioId ?? b.studioId,
+                date: target.startsOn ?? b.date,
+                photographer: target.photographer ?? b.photographer,
+              }
+            : b,
+        )
+        // A status change (Hold ↔ Confirmed) or edit re-derives what's reserved.
+        const bookings = reservationsFromOrders(
+          mirrored,
+          orders,
+          state.inventory,
+          fixedUnitIdsOf(state.kits),
+        )
+        set({ orders, bookings, inventory: withReservations(state.inventory, bookings) })
         return { ok: true }
       },
 
@@ -1306,9 +1393,17 @@ export const useStore = create(
                 ? state.companies.find((c) => c.id === l.vendorId)?.name ?? null
                 : null,
           }))
-        set({
-          orders: state.orders.map((o) => (o.id === orderId ? { ...o, lines: resolved } : o)),
-        })
+        const nextOrders = state.orders.map((o) =>
+          o.id === orderId ? { ...o, lines: resolved } : o,
+        )
+        // Changing a confirmed order's lines changes what it reserves.
+        const bookings = reservationsFromOrders(
+          state.bookings,
+          nextOrders,
+          state.inventory,
+          fixedUnitIdsOf(state.kits),
+        )
+        set({ orders: nextOrders, bookings, inventory: withReservations(state.inventory, bookings) })
         return { ok: true }
       },
 
@@ -1445,10 +1540,20 @@ export const useStore = create(
           await get().hydrate()
           return { ok: true }
         }
-        set({
-          orders: get().orders.filter((o) => o.id !== id),
-          bookings: get().bookings.map((b) => (b.orderId === id ? { ...b, orderId: null } : b)),
-        })
+        const state = get()
+        const nextOrders = state.orders.filter((o) => o.id !== id)
+        // The deleted order's Set is no longer order-driven — unlink it and drop
+        // its reserved units so they free up.
+        const unlinked = state.bookings.map((b) =>
+          b.orderId === id ? { ...b, orderId: null, unitIds: [] } : b,
+        )
+        const bookings = reservationsFromOrders(
+          unlinked,
+          nextOrders,
+          state.inventory,
+          fixedUnitIdsOf(state.kits),
+        )
+        set({ orders: nextOrders, bookings, inventory: withReservations(state.inventory, bookings) })
         return { ok: true }
       },
 

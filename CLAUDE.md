@@ -198,6 +198,27 @@
 > Verified local: create→eq→save (main untouched), namespaced checklist sign-off, add-on PDF, delete;
 > 0 console errors. Note: add-on availability reuses the shared rule but doesn't subtract the main list's
 > reservations (minor demo edge — a day-of add could in theory re-pick a unit the main list holds).
+> **FIX — "Orders drive reservations" (reservation model).** Inventory used to show a unit checked out to
+> a job whose order didn't list it (reported: Canon #0960 "checked out to Wedding Editorial", absent from
+> that order). Root cause: a Set's gear was seeded on the booking (`BOOKING_TEMPLATES.reserve`) INDEPENDENTLY
+> of `ORDER_SEED`, so the two could disagree. Now a Set's reserved units DERIVE from its **CONFIRMED**
+> order's in-house lines — one source of truth. Hold orders reserve nothing; sub-rental lines are vendor gear
+> and consume no in-house stock; FIXED kit units are pre-claimed so a loose line never grabs a unit pinned to
+> a kit. `src/lib/availability.js` `reservedUnitsForOrder(order, inventory, claimed)` is the resolver; the
+> store adds `reservationsFromOrders` + `fixedUnitIdsOf` (resolve against a RAW repairs-only view, NOT the
+> live projection being recomputed; a shared `claimed` set stops double-booking) — called from `buildSeedData`
+> AND live from `createOrder`/`updateOrder`/`setOrderLines`/`deleteOrder` so confirming/holding an order moves
+> inventory instantly (LOCAL mode). `src/data/bookings.js` no longer carries `reserve` (calendar-only);
+> `src/data/orders.js` ORDER_SEED rewritten to per-shoot client orders (Wedding = the visible HOLD) + 3 past
+> sub-rental history orders, line form `[itemId, qty]` (in-house) / `[itemId, qty, vendorId]` (sub-rental).
+> **Supabase/prod is fixed by a RESEED**, not by this frontend change: supabase mode reads reservations from
+> `set_units`, and `scripts/seed-supabase.mjs` now writes set_units from each CONFIRMED order's in-house lines
+> (same pre-claim/skip-repair rule); the store's live-reservation logic is LOCAL-mode only. NO migration
+> (`order_lines.source`/`vendor_company_id` already exist from 5.6). Verified local: Canon 0960→Apple Product
+> Shoot (order-backed) with 0959 still in repair, Wedding hold reserves nothing, Astera 3/3 checked out (Vogue's
+> 2 sub-rental Asteras excluded), hold↔confirm toggles inventory live, build clean, 0 console errors.
+> Note: supabase LIVE confirm→reserve (writing set_units on confirm in prod) is still a gap — the reseed makes
+> the initial prod state coherent, which is what the demo needs.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

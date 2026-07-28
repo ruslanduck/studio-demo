@@ -48,6 +48,31 @@ export function isExhausted(item, ctx = {}) {
   return availableCount(item, ctx) === 0
 }
 
+// Units an order reserves (epic #6 fix): a CONFIRMED order's in-house lines,
+// resolved to concrete unit ids. Kit slots pin their unit; a-la-carte lines
+// resolve by quantity. Sub-rental lines are vendor gear and reserve nothing;
+// Hold orders reserve nothing. `claimed` is shared across orders so two orders
+// never take the same unit (mutated as units are taken).
+export function reservedUnitsForOrder(order, inventory, claimed = new Set()) {
+  if (!order || order.status !== 'confirmed') return []
+  const ids = []
+  for (const l of order.lines || []) {
+    if (l.source === 'sub_rental' || !l.unitId) continue
+    if (!claimed.has(l.unitId)) {
+      claimed.add(l.unitId)
+      ids.push(l.unitId)
+    }
+  }
+  const qtyLines = (order.lines || []).filter(
+    (l) => l.source !== 'sub_rental' && !l.unitId && l.itemId,
+  )
+  for (const id of resolveUnitsForQuantities(qtyLines, inventory, { claimed })) {
+    claimed.add(id)
+    ids.push(id)
+  }
+  return ids
+}
+
 // Which concrete units a batch of quantity-based lines would take.
 //
 // Kits pin their units explicitly; loose a-la-carte lines only carry a quantity,

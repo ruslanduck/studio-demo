@@ -213,6 +213,7 @@ async function main() {
   console.log('Kits + slots…')
   let kits = 0, kitSlots = 0
   const kitDbId = {} // local kit id -> db kit id
+  const fixedUnitIds = new Set() // db unit ids pinned to a kit's fixed slots
   for (const k of KIT_SEED) {
     const { data: kit, error: kErr } = await db
       .from('kits')
@@ -230,6 +231,7 @@ async function main() {
         const fixedUnitId =
           s.slotType === 'fixed' ? (itemUnits[s.itemId] || [])[s.fixedUnitIndex ?? 0] || null : null
         const slotType = s.slotType === 'fixed' && fixedUnitId ? 'fixed' : 'generic'
+        if (slotType === 'fixed') fixedUnitIds.add(fixedUnitId)
         return {
           kit_id: kit.id,
           inventory_item_id: itemDbId[s.itemId],
@@ -274,10 +276,10 @@ async function main() {
     }
   }
 
-  console.log('Sets + set_units + roster…')
+  console.log('Sets + roster…')
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   let sets = 0, reservations = 0, rosterCount = 0
-  const setByTitle = {} // title -> { id, date }, used to link orders (4.5)
+  const setByTitle = {} // title -> { id, date, ... }, used to link orders (4.5)
   for (const t of BOOKING_TEMPLATES) {
     const date = format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd')
     const { data: set, error: sErr } = await db.from('sets').insert({
@@ -288,21 +290,8 @@ async function main() {
     sets++
     setByTitle[t.title] = { id: set.id, date, studioId: t.studioId, photographer: t.photographer }
 
-    const suRows = []
-    for (const [itemLocalId, count] of t.reserve) {
-      const ids = (itemUnits[itemLocalId] || []).filter((id) => !openRepairUnits.has(id))
-      const used = itemUsed[itemLocalId] || 0
-      const pick = ids.slice(used, used + count)
-      itemUsed[itemLocalId] = used + pick.length
-      for (const unit_id of pick) {
-        suRows.push({ set_id: set.id, unit_id, status: 'reserved', reserved_from: date, reserved_to: date })
-      }
-    }
-    if (suRows.length) {
-      must('set_units', await db.from('set_units').insert(suRows))
-      reservations += suRows.length
-    }
-
+    // Gear is NOT reserved here: a Set's reservations derive from its CONFIRMED
+    // order's in-house lines, written in the orders pass below.
     const roster = []
     if (contactId[t.photographer]) roster.push({ set_id: set.id, contact_id: contactId[t.photographer], role: 'photographer' })
     if (contactId[t.model]) roster.push({ set_id: set.id, contact_id: contactId[t.model], role: 'model' })
@@ -312,26 +301,33 @@ async function main() {
     }
   }
 
-  // 4.5 — orders as the work-history source (the module itself is epic #5). An
-  // order's date follows the job it serves so the two histories line up.
-  console.log('Orders + lines…')
+  // Orders (epic #5) + the reservation model (epic #6): a CONFIRMED order's
+  // in-house lines are what actually reserve units (set_units), so inventory and
+  // orders can't disagree. Line form in the seed:
+  //   [slug, qty]             → in-house line (our stock; reserved when confirmed)
+  //   [slug, qty, vendorSlug] → sub-rental from that vendor (reserves nothing)
+  console.log('Orders + lines + reservations…')
   let orders = 0, orderLines = 0
+  // Shared across orders so a unit is never reserved twice; pre-claim the fixed
+  // kit units so a loose line can't grab a unit pinned to a kit.
+  const claimed = new Set(fixedUnitIds)
   for (const o of ORDER_SEED) {
     const companyId = companyIdBySlug[o.company]
     if (!companyId) continue
     const set = o.setTitle ? setByTitle[o.setTitle] : null
+    const orderedAt = format(addDays(weekStart, o.dayOffset), 'yyyy-MM-dd')
     const { data: order, error: oErr } = await db.from('orders').insert({
       order_number: o.number,
       company_id: companyId,
       kind: o.kind,
       status: o.status,
-      ordered_at: set?.date ?? null,
+      ordered_at: orderedAt,
       // epic #5 (5.1/5.2): the linked booking is the Set and its title the Job
       // name, so studio / dates / photographer come from it. PO is hand-typed.
       job_name: o.setTitle ?? null,
       studio_id: set?.studioId ?? null,
-      starts_on: set?.date ?? null,
-      ends_on: set?.date ?? null,
+      starts_on: set?.date ?? orderedAt,
+      ends_on: set?.date ?? orderedAt,
       po_number: o.po ?? null,
       photographer_contact_id: set?.photographer ? contactId[set.photographer] ?? null : null,
     }).select('id').single()
@@ -339,18 +335,51 @@ async function main() {
     orders++
 
     const lineRows = o.lines
-      .map(([slug, quantity]) => ({
-        order_id: order.id,
-        inventory_item_id: itemDbId[slug],
-        quantity,
-      }))
+      .map(([slug, quantity, vendorSlug]) => {
+        const source = vendorSlug ? 'sub_rental' : 'in_house'
+        return {
+          order_id: order.id,
+          inventory_item_id: itemDbId[slug],
+          quantity,
+          source,
+          vendor_company_id: source === 'sub_rental' ? companyIdBySlug[vendorSlug] ?? null : null,
+        }
+      })
       .filter((r) => r.inventory_item_id)
     if (lineRows.length) {
       must('order_lines', await db.from('order_lines').insert(lineRows))
       orderLines += lineRows.length
     }
-    // Link the job to its order so a card can show which shoot it served.
-    if (set) must('sets.order_id', await db.from('sets').update({ order_id: order.id }).eq('id', set.id))
+
+    // Reserve stock for CONFIRMED orders only: resolve each in-house line to
+    // concrete units (skipping repairs, fixed pins and already-claimed units) and
+    // write set_units for the order's Set. Hold + sub-rental reserve nothing.
+    if (o.status === 'confirmed' && set) {
+      const suRows = []
+      for (const [slug, quantity, vendorSlug] of o.lines) {
+        if (vendorSlug) continue // sub-rental line: not our stock
+        const avail = (itemUnits[slug] || []).filter(
+          (id) => !claimed.has(id) && !openRepairUnits.has(id),
+        )
+        for (const unit_id of avail.slice(0, quantity)) {
+          claimed.add(unit_id)
+          suRows.push({
+            set_id: set.id, unit_id, status: 'reserved',
+            reserved_from: set.date, reserved_to: set.date,
+          })
+        }
+      }
+      if (suRows.length) {
+        must('set_units', await db.from('set_units').insert(suRows))
+        reservations += suRows.length
+      }
+    }
+
+    // Link the job to its CLIENT order so a card can show which shoot it served
+    // (sub-rental history orders reference the Set but don't own it).
+    if (set && o.kind === 'client') {
+      must('sets.order_id', await db.from('sets').update({ order_id: order.id }).eq('id', set.id))
+    }
   }
 
   const totalUnits = Object.values(itemUnits).reduce((n, a) => n + a.length, 0)
