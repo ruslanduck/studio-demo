@@ -384,6 +384,47 @@ export async function setUnitBarcode(unitId, barcode) {
   if (error) throw error
 }
 
+// --- individual units of an existing item (the asset register) --------------
+
+// Add tracked units (physical copies) to a barcoded item. Barcodes/serials are
+// decided by the caller so the same numbers show in the UI immediately.
+export async function addUnits(itemId, units) {
+  const rows = (units || []).map((u) => ({
+    inventory_item_id: itemId,
+    barcode: u.barcode,
+    serial: u.serial,
+    ownership: u.ownership || 'owned',
+  }))
+  if (!rows.length) return
+  const { error } = await supabase.from('units').insert(rows)
+  if (error) throw error
+}
+
+// Correct one unit's identifiers.
+export async function updateUnit(unitId, { barcode, serial } = {}) {
+  const patch = {}
+  if (barcode != null) patch.barcode = barcode
+  if (serial != null) patch.serial = serial
+  if (!Object.keys(patch).length) return
+  const { error } = await supabase.from('units').update(patch).eq('id', unitId)
+  if (error) throw error
+}
+
+// Write off ONE unit. `set_units.unit_id` is ON DELETE RESTRICT, so a unit that
+// has been on jobs can't be dropped while those links exist — they're cleared
+// first, exactly like the item-level write-off. The event log keeps its history:
+// `events.unit_id` is a SOFT reference (its FK was dropped in
+// 20260724120000_events_soft_refs.sql), so the trail survives the unit.
+// A unit pinned to a kit's FIXED slot is still refused by the DB
+// (kit_slots.fixed_unit_id is RESTRICT) — the store checks for that up front so
+// the user gets a reason instead of a raw error.
+export async function deleteUnit(unitId) {
+  const { error: suErr } = await supabase.from('set_units').delete().eq('unit_id', unitId)
+  if (suErr) throw suErr
+  const { error } = await supabase.from('units').delete().eq('id', unitId)
+  if (error) throw error
+}
+
 // Send a unit out for repair (opens a repair row → unit becomes unavailable).
 export async function sendToRepair(unitId, { vendor, issue, sentAt } = {}) {
   const row = { unit_id: unitId, vendor: vendor || null, issue: issue || null }
@@ -477,7 +518,8 @@ export async function updateInventoryItem(itemId, { name, category, kind, quanti
 }
 
 // Delete an item (write-off). Frees any reservations on its units first, then
-// deletes the item (units cascade). Event-log history is preserved.
+// deletes the item (units cascade). Event-log history is preserved — events hold
+// only soft references (see deleteUnit).
 export async function deleteInventoryItem(itemId) {
   const { data: units } = await supabase.from('units').select('id').eq('inventory_item_id', itemId)
   const unitIds = (units || []).map((u) => u.id)

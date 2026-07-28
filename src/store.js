@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { startOfWeek, addDays, format } from 'date-fns'
 import { STUDIOS, studioLabel } from './data/studios'
-import { INVENTORY_SEED, createUnits } from './data/inventory'
+import { INVENTORY_SEED, createUnits, serialFor } from './data/inventory'
 import { REPAIR_TEMPLATES, repairDates } from './data/repairs'
 import { generateUsage } from './data/usage'
 import { KIT_SEED } from './data/kits'
@@ -22,6 +22,9 @@ import {
   deleteBooking as sbDeleteBooking,
   toggleOwnership as sbToggleOwnership,
   setUnitBarcode as sbSetUnitBarcode,
+  addUnits as sbAddUnits,
+  updateUnit as sbUpdateUnit,
+  deleteUnit as sbDeleteUnit,
   sendToRepair as sbSendToRepair,
   returnFromRepair as sbReturnFromRepair,
   logItemUsage as sbLogItemUsage,
@@ -861,6 +864,156 @@ export const useStore = create(
         if (usingSupabase) {
           sbSetUnitBarcode(unitId, code).catch((e) => console.error('setUnitBarcode failed:', e))
         }
+        return { ok: true }
+      },
+
+      // --- individual units of an existing item (the asset register) --------
+      //
+      // "Add inventory" creates an item TYPE; these manage the physical copies
+      // under it. Barcodes must be unique across the whole register, so the
+      // next free number is computed from every loaded unit.
+      nextBarcode: () => {
+        let max = 0
+        for (const item of get().inventory)
+          for (const u of item.units || []) {
+            const n = parseInt(u.barcode, 10)
+            if (Number.isFinite(n) && n > max) max = n
+          }
+        return String(max + 1).padStart(4, '0')
+      },
+
+      // Add `count` units to a barcoded item. An explicit barcode/serial applies
+      // to the first one; the rest are generated. Returns { ok } or { error }.
+      addUnits: async (itemId, { count = 1, barcode = '', serial = '' } = {}) => {
+        const state = get()
+        const item = state.inventory.find((i) => i.id === itemId)
+        if (!item) return { error: 'Item not found.' }
+        if (item.kind !== 'barcoded')
+          return { error: 'Only barcoded items track individual units — edit the quantity instead.' }
+
+        const n = Math.max(1, Math.min(100, Number(count) || 1))
+        const taken = new Set()
+        for (const it of state.inventory) for (const u of it.units || []) taken.add(u.barcode)
+
+        const wanted = String(barcode || '').trim()
+        if (wanted && taken.has(wanted)) return { error: `#${wanted} is already used by another unit.` }
+
+        // Barcodes: the typed one first (if any), then the next free numbers.
+        let next = parseInt(get().nextBarcode(), 10)
+        const codes = []
+        for (let i = 0; i < n; i++) {
+          if (i === 0 && wanted) {
+            codes.push(wanted)
+            continue
+          }
+          let code = String(next).padStart(4, '0')
+          while (taken.has(code) || codes.includes(code)) code = String(++next).padStart(4, '0')
+          codes.push(code)
+          next++
+        }
+
+        const typedSerial = String(serial || '').trim()
+        const units = codes.map((code, i) => ({
+          id: usingSupabase ? `tmp-${code}` : `u-${code}`,
+          barcode: code,
+          serial: i === 0 && typedSerial ? typedSerial : serialFor(`${itemId}-${code}`),
+          status: 'available',
+          location: 'Available',
+          ownership: 'owned',
+          repairs: [],
+        }))
+
+        if (usingSupabase) {
+          try {
+            await sbAddUnits(itemId, units)
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate()
+          return { ok: true, count: units.length }
+        }
+        set({
+          inventory: state.inventory.map((it) =>
+            it.id === itemId ? { ...it, units: [...it.units, ...units] } : it,
+          ),
+        })
+        return { ok: true, count: units.length }
+      },
+
+      // Correct one unit's barcode / serial.
+      updateUnit: async (itemId, unitId, { barcode, serial } = {}) => {
+        const state = get()
+        const code = String(barcode ?? '').trim()
+        const ser = String(serial ?? '').trim()
+        if (!code) return { error: 'Barcode cannot be empty.' }
+        if (!ser) return { error: 'Serial cannot be empty.' }
+        const clash = state.inventory.some((it) =>
+          (it.units || []).some((u) => u.id !== unitId && u.barcode === code),
+        )
+        if (clash) return { error: `#${code} is already used by another unit.` }
+
+        if (usingSupabase) {
+          try {
+            await sbUpdateUnit(unitId, { barcode: code, serial: ser })
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate()
+          return { ok: true }
+        }
+        set({
+          inventory: state.inventory.map((it) =>
+            it.id !== itemId
+              ? it
+              : {
+                  ...it,
+                  units: it.units.map((u) =>
+                    u.id === unitId ? { ...u, barcode: code, serial: ser } : u,
+                  ),
+                },
+          ),
+        })
+        return { ok: true }
+      },
+
+      // Write off ONE unit. Refused with a reason while it's on a job or out for
+      // repair, or while a kit pins it to a FIXED slot (the DB forbids that one).
+      deleteUnit: async (itemId, unitId) => {
+        const state = get()
+        const item = state.inventory.find((i) => i.id === itemId)
+        const unit = item?.units?.find((u) => u.id === unitId)
+        if (!unit) return { error: 'Unit not found.' }
+        if (unit.status === 'checked_out')
+          return { error: `#${unit.barcode} is out on “${unit.location}”. Free it from that job first.` }
+        if (unit.status === 'in_repair')
+          return { error: `#${unit.barcode} is out for repair. Mark it returned first.` }
+        const pinnedBy = state.kits.find((k) =>
+          (k.slots || []).some((s) => s.fixedUnitId === unitId),
+        )
+        if (pinnedBy)
+          return {
+            error: `#${unit.barcode} is the fixed unit of kit “${pinnedBy.name}”. Change that slot first.`,
+          }
+
+        if (usingSupabase) {
+          try {
+            await sbDeleteUnit(unitId)
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate()
+          return { ok: true }
+        }
+        const inventory = state.inventory.map((it) =>
+          it.id === itemId ? { ...it, units: it.units.filter((u) => u.id !== unitId) } : it,
+        )
+        // Drop it from any booking that still lists it, then re-project.
+        const bookings = state.bookings.map((b) =>
+          (b.unitIds || []).includes(unitId)
+            ? { ...b, unitIds: b.unitIds.filter((id) => id !== unitId) }
+            : b,
+        )
+        set({ bookings, inventory: withReservations(inventory, bookings) })
         return { ok: true }
       },
 

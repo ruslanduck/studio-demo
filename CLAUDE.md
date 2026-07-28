@@ -283,6 +283,28 @@
 > "AnnTaylor" absent in both docs), then in-browser — no "AnnTaylor" anywhere in the DOM, vendor dropdown
 > offers Kitbay, company card consistent (contacts + job history intact), PDF download fires clean,
 > 0 console errors.
+> **FEATURE — per-UNIT CRUD (the asset register).** Reported gap: "Add inventory" creates an item TYPE, and
+> there was no way to register one more physical copy with its own serial, nor to correct or remove a unit —
+> units only ever came from the quantity typed at item creation. Now, on a barcoded item's card:
+> a primary **+ Add unit** button (modal: how many, plus optional barcode/serial that apply to the first one —
+> empty = generated next free number + deterministic serial, so receiving a batch is one field), and a new
+> **UNIT** column with a pencil (correct barcode/serial) and a trash (write off, inline "Write off? Delete /
+> Keep" confirm). The header's "Edit" is now **"Edit item"** so item-level vs unit-level is unmistakable.
+> Store: `nextBarcode` / `addUnits` / `updateUnit` / `deleteUnit` (local + supabase); repository `addUnits` /
+> `updateUnit` / `deleteUnit`. Barcodes are unique across the WHOLE register, checked before write in both
+> modes. Delete is REFUSED with the reason when the unit is on a job ("#0960 is out on 'Apple Product Shoot —
+> Studio L'. Free it from that job first."), out for repair, or pinned to a kit's FIXED slot (that last one the
+> DB would refuse anyway — `kit_slots.fixed_unit_id` is RESTRICT); the reason shows in a dismissible banner
+> above the table. Otherwise it clears the unit's `set_units` rows first (RESTRICT) and deletes — same policy
+> as the existing item-level write-off. Caps: add/edit use `INVENTORY_EDIT`, delete uses the previously
+> unused `UNIT_WRITE_OFF`. NO migration.
+> ⚠️ Verified on the real DB with a throwaway unit that `events.unit_id` does NOT block deleting a unit —
+> its FK was dropped in `20260724120000_events_soft_refs.sql` (soft reference), so the audit trail survives
+> and must NOT be touched. An earlier attempt to null it out was reverted: it would have destroyed history the
+> migration deliberately keeps. `deleteInventoryItem` was likewise fine as it stood.
+> Verified in supabase mode end-to-end: add a unit with a typed barcode/serial (314→315, searchable by both),
+> duplicate-barcode refused on add AND edit, edit persisted, delete of a checked-out unit refused with the
+> reason, delete of a free unit succeeded (315→314), prod left with 0 test leftovers, 0 console errors.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

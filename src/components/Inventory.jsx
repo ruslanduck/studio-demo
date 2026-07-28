@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine, ClipboardList } from 'lucide-react'
+import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine, ClipboardList, Trash2, AlertTriangle } from 'lucide-react'
 import { useStore } from '../store'
 import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
 import { availableCount } from '../lib/availability'
@@ -11,6 +11,7 @@ import RepairModal from './RepairModal'
 import WorkHistoryModal, { UsageStats } from './WorkHistoryModal'
 import KitEditorModal from './KitEditorModal'
 import ScenarioEditorModal from './ScenarioEditorModal'
+import UnitEditorModal from './UnitEditorModal'
 
 // Render `text` with the first occurrence of `query` (already lowercased) wrapped
 // in a highlight. Used to show what a name / barcode / serial search matched.
@@ -168,6 +169,10 @@ export default function Inventory() {
   const sendToRepair = useStore((s) => s.sendToRepair)
   const returnFromRepair = useStore((s) => s.returnFromRepair)
   const logUsage = useStore((s) => s.logUsage)
+  const addUnits = useStore((s) => s.addUnits)
+  const updateUnit = useStore((s) => s.updateUnit)
+  const deleteUnit = useStore((s) => s.deleteUnit)
+  const nextBarcode = useStore((s) => s.nextBarcode)
   const addInventoryItem = useStore((s) => s.addInventoryItem)
   const updateInventoryItem = useStore((s) => s.updateInventoryItem)
   const deleteInventoryItem = useStore((s) => s.deleteInventoryItem)
@@ -198,6 +203,9 @@ export default function Inventory() {
   const [historyUnit, setHistoryUnit] = useState(null)
   const [repairUnitId, setRepairUnitId] = useState(null)
   const [workHistoryOpen, setWorkHistoryOpen] = useState(false)
+  // Per-unit add/edit/delete (the asset register under an item).
+  const [unitEditor, setUnitEditor] = useState({ open: false, unit: null })
+  const [unitError, setUnitError] = useState(null)
   // On phone/tablet-portrait the list and detail are separate screens.
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
@@ -719,6 +727,22 @@ export default function Inventory() {
                 onToggleOwnership={(unitId) => toggleOwnership(selected.id, unitId)}
                 onShowHistory={(unit) => setHistoryUnit(unit)}
                 onShowRepair={(unit) => setRepairUnitId(unit.id)}
+                canWriteOff={can(CAP.UNIT_WRITE_OFF)}
+                unitError={unitError}
+                onDismissUnitError={() => setUnitError(null)}
+                onAddUnit={() => {
+                  setUnitError(null)
+                  setUnitEditor({ open: true, unit: null })
+                }}
+                onEditUnit={(unit) => {
+                  setUnitError(null)
+                  setUnitEditor({ open: true, unit })
+                }}
+                onDeleteUnit={async (unit) => {
+                  setUnitError(null)
+                  const res = await deleteUnit(selected.id, unit.id)
+                  if (res?.error) setUnitError(res.error)
+                }}
                 onShowWorkHistory={() => setWorkHistoryOpen(true)}
               />
             </>
@@ -776,6 +800,16 @@ export default function Inventory() {
         }}
       />
 
+      <UnitEditorModal
+        open={unitEditor.open}
+        unit={unitEditor.unit}
+        itemName={selected?.name}
+        suggestedBarcode={unitEditor.open && !unitEditor.unit ? nextBarcode() : null}
+        onClose={() => setUnitEditor({ open: false, unit: null })}
+        onAdd={(payload) => addUnits(selected.id, payload)}
+        onSave={(payload) => updateUnit(selected.id, unitEditor.unit.id, payload)}
+      />
+
       <UnitHistoryModal
         open={!!historyUnit}
         unit={historyUnit}
@@ -806,8 +840,10 @@ export default function Inventory() {
   )
 }
 
-function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, vendors, onSetVendor, onShowHistory, onShowRepair, onShowWorkHistory }) {
+function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, vendors, onSetVendor, onShowHistory, onShowRepair, onShowWorkHistory, canWriteOff, unitError, onDismissUnitError, onAddUnit, onEditUnit, onDeleteUnit }) {
   const isBarcoded = item.kind === 'barcoded'
+  // Deleting a physical unit is a write-off — confirm in place, per row.
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const available = availableCount(item)
   const inRepair = item.units.filter((u) => u.status === 'in_repair').length
   const checkedOut = item.units.length - available - inRepair
@@ -859,7 +895,21 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {/* Add a physical copy of THIS item — the gap people hit when looking
+              for "add a unit with its own serial" and only finding the
+              item-level "Add inventory". */}
+          {isBarcoded && canEdit && (
+            <button
+              type="button"
+              onClick={onAddUnit}
+              title="Register another physical copy of this item"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+            >
+              <Plus size={14} />
+              Add unit
+            </button>
+          )}
           <button
             type="button"
             onClick={onShowWorkHistory}
@@ -873,16 +923,33 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
             <button
               type="button"
               onClick={onEdit}
+              title="Edit the item — name, category, brand, placement, price"
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
             >
               <Pencil size={14} />
-              Edit
+              Edit item
             </button>
           )}
         </div>
       </div>
 
       <ItemDetailsGrid item={item} />
+
+      {/* Why a write-off was refused (on a job, out for repair, pinned to a kit). */}
+      {unitError && (
+        <div className="flex shrink-0 items-start gap-2 border-b border-rose-200 bg-rose-50 px-5 py-2.5 text-xs font-medium text-rose-700">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <span className="flex-1">{unitError}</span>
+          <button
+            type="button"
+            onClick={onDismissUnitError}
+            className="rounded p-0.5 text-rose-400 transition hover:bg-rose-100 hover:text-rose-600"
+            aria-label="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {isBarcoded ? (
       <div className="min-h-0 flex-1 overflow-auto">
@@ -897,7 +964,8 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
               <th className="px-3 py-2.5 font-medium">Ownership</th>
               <th className="px-3 py-2.5 font-medium">Vendor</th>
               <th className="px-3 py-2.5 font-medium">History</th>
-              <th className="px-5 py-2.5 font-medium">Repair</th>
+              <th className="px-3 py-2.5 font-medium">Repair</th>
+              <th className="px-5 py-2.5 font-medium">Unit</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -952,7 +1020,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                     Sets
                   </button>
                 </td>
-                <td className="px-5 py-2.5">
+                <td className="px-3 py-2.5">
                   <button
                     type="button"
                     onClick={() => onShowRepair(unit)}
@@ -971,6 +1039,54 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                         ? `Log (${unit.repairs.length})`
                         : 'Repair'}
                   </button>
+                </td>
+                {/* Edit / write off THIS copy. */}
+                <td className="whitespace-nowrap px-5 py-2.5">
+                  {confirmDeleteId === unit.id ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs">
+                      <span className="text-slate-500">Write off?</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmDeleteId(null)
+                          onDeleteUnit(unit)
+                        }}
+                        className="rounded-md bg-rose-600 px-2 py-1 font-medium text-white transition hover:bg-rose-700"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="rounded-md px-1.5 py-1 font-medium text-slate-500 transition hover:bg-slate-100"
+                      >
+                        Keep
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-0.5">
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => onEditUnit(unit)}
+                          title="Correct this unit's barcode / serial"
+                          className="grid h-7 w-7 place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-violet-600"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      {canWriteOff && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(unit.id)}
+                          title="Write off / remove this unit"
+                          className="grid h-7 w-7 place-items-center rounded-md text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </span>
+                  )}
                 </td>
               </tr>
               )
