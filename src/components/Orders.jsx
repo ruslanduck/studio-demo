@@ -125,6 +125,8 @@ export default function Orders() {
   const [addonEqId, setAddonEqId] = useState(null) // add-on being equipment-edited
   const [addonChecklistId, setAddonChecklistId] = useState(null) // add-on whose checklist is open
   const [showDetailMobile, setShowDetailMobile] = useState(false)
+  // What the last confirm/hold did to the stock (supabase mode reports it).
+  const [reserveNote, setReserveNote] = useState(null)
 
   // Opened from the calendar (a shoot IS its order): select that order + show
   // its detail on mobile.
@@ -385,6 +387,7 @@ export default function Orders() {
                         onClick={() => {
                           setSelectedId(o.id)
                           setShowDetailMobile(true)
+                          setReserveNote(null) // it belonged to the previous order
                         }}
                         className={[
                           'w-full rounded-lg px-2.5 py-2.5 text-left transition',
@@ -457,7 +460,15 @@ export default function Orders() {
                 canManage={can(CAP.ORDER_MANAGE)}
                 onEdit={() => setEditor({ open: true, order: selected })}
                 onEditEquipment={() => setEqEditor({ open: true, order: selected })}
-                onSetStatus={(status) => updateOrder(selected.id, { status })}
+                reserveNote={reserveNote}
+                onSetStatus={async (status) => {
+                  setReserveNote(null)
+                  const res = await updateOrder(selected.id, { status })
+                  // Supabase mode reports what it managed to hold; local mode
+                  // re-derives in memory and has nothing to report.
+                  if (res && (res.reserved || res.short)) setReserveNote(res)
+                  else if (status === 'hold') setReserveNote({ reserved: 0, short: 0 })
+                }}
                 onDownloadPdf={() =>
                   downloadEstimatePdf(selected, { inventory, kits, booking: selectedBooking })
                 }
@@ -612,6 +623,7 @@ function OrderDetail({
   onDeleteAddon,
   onDownloadAddon,
   onSetStatus,
+  reserveNote,
 }) {
   const peek = useStore((s) => s.peek)
   // Resolve the typed photographer name to a real person so it can be opened.
@@ -694,6 +706,23 @@ function OrderDetail({
               <p className="mt-2 text-xs text-amber-600">
                 No equipment on this order yet — confirming an empty order is allowed, but packing
                 will have nothing to pull.
+              </p>
+            )}
+            {/* What confirming actually did to the stock. A shortfall means the
+                paperwork asks for more than was free — say so rather than let the
+                pull sheet imply gear that isn't held. */}
+            {reserveNote && (
+              <p
+                className={[
+                  'mt-2 text-xs',
+                  reserveNote.short > 0 ? 'text-amber-600' : 'text-emerald-600',
+                ].join(' ')}
+              >
+                {reserveNote.short > 0
+                  ? `${reserveNote.reserved} piece(s) reserved · ${reserveNote.short} could not be — nothing free for those lines. Free them from another job, or raise them as a sub-rental.`
+                  : reserveNote.reserved > 0
+                    ? `${reserveNote.reserved} piece(s) reserved for this job.`
+                    : 'Reservations released — nothing is held for this job now.'}
               </p>
             )}
           </section>

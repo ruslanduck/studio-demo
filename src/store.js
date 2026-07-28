@@ -22,6 +22,7 @@ import {
   deleteBooking as sbDeleteBooking,
   toggleOwnership as sbToggleOwnership,
   setUnitBarcode as sbSetUnitBarcode,
+  setReservationsForSet as sbSetReservationsForSet,
   addUnits as sbAddUnits,
   updateUnit as sbUpdateUnit,
   deleteUnit as sbDeleteUnit,
@@ -586,9 +587,17 @@ export const useStore = create(
 
       // Fetch inventory + bookings + kits + scenario lists from Supabase
       // (no-op in local mode).
-      hydrate: async () => {
+      // Fetch everything from Supabase (no-op in local mode).
+      //
+      // `quiet` refetches WITHOUT raising `loading`, which matters because the
+      // loading flag swaps the whole view for a full-screen spinner: that
+      // unmounts the active screen and throws away its local state — the filter
+      // you typed, the row you had open, the message about what just happened.
+      // The spinner belongs to the FIRST load only; every refetch after a write
+      // is quiet, so the screen just updates under you.
+      hydrate: async ({ quiet = false } = {}) => {
         if (!usingSupabase) return
-        set({ loading: true })
+        if (!quiet) set({ loading: true })
         try {
           const [inventory, bookings, kits, scenarios, people, companies, companyTypes, orders] =
             await Promise.all([
@@ -971,7 +980,7 @@ export const useStore = create(
           } catch (e) {
             return { error: e.message }
           }
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true, count: units.length }
         }
         set({
@@ -1000,7 +1009,7 @@ export const useStore = create(
           } catch (e) {
             return { error: e.message }
           }
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true }
         }
         set({
@@ -1043,7 +1052,7 @@ export const useStore = create(
           } catch (e) {
             return { error: e.message }
           }
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true }
         }
         const inventory = state.inventory.map((it) =>
@@ -1064,7 +1073,7 @@ export const useStore = create(
       sendToRepair: async (itemId, unitId, details = {}) => {
         if (usingSupabase) {
           await sbSendToRepair(unitId, details)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1096,7 +1105,7 @@ export const useStore = create(
       returnFromRepair: async (itemId, unitId, repairId, details = {}) => {
         if (usingSupabase) {
           await sbReturnFromRepair(repairId, details)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1127,7 +1136,7 @@ export const useStore = create(
       logUsage: async (itemId, details = {}) => {
         if (usingSupabase) {
           await sbLogItemUsage(itemId, details)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1157,7 +1166,7 @@ export const useStore = create(
       addInventoryItem: async ({ name, category, quantity, kind = 'barcoded', ...fields }) => {
         if (usingSupabase) {
           const id = await sbAddInventoryItem({ name, category, quantity, kind, ...fields })
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return id
         }
         const state = get()
@@ -1196,7 +1205,7 @@ export const useStore = create(
       updateInventoryItem: async (id, changes) => {
         if (usingSupabase) {
           await sbUpdateInventoryItem(id, changes)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1226,7 +1235,7 @@ export const useStore = create(
       deleteInventoryItem: async (id) => {
         if (usingSupabase) {
           await sbDeleteInventoryItem(id)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1247,7 +1256,7 @@ export const useStore = create(
       createKit: async ({ name, category, notes, slots }) => {
         if (usingSupabase) {
           await sbCreateKit({ name, category, notes, slots })
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1267,7 +1276,7 @@ export const useStore = create(
       updateKit: async (id, changes) => {
         if (usingSupabase) {
           await sbUpdateKit(id, changes)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1287,7 +1296,7 @@ export const useStore = create(
       deleteKit: async (id) => {
         if (usingSupabase) {
           await sbDeleteKit(id)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1305,7 +1314,7 @@ export const useStore = create(
       createScenario: async ({ name, category, notes, entries }) => {
         if (usingSupabase) {
           await sbCreateScenarioList({ name, category, notes, entries })
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1329,7 +1338,7 @@ export const useStore = create(
       updateScenario: async (id, changes) => {
         if (usingSupabase) {
           await sbUpdateScenarioList(id, changes)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1347,7 +1356,7 @@ export const useStore = create(
       deleteScenario: async (id) => {
         if (usingSupabase) {
           await sbDeleteScenarioList(id)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         set({ scenarios: get().scenarios.filter((l) => l.id !== id) })
@@ -1357,7 +1366,7 @@ export const useStore = create(
       createPerson: async (person) => {
         if (usingSupabase) {
           const id = await sbCreatePerson(person)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return id
         }
         const state = get()
@@ -1377,7 +1386,7 @@ export const useStore = create(
       updatePerson: async (id, changes) => {
         if (usingSupabase) {
           await sbUpdatePerson(id, changes)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1405,7 +1414,7 @@ export const useStore = create(
           }
         if (usingSupabase) {
           await sbDeletePerson(id)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true }
         }
         set({ people: get().people.filter((p) => p.id !== id) })
@@ -1418,7 +1427,7 @@ export const useStore = create(
         const { name, kind = 'client' } = company
         if (usingSupabase) {
           const id = await sbCreateCompany({ ...company, kind })
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return id
         }
         const state = get()
@@ -1437,7 +1446,7 @@ export const useStore = create(
       updateCompany: async (id, changes) => {
         if (usingSupabase) {
           await sbUpdateCompany(id, changes)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1461,7 +1470,7 @@ export const useStore = create(
       deleteCompany: async (id) => {
         if (usingSupabase) {
           await sbDeleteCompany(id)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1495,7 +1504,7 @@ export const useStore = create(
         const position = state.companyTypes.length
         if (usingSupabase) {
           await sbCreateCompanyType(clean, position)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true, name: clean }
         }
         set({
@@ -1518,7 +1527,7 @@ export const useStore = create(
           return { error: `"${clean}" already exists.` }
         if (usingSupabase) {
           await sbRenameCompanyType(id, old.name, clean)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true }
         }
         set({
@@ -1535,7 +1544,7 @@ export const useStore = create(
       deleteCompanyType: async (id) => {
         if (usingSupabase) {
           await sbDeleteCompanyType(id)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true }
         }
         set({ companyTypes: get().companyTypes.filter((t) => t.id !== id) })
@@ -1546,6 +1555,69 @@ export const useStore = create(
       // An Order equips one Set: creating it also creates the shoot, so the job
       // lands on the calendar. A studio takes at most MAX_SETS_PER_DAY shoots a
       // day — the 6th is refused with an explanation rather than silently added.
+      // Make an order's reservations real in Supabase mode (local mode already
+      // re-derives them in memory — see reservationsFromOrders).
+      //
+      // CONFIRMED → the units its in-house lines resolve to are written to
+      // set_units; HOLD or anything else → the set's rows are cleared. Only THIS
+      // order's set is touched: a global recompute would rewrite every set on
+      // every click.
+      //
+      // Availability is judged from a projection where a unit is takeable unless
+      // it's out for repair or held by ANOTHER set — units this set already holds
+      // count as free, otherwise re-confirming would find its own gear taken.
+      // Fixed kit units stay off limits unless a kit line names one explicitly.
+      // Returns { reserved, short } — `short` counts pieces the order asks for
+      // that nothing was free to cover, so the UI can say so instead of quietly
+      // reserving less than the paperwork claims.
+      syncReservationsForOrder: async (orderId) => {
+        if (!usingSupabase) return { ok: true, reserved: 0, short: 0 }
+        const state = get()
+        const order = state.orders.find((o) => o.id === orderId)
+        if (!order?.setId) return { ok: true, reserved: 0, short: 0 }
+        const booking = state.bookings.find((b) => b.id === order.setId)
+
+        if (order.status !== 'confirmed') {
+          await sbSetReservationsForSet(order.setId, [])
+          return { ok: true, reserved: 0, short: 0 }
+        }
+
+        const heldByThisSet = new Set(booking?.unitIds || [])
+        const projection = state.inventory.map((item) => ({
+          ...item,
+          units: (item.units || []).map((u) => {
+            if (openRepairOf(u)) return { ...u, status: 'in_repair' }
+            const free = u.status !== 'checked_out' || heldByThisSet.has(u.id)
+            return { ...u, status: free ? 'available' : 'checked_out' }
+          }),
+        }))
+
+        // Pin-protect fixed kit units, except any this order's kit lines name.
+        const namedUnits = new Set(
+          (order.lines || []).map((l) => l.unitId).filter(Boolean),
+        )
+        const claimed = new Set(
+          fixedUnitIdsOf(state.kits).filter((id) => !namedUnits.has(id)),
+        )
+
+        const ids = reservedUnitsForOrder(order, projection, claimed)
+
+        // What the order asks for in-house vs what could actually be held.
+        const asked = (order.lines || [])
+          .filter((l) => l.source !== 'sub_rental')
+          .reduce((n, l) => {
+            const item = state.inventory.find((i) => i.id === l.itemId)
+            // Only barcoded stock is unit-tracked; the rest isn't reserved at all.
+            return item?.kind === 'barcoded' ? n + Math.max(1, Number(l.quantity) || 1) : n
+          }, 0)
+
+        const reserved = await sbSetReservationsForSet(order.setId, ids, {
+          from: order.startsOn || null,
+          to: order.endsOn || order.startsOn || null,
+        })
+        return { ok: true, reserved, short: Math.max(0, asked - ids.length) }
+      },
+
       createOrder: async (order) => {
         const { jobName, studioId, startsOn } = order
         if (!jobName?.trim()) return { error: 'Give the job a name.' }
@@ -1565,7 +1637,7 @@ export const useStore = create(
         if (usingSupabase) {
           const id = await sbCreateOrder({ ...order, status: order.status || 'hold' })
           await sbCreateSetForOrder(id, { jobName, studioId, date: startsOn })
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true, id }
         }
 
@@ -1615,8 +1687,17 @@ export const useStore = create(
       updateOrder: async (id, changes) => {
         if (usingSupabase) {
           await sbUpdateOrder(id, changes)
-          await get().hydrate()
-          return { ok: true }
+          // Reservations follow the order: hydrate first so the sync sees the new
+          // status/dates, then hydrate again to pick up the set_units it wrote.
+          await get().hydrate({ quiet: true })
+          let res = { reserved: 0, short: 0 }
+          try {
+            res = await get().syncReservationsForOrder(id)
+            await get().hydrate({ quiet: true })
+          } catch (e) {
+            console.error('reservation sync failed:', e)
+          }
+          return { ok: true, ...res }
         }
         const state = get()
         const orders = state.orders
@@ -1652,8 +1733,16 @@ export const useStore = create(
       setOrderLines: async (orderId, lines) => {
         if (usingSupabase) {
           await sbSetOrderLines(orderId, lines)
-          await get().hydrate()
-          return { ok: true }
+          await get().hydrate({ quiet: true })
+          // Editing a CONFIRMED order's gear changes what it holds.
+          let res = { reserved: 0, short: 0 }
+          try {
+            res = await get().syncReservationsForOrder(orderId)
+            await get().hydrate({ quiet: true })
+          } catch (e) {
+            console.error('reservation sync failed:', e)
+          }
+          return { ok: true, ...res }
         }
         const state = get()
         const byId = Object.fromEntries(state.inventory.map((i) => [i.id, i]))
@@ -1746,7 +1835,7 @@ export const useStore = create(
       createAddon: async (orderId, label) => {
         if (usingSupabase) {
           const id = await sbCreateAddon(orderId, label)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return id
         }
         const id = `addon-${orderId}-${Date.now().toString(36)}`
@@ -1769,7 +1858,7 @@ export const useStore = create(
       setAddonLines: async (orderId, addonId, lines) => {
         if (usingSupabase) {
           await sbSetAddonLines(addonId, lines)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return { ok: true }
         }
         const state = get()
@@ -1809,7 +1898,7 @@ export const useStore = create(
       deleteAddon: async (orderId, addonId) => {
         if (usingSupabase) {
           await sbDeleteAddon(addonId)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         set({
@@ -1823,8 +1912,18 @@ export const useStore = create(
       // NULL) — the studio booking is a separate fact from the paperwork.
       deleteOrder: async (id) => {
         if (usingSupabase) {
+          // Scrapping the order releases its gear — the shoot stays booked, but
+          // nothing should still be held for an order that no longer exists.
+          const setId = get().orders.find((o) => o.id === id)?.setId ?? null
           await sbDeleteOrder(id)
-          await get().hydrate()
+          if (setId) {
+            try {
+              await sbSetReservationsForSet(setId, [])
+            } catch (e) {
+              console.error('releasing reservations failed:', e)
+            }
+          }
+          await get().hydrate({ quiet: true })
           return { ok: true }
         }
         const state = get()
@@ -1848,7 +1947,7 @@ export const useStore = create(
       createBooking: async (data) => {
         if (usingSupabase) {
           const id = await sbCreateBooking(data)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return id
         }
         const state = get()
@@ -1868,7 +1967,7 @@ export const useStore = create(
       updateBooking: async (id, changes) => {
         if (usingSupabase) {
           await sbUpdateBooking(id, changes)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()
@@ -1882,7 +1981,7 @@ export const useStore = create(
       deleteBooking: async (id) => {
         if (usingSupabase) {
           await sbDeleteBooking(id)
-          await get().hydrate()
+          await get().hydrate({ quiet: true })
           return
         }
         const state = get()

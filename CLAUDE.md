@@ -343,6 +343,29 @@
 > holding that unit (4 deep), Back unwinds one level at a time, X returns to the untouched starting card,
 > calendar chip peeks in place. NOTE the JobPeek for Wedding Editorial honestly shows "No units reserved"
 > while its order reads Confirmed — that's the known supabase live confirm→`set_units` gap, not a card bug.
+> **GAP CLOSED — live confirm→reserve in Supabase mode.** Until now "orders drive reservations" was only true
+> at SEED time on prod: confirming an order in the UI wrote no `set_units`, so a confirmed order could show
+> "No units reserved" (visible in the new JobPeek). New store action `syncReservationsForOrder(orderId)` +
+> repository `setReservationsForSet(setId, unitIds, {from,to})`: CONFIRMED resolves the order's in-house lines
+> to concrete units and writes them; HOLD (or any other status) clears that set's rows. Called from
+> `updateOrder` (the Hold↔Confirmed toggle), `setOrderLines` (editing a confirmed order's gear changes what it
+> holds) and `deleteOrder` (scrapping an order releases its gear — the shoot stays booked). Only the ONE set is
+> touched; a global recompute would rewrite every set on each click. Resolution reuses the SAME
+> `reservedUnitsForOrder` as local mode, against a projection where a unit counts as free unless it's out for
+> repair or held by ANOTHER set (units this set already holds count as free, or re-confirming would find its
+> own gear taken); fixed kit units stay pinned unless a kit line names one. The action returns
+> `{reserved, short}` and the order card SAYS SO — "5 piece(s) reserved · 1 could not be — nothing free for
+> those lines" — rather than letting the pull sheet imply gear that isn't held.
+> ⚠️ **`hydrate()` now takes `{quiet}`** and every post-write refetch uses it (36 call sites; only the initial
+> sign-in load and "Reset demo data" still raise `loading`). Raising `loading` swaps the whole view for a
+> full-screen spinner, which UNMOUNTS the active screen and discards its local state — the filter you typed,
+> the row you had open, and the just-happened message. That's why confirming used to throw you back to the
+> orders list, and it's the same root cause as the tab-refocus filter reset.
+> Frontend-only, no migration (set_units already exists). Verified on prod: Wedding Editorial CL-26058 was
+> confirmed with 0 reservations → Back to hold (0, "released") → Confirm → **5 rows written** (69→74 set_units;
+> Rode #1009, Sandbags #0779/#0780, C-Stands #0767/#0768) with the Canon correctly SHORT (0959 in repair, 0960
+> held by Apple Product Shoot — no double-booking), JobPeek now lists the gear, view stayed put through both
+> toggles, 0 console errors. Order left Confirmed as it was found.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

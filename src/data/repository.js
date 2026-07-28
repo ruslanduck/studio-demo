@@ -914,6 +914,28 @@ export async function deleteOrder(id) {
   if (error) throw error
 }
 
+// Replace a Set's reservations with exactly `unitIds` (empty = release all).
+//
+// This is what makes "orders drive reservations" true LIVE in Supabase mode, not
+// only at seed time: confirming an order writes these rows, moving it back to
+// hold clears them. Deleting the old rows fires the 'released' event trigger and
+// inserting fires 'reserved', so the audit log reads as a real release/re-take.
+export async function setReservationsForSet(setId, unitIds, { from = null, to = null } = {}) {
+  const { error: delErr } = await supabase.from('set_units').delete().eq('set_id', setId)
+  if (delErr) throw delErr
+  const rows = [...new Set(unitIds || [])].map((unit_id) => ({
+    set_id: setId,
+    unit_id,
+    status: 'reserved',
+    reserved_from: from,
+    reserved_to: to,
+  }))
+  if (!rows.length) return 0
+  const { error } = await supabase.from('set_units').insert(rows)
+  if (error) throw error
+  return rows.length
+}
+
 // Create the Set an order equips (5.1: "Order привязан к Set/Job"), then link it.
 export async function createSetForOrder(orderId, { jobName, studioId, date }) {
   const { data, error } = await supabase
