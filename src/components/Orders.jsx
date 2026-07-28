@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Undo2,
   Truck,
+  Briefcase,
 } from 'lucide-react'
 import { useStore } from '../store'
 import { useCan } from '../lib/useCan'
@@ -570,6 +571,22 @@ export default function Orders() {
   )
 }
 
+// Related data as a link that opens a layered card. Falls back to plain text when
+// there's nothing on the other end (e.g. a photographer typed by hand who isn't
+// in the People database).
+function PeekLink({ onClick, children }) {
+  if (!onClick) return children
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left text-violet-600 underline decoration-violet-300 underline-offset-2 transition hover:text-violet-800"
+    >
+      {children}
+    </button>
+  )
+}
+
 function Row({ icon: Icon, label, children }) {
   return (
     <div className="flex items-start gap-2 text-sm">
@@ -596,7 +613,12 @@ function OrderDetail({
   onDownloadAddon,
   onSetStatus,
 }) {
-  const focusInventory = useStore((s) => s.focusInventory)
+  const peek = useStore((s) => s.peek)
+  // Resolve the typed photographer name to a real person so it can be opened.
+  const peopleList = useStore((s) => s.people)
+  const photographerPerson = order.photographer
+    ? peopleList.find((p) => p.name === order.photographer) ?? null
+    : null
   const packProg = packingProgress(
     estimate.groups.flatMap((g) => g.lines),
     order.packing || {},
@@ -688,11 +710,32 @@ function OrderDetail({
             {order.studioId ? studioLabel(order.studioId) : '—'}
           </Row>
           <Row icon={Camera} label="Photographer">
-            {order.photographer || <span className="text-slate-400">not assigned</span>}
+            {order.photographer ? (
+              <PeekLink
+                onClick={
+                  photographerPerson ? () => peek({ type: 'person', id: photographerPerson.id }) : null
+                }
+              >
+                {order.photographer}
+              </PeekLink>
+            ) : (
+              <span className="text-slate-400">not assigned</span>
+            )}
           </Row>
           {order.companyName && (
             <Row icon={Building2} label="Company">
-              {order.companyName}
+              <PeekLink
+                onClick={order.companyId ? () => peek({ type: 'company', id: order.companyId }) : null}
+              >
+                {order.companyName}
+              </PeekLink>
+            </Row>
+          )}
+          {order.setId && (
+            <Row icon={Briefcase} label="Shoot">
+              <PeekLink onClick={() => peek({ type: 'job', id: order.setId })}>
+                Crew &amp; gear on the day
+              </PeekLink>
             </Row>
           )}
         </section>
@@ -759,18 +802,8 @@ function OrderDetail({
                           {l.itemId ? (
                             <button
                               type="button"
-                              onClick={() =>
-                                focusInventory({
-                                  itemId: l.itemId,
-                                  unitId: l.unitId,
-                                  from: {
-                                    view: 'orders',
-                                    label: order.jobName || 'this order',
-                                    focus: { orderId: order.id },
-                                  },
-                                })
-                              }
-                              title="Open this item’s history"
+                              onClick={() => peek({ type: 'item', id: l.itemId, unitId: l.unitId })}
+                              title="Open this item — units, history, where it is"
                               className="min-w-0 truncate text-left text-sm font-medium text-slate-800 hover:text-violet-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-violet-400"
                             >
                               {l.itemName}

@@ -6,7 +6,11 @@ import { studioLabel } from '../data/studios'
 import { usingSupabase, getUnitHistory } from '../data/repository'
 
 // Click a unit → every set it was reserved for → each set's roster.
-export default function UnitHistoryModal({ open, onClose, unit, itemName }) {
+//
+// The sets and the roster names are themselves links: `onOpenSet` / `onOpenPerson`
+// hand off to the layered cards. The caller closes this dialog first — a card
+// stacked over a modal would be a dead end to escape from.
+export default function UnitHistoryModal({ open, onClose, unit, itemName, onOpenSet, onOpenPerson }) {
   const bookings = useStore((s) => s.bookings)
   const [rows, setRows] = useState([])
   const [busy, setBusy] = useState(false)
@@ -78,12 +82,23 @@ export default function UnitHistoryModal({ open, onClose, unit, itemName }) {
                 className="rounded-lg border border-slate-200 p-3"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onOpenSet?.(r.setId)}
+                    disabled={!onOpenSet}
+                    title={onOpenSet ? 'Open this shoot' : undefined}
+                    className="flex min-w-0 items-center gap-2 text-left enabled:hover:text-violet-700"
+                  >
                     <CalendarRange size={16} className="shrink-0 text-violet-500" />
-                    <span className="truncate font-medium text-slate-900">
+                    <span
+                      className={[
+                        'truncate font-medium text-slate-900',
+                        onOpenSet ? 'underline decoration-slate-300 underline-offset-2' : '',
+                      ].join(' ')}
+                    >
                       {r.title}
                     </span>
-                  </div>
+                  </button>
                   <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                     {studioLabel(r.studioId)}
                   </span>
@@ -97,13 +112,17 @@ export default function UnitHistoryModal({ open, onClose, unit, itemName }) {
                 <div className="mt-2 flex flex-wrap gap-1.5 pl-6">
                   {r.roster && r.roster.length > 0 ? (
                     r.roster.map((p, i) => (
-                      <span
+                      <button
                         key={i}
-                        className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700"
+                        type="button"
+                        onClick={() => onOpenPerson?.(p.name)}
+                        disabled={!onOpenPerson}
+                        title={onOpenPerson ? `Open ${p.name}` : undefined}
+                        className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700 transition enabled:hover:bg-violet-100"
                       >
                         <span className="font-medium capitalize">{p.role}:</span>
                         {p.name}
-                      </span>
+                      </button>
                     ))
                   ) : (
                     <span className="inline-flex items-center gap-1 text-xs text-slate-400">

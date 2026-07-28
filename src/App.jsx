@@ -9,6 +9,7 @@ import Inventory from './components/Inventory'
 import People from './components/People'
 import Orders from './components/Orders'
 import Login from './components/Login'
+import PeekPanel from './components/PeekPanel'
 
 export default function App() {
   const activeView = useStore((s) => s.activeView)
@@ -95,6 +96,9 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Layered detail cards for related data — sits above every view. */}
+      <PeekPanel />
     </div>
   )
 }

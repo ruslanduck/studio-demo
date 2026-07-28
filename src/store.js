@@ -622,7 +622,7 @@ export const useStore = create(
       activeView: 'calendar', // 'calendar' | 'inventory'
       // Picking a view from the sidebar is a deliberate jump, not a drill-in, so
       // it drops the back trail (nothing to return "up" to).
-      setActiveView: (view) => set({ activeView: view, navStack: [] }),
+      setActiveView: (view) => set({ activeView: view, navStack: [], peekStack: [] }),
 
       // --- cross-view drill-in + a BACK STACK -------------------------------
       //
@@ -658,6 +658,7 @@ export const useStore = create(
           inventoryFocus: { itemId: itemId ?? null, unitId, kitId, listId, ts: Date.now() },
           activeView: 'inventory',
           sidebarOpen: false,
+          peekStack: [], // leaving the page closes the layered cards
         })
       },
       clearInventoryFocus: () => set({ inventoryFocus: null }),
@@ -666,9 +667,34 @@ export const useStore = create(
       openOrder: (orderId, from = null) => {
         if (!orderId) return
         if (from) get().pushNav(from)
-        set({ orderFocus: { orderId, ts: Date.now() }, activeView: 'orders', sidebarOpen: false })
+        set({
+          orderFocus: { orderId, ts: Date.now() },
+          activeView: 'orders',
+          sidebarOpen: false,
+          peekStack: [],
+        })
       },
       clearOrderFocus: () => set({ orderFocus: null }),
+
+      // --- peek stack: look at related data WITHOUT leaving the page ---------
+      //
+      // Anything related is clickable, and clicking it opens a card layered over
+      // the current screen instead of navigating away. Peeks stack, so you can go
+      // order → its gear → that unit's job → the model on it and unwind one step
+      // at a time; closing the last one puts you exactly where you started.
+      // Each entry is { type: 'order'|'item'|'person'|'company'|'job', id }.
+      // Not persisted.
+      peekStack: [],
+      peek: (target) => {
+        if (!target?.type || !target?.id) return
+        const stack = get().peekStack
+        const top = stack[stack.length - 1]
+        // Clicking the thing you're already looking at shouldn't deepen the stack.
+        if (top && top.type === target.type && top.id === target.id) return
+        set({ peekStack: [...stack, { ...target }] })
+      },
+      peekBack: () => set({ peekStack: get().peekStack.slice(0, -1) }),
+      peekClose: () => set({ peekStack: [] }),
 
       // Open the studio calendar on a given date. Used when a job has no order
       // to open (a legacy order-less shoot), so a work-history row still leads
@@ -680,6 +706,7 @@ export const useStore = create(
           calendarMode: 'week',
           activeView: 'calendar',
           sidebarOpen: false,
+          peekStack: [],
         })
       },
 
@@ -690,6 +717,7 @@ export const useStore = create(
           peopleFocus: { personId, companyId, ts: Date.now() },
           activeView: 'people',
           sidebarOpen: false,
+          peekStack: [],
         })
       },
       clearPeopleFocus: () => set({ peopleFocus: null }),
@@ -707,6 +735,7 @@ export const useStore = create(
           navStack: stack.slice(0, -1),
           activeView: target.view,
           sidebarOpen: false,
+          peekStack: [],
           inventoryFocus:
             target.view === 'inventory' ? { ...focus, unitId: null, ts } : get().inventoryFocus,
           orderFocus: target.view === 'orders' ? { ...focus, ts } : get().orderFocus,

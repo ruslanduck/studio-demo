@@ -56,7 +56,7 @@ export default function StudioCalendar() {
   const calendarMode = useStore((s) => s.calendarMode)
   const setCalendarMode = useStore((s) => s.setCalendarMode)
   const createOrder = useStore((s) => s.createOrder)
-  const openOrder = useStore((s) => s.openOrder)
+  const peek = useStore((s) => s.peek)
   const can = useCan()
   const canCreate = can(CAP.BOOKING_CREATE)
 
@@ -108,11 +108,12 @@ export default function StudioCalendar() {
     if (!canCreate) return
     setOrderEditor({ open: true, prefill: { studioId, startsOn: iso } })
   }
-  // Click a shoot → open its order. A legacy shoot with no order still opens in
-  // the booking modal so it can be edited/deleted.
+  // Click a shoot → open it as a layered card (crew, its order, the gear on the
+  // day) without leaving the calendar; from there the order and every item are a
+  // click deeper. A legacy shoot with no order at all still opens in the booking
+  // modal, which is the only place left to edit or delete it.
   const openEdit = (booking) => {
-    if (booking.orderId)
-      openOrder(booking.orderId, { view: 'calendar', label: 'Studio Calendar', focus: {} })
+    if (booking.orderId) peek({ type: 'job', id: booking.id })
     else setModal({ open: true, booking, prefill: null })
   }
   const closeModal = () => setModal((m) => ({ ...m, open: false }))

@@ -83,8 +83,8 @@ export default function People() {
   const deleteCompanyType = useStore((s) => s.deleteCompanyType)
   const peopleFocus = useStore((s) => s.peopleFocus)
   const clearPeopleFocus = useStore((s) => s.clearPeopleFocus)
-  const openOrder = useStore((s) => s.openOrder)
   const openCalendarOn = useStore((s) => s.openCalendarOn)
+  const peek = useStore((s) => s.peek)
   const can = useCan()
 
   const [tab, setTab] = useState('people') // 'people' | 'companies'
@@ -146,13 +146,13 @@ export default function People() {
     setShowDetailMobile(true)
   }
 
-  // A work-history row leads to that job's order; a shoot with no order (a
-  // legacy order-less booking) opens the calendar on its date instead. Either
-  // way `from` records this card so the back bar can return here.
-  function openJob(job, order, from) {
-    const trail = { view: 'people', ...from }
-    if (order?.id) openOrder(order.id, trail)
-    else openCalendarOn(job?.date, trail)
+  // A work-history row opens the SHOOT as a layered card (crew, its order, the
+  // gear that went out) instead of navigating away — from there the order, the
+  // people and each item are one more click deep. A row whose shoot is missing
+  // falls back to the calendar.
+  function openJob(job) {
+    if (job?.id) peek({ type: 'job', id: job.id })
+    else openCalendarOn(job?.date)
   }
 
   // Stepping back onto this view (e.g. from an item we drilled into off a
@@ -321,12 +321,7 @@ export default function People() {
                   canManage={can(CAP.PERSON_MANAGE)}
                   onEdit={() => setEditor({ open: true, person: selectedPerson })}
                   onOpenCompany={openCompany}
-                  onOpenJob={(job, order) =>
-                    openJob(job, order, {
-                      label: selectedPerson.name,
-                      focus: { personId: selectedPerson.id },
-                    })
-                  }
+                  onOpenJob={openJob}
                 />
               </>
             ) : (
@@ -350,12 +345,8 @@ export default function People() {
                 canManage={can(CAP.COMPANY_MANAGE)}
                 onEdit={() => setCompanyEditor({ open: true, company: selectedCompany })}
                 onOpenPerson={openPerson}
-                onOpenJob={(job, order) =>
-                  openJob(job, order, {
-                    label: selectedCompany.name,
-                    focus: { companyId: selectedCompany.id },
-                  })
-                }
+                onOpenJob={openJob}
+                onOpenOrder={(orderId) => peek({ type: 'order', id: orderId })}
               />
             </>
           ) : (
@@ -713,8 +704,8 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpen
 // (address / hours / website / email / phone), its people as hyperlinks back to
 // People, and work history — orders in both directions, the gear we currently
 // hold from them as a vendor, and the jobs its people worked.
-function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, onOpenPerson, onOpenJob }) {
-  const focusInventory = useStore((s) => s.focusInventory)
+function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, onOpenPerson, onOpenJob, onOpenOrder }) {
+  const peek = useStore((s) => s.peek)
   const staff = people.filter((p) => p.companyId === company.id)
   // Same fold as the person card: a job row carries its order.
   const orderBySet = useMemo(() => {
@@ -909,10 +900,7 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             Order history{companyOrders.length > 0 && ` (${companyOrders.length})`}
           </h4>
-          <OrderList
-            orders={companyOrders}
-            onOpen={(o) => onOpenJob?.({ id: o.setId, date: o.startsOn }, o)}
-          />
+          <OrderList orders={companyOrders} onOpen={(o) => onOpenOrder?.(o.id)} />
         </section>
 
         {/* 4.5 — gear currently held from this vendor */}
@@ -930,17 +918,8 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
                   <Package size={14} className="shrink-0 text-slate-400" />
                   <button
                     type="button"
-                    onClick={() =>
-                      focusInventory({
-                        itemId: g.itemId,
-                        from: {
-                          view: 'people',
-                          label: company.name,
-                          focus: { companyId: company.id },
-                        },
-                      })
-                    }
-                    title="Open this item’s history"
+                    onClick={() => peek({ type: 'item', id: g.itemId })}
+                    title="Open this item — units, history, where it is"
                     className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-800 hover:text-violet-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-violet-400"
                   >
                     {g.name}

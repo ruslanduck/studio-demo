@@ -322,6 +322,27 @@
 > + PO + green Confirmed, no duplicate section), row → its order with "← Back to Ava Morgan" and back again,
 > vendor card shows "Rented to us", agency card shows "For their job". NOTE the console keeps a stale parse
 > error from a mid-edit HMR attempt (15:52:58) — later HMR updates and both prod builds are clean.
+> **FEATURE — layered peek cards (related data is clickable everywhere, without leaving the page).**
+> Requested: "в любой точке системы связанные данные должны быть кликабельны … чтобы нас не перекидывало на
+> другую страницу, а открывало карточку в рамках текущей". `src/components/PeekPanel.jsx` is a right-side
+> drawer over the current view driven by a STACK in the store (`peekStack` + `peek`/`peekBack`/`peekClose`):
+> click related data → a card layers on top; click inside it → another card stacks (header shows "N deep" +
+> Back; Esc pops one; the X or the backdrop drops the whole stack and you're exactly where you started).
+> Five card types, each read-only and each with its own links: **order** (job block with clickable
+> photographer/company/shoot, equipment lines, estimate), **item** (units with where each one is, plus every
+> order using it), **person** (contact, work history), **company** (details, contacts, orders, gear held),
+> **job/set** (crew, its order, the gear that went out with barcodes). Every card carries "Open full view",
+> which hands off to the real screen (with its editing tools) and clears the stack. Cards are purpose-built,
+> NOT the view components reused — those own edit state, permissions and their own modals, and nesting them
+> would put dialogs inside dialogs. Wired: order equipment lines + photographer/company/shoot rows, People
+> person work-history rows and company contacts/orders/gear, calendar chips (a shoot opens in place instead of
+> jumping to Orders), and the unit-history dialog's sets + roster names (that one CLOSES first — a card
+> stacked over a modal has no clean escape). Any cross-view navigation (`focusInventory`/`openOrder`/
+> `focusPeople`/`openCalendarOn`/`goBack`/`setActiveView`) clears the stack so a card can't float over the
+> wrong page. Frontend-only, no migration. Verified in supabase mode: person → shoot → order → item → the job
+> holding that unit (4 deep), Back unwinds one level at a time, X returns to the untouched starting card,
+> calendar chip peeks in place. NOTE the JobPeek for Wedding Editorial honestly shows "No units reserved"
+> while its order reads Confirmed — that's the known supabase live confirm→`set_units` gap, not a card bug.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

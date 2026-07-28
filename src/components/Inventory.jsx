@@ -185,6 +185,8 @@ export default function Inventory() {
   const inventoryFocus = useStore((s) => s.inventoryFocus)
   const clearInventoryFocus = useStore((s) => s.clearInventoryFocus)
   const focusInventory = useStore((s) => s.focusInventory)
+  const peek = useStore((s) => s.peek)
+  const people = useStore((s) => s.people)
   const can = useCan()
 
   const [entryType, setEntryType] = useState('items') // 'items' | 'kits' | 'lists'
@@ -815,6 +817,16 @@ export default function Inventory() {
         unit={historyUnit}
         itemName={selected?.name}
         onClose={() => setHistoryUnit(null)}
+        // Following the thread out of the dialog: close it, then layer the card.
+        onOpenSet={(setId) => {
+          setHistoryUnit(null)
+          peek({ type: 'job', id: setId })
+        }}
+        onOpenPerson={(name) => {
+          const person = people.find((p) => p.name === name)
+          setHistoryUnit(null)
+          if (person) peek({ type: 'person', id: person.id })
+        }}
       />
 
       <RepairModal
