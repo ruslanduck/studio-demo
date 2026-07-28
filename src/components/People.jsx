@@ -25,6 +25,7 @@ import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
 import { PEOPLE_CATEGORIES } from '../data/people'
+import { orderStatusMeta } from '../data/orderStatus'
 import PersonEditorModal from './PersonEditorModal'
 import CompanyEditorModal from './CompanyEditorModal'
 import { usingSupabase } from '../data/repository'
@@ -82,6 +83,8 @@ export default function People() {
   const deleteCompanyType = useStore((s) => s.deleteCompanyType)
   const peopleFocus = useStore((s) => s.peopleFocus)
   const clearPeopleFocus = useStore((s) => s.clearPeopleFocus)
+  const openOrder = useStore((s) => s.openOrder)
+  const openCalendarOn = useStore((s) => s.openCalendarOn)
   const can = useCan()
 
   const [tab, setTab] = useState('people') // 'people' | 'companies'
@@ -141,6 +144,15 @@ export default function People() {
     setSearch('')
     setSelectedCompanyId(id)
     setShowDetailMobile(true)
+  }
+
+  // A work-history row leads to that job's order; a shoot with no order (a
+  // legacy order-less booking) opens the calendar on its date instead. Either
+  // way `from` records this card so the back bar can return here.
+  function openJob(job, order, from) {
+    const trail = { view: 'people', ...from }
+    if (order?.id) openOrder(order.id, trail)
+    else openCalendarOn(job?.date, trail)
   }
 
   // Stepping back onto this view (e.g. from an item we drilled into off a
@@ -309,6 +321,12 @@ export default function People() {
                   canManage={can(CAP.PERSON_MANAGE)}
                   onEdit={() => setEditor({ open: true, person: selectedPerson })}
                   onOpenCompany={openCompany}
+                  onOpenJob={(job, order) =>
+                    openJob(job, order, {
+                      label: selectedPerson.name,
+                      focus: { personId: selectedPerson.id },
+                    })
+                  }
                 />
               </>
             ) : (
@@ -332,6 +350,12 @@ export default function People() {
                 canManage={can(CAP.COMPANY_MANAGE)}
                 onEdit={() => setCompanyEditor({ open: true, company: selectedCompany })}
                 onOpenPerson={openPerson}
+                onOpenJob={(job, order) =>
+                  openJob(job, order, {
+                    label: selectedCompany.name,
+                    focus: { companyId: selectedCompany.id },
+                  })
+                }
               />
             </>
           ) : (
@@ -506,19 +530,18 @@ function CompanyList({ companies, people, selectedId, query, onSelect }) {
 
 // A person's card: contact info, the company hyperlink (4.1), profile links (4.2)
 // and the jobs they worked.
-function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany }) {
+function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpenJob }) {
   const hasProfile = person.website || person.instagram || person.cvFilename
 
-  // 4.5 — the orders behind the jobs this person worked. A person isn't linked to
-  // an order directly (orders belong to a company); the chain is
-  // person → roster → set → set.order_id, so these are the orders that served
-  // their jobs. A direct person↔order link needs the Orders module (epic #5).
-  const personOrders = useMemo(() => {
-    const setIds = new Set(person.jobs.map((j) => j.id))
-    return (orders || [])
-      .filter((o) => o.setId && setIds.has(o.setId))
-      .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
-  }, [orders, person.jobs])
+  // A person isn't linked to an order directly (an order belongs to the job);
+  // the chain is person → roster → set → set.order_id. That order is folded into
+  // the work-history row rather than listed separately — the two used to be
+  // shown as different sections, which read as two unrelated things.
+  const orderBySet = useMemo(() => {
+    const map = new Map()
+    for (const o of orders || []) if (o.setId && !map.has(o.setId)) map.set(o.setId, o)
+    return map
+  }, [orders])
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -665,23 +688,22 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany }) {
           </section>
         )}
 
-        {/* Work history */}
+        {/* Work history — the shoots they were crewed on; each row opens the
+            job's order (or the calendar when the shoot has none). */}
         <section>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             Work history{person.jobs.length > 0 && ` (${person.jobs.length})`}
           </h4>
-          <JobList jobs={person.jobs} emptyText="No jobs yet." />
+          <p className="mb-2 text-xs text-slate-400">
+            Shoots this person was crewed on — open a row for that job’s equipment order.
+          </p>
+          <JobList
+            jobs={person.jobs}
+            emptyText="No jobs yet."
+            orderForSet={(setId) => orderBySet.get(setId) ?? null}
+            onOpenJob={onOpenJob}
+          />
         </section>
-
-        {/* 4.5 — orders attached to those jobs */}
-        {personOrders.length > 0 && (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Orders on those jobs ({personOrders.length})
-            </h4>
-            <OrderList orders={personOrders} showCompany />
-          </section>
-        )}
       </div>
     </>
   )
@@ -691,9 +713,15 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany }) {
 // (address / hours / website / email / phone), its people as hyperlinks back to
 // People, and work history — orders in both directions, the gear we currently
 // hold from them as a vendor, and the jobs its people worked.
-function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, onOpenPerson }) {
+function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, onOpenPerson, onOpenJob }) {
   const focusInventory = useStore((s) => s.focusInventory)
   const staff = people.filter((p) => p.companyId === company.id)
+  // Same fold as the person card: a job row carries its order.
+  const orderBySet = useMemo(() => {
+    const map = new Map()
+    for (const o of orders || []) if (o.setId && !map.has(o.setId)) map.set(o.setId, o)
+    return map
+  }, [orders])
   const jobs = useMemo(() => {
     const seen = new Set()
     return staff
@@ -881,7 +909,10 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             Order history{companyOrders.length > 0 && ` (${companyOrders.length})`}
           </h4>
-          <OrderList orders={companyOrders} />
+          <OrderList
+            orders={companyOrders}
+            onOpen={(o) => onOpenJob?.({ id: o.setId, date: o.startsOn }, o)}
+          />
         </section>
 
         {/* 4.5 — gear currently held from this vendor */}
@@ -925,55 +956,60 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             Jobs its people worked{jobs.length > 0 && ` (${jobs.length})`}
           </h4>
-          <JobList jobs={jobs} showWho emptyText="No jobs involving this company yet." />
+          <JobList
+            jobs={jobs}
+            showWho
+            emptyText="No jobs involving this company yet."
+            orderForSet={(setId) => orderBySet.get(setId) ?? null}
+            onOpenJob={onOpenJob}
+          />
         </section>
       </div>
     </>
   )
 }
 
-// Order history rows (4.5). `kind` tells the direction: an order the company
-// placed with us, or gear we sub-rented from them.
-function OrderList({ orders, showCompany = false }) {
-  if (orders.length === 0)
-    return (
-      <p className="text-sm text-slate-400">
-        No orders yet — the Orders module lands in the next epic.
-      </p>
-    )
-  const STATUS = {
-    draft: 'bg-slate-100 text-slate-500',
-    confirmed: 'bg-amber-100 text-amber-700',
-    fulfilled: 'bg-emerald-100 text-emerald-700',
-    canceled: 'bg-rose-100 text-rose-600',
-  }
+// Order history rows on a COMPANY card. The badge is the DIRECTION, which is the
+// only thing that needs spelling out here: gear this company rented TO us
+// (sub-rental) versus an order raised against them. It's worded rather than
+// labelled "Client" — a bare noun read like a customer segment. Status colours
+// come from the shared vocabulary so a confirmed order is green here too.
+function OrderList({ orders, showCompany = false, onOpen }) {
+  if (orders.length === 0) return <p className="text-sm text-slate-400">No orders yet.</p>
   return (
     <ul className="space-y-1.5">
       {orders.map((o) => {
         const inbound = o.kind === 'sub_rental'
+        const st = orderStatusMeta(o.status)
         return (
-          <li key={o.id} className="rounded-lg border border-slate-200 px-3 py-2">
+          <li key={o.id}>
+            <button
+              type="button"
+              onClick={() => onOpen?.(o)}
+              title="Open this order"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50/40"
+            >
             <div className="flex items-center gap-2">
               <span
-                title={inbound ? 'We rented from them' : 'They ordered from us'}
+                title={inbound ? 'They rented gear to us' : 'Raised against this company'}
                 className={[
                   'inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
                   inbound ? 'bg-violet-100 text-violet-700' : 'bg-slate-200 text-slate-600',
                 ].join(' ')}
               >
                 {inbound ? <ArrowDownLeft size={9} /> : <ArrowUpRight size={9} />}
-                {inbound ? 'Sub-rental' : 'Client'}
+                {inbound ? 'Rented to us' : 'For their job'}
               </span>
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-600">
-                {o.number}
+                {o.poNumber || o.number}
               </span>
               <span
                 className={[
-                  'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium',
-                  STATUS[o.status] ?? 'bg-slate-100 text-slate-500',
+                  'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1',
+                  st.pill,
                 ].join(' ')}
               >
-                {o.status}
+                {st.label}
               </span>
             </div>
             <div className="mt-1 truncate text-xs text-slate-400">
@@ -986,6 +1022,7 @@ function OrderList({ orders, showCompany = false }) {
                 {o.lines.map((l) => `${l.quantity}× ${l.itemName ?? 'item'}`).join(', ')}
               </div>
             )}
+            </button>
           </li>
         )
       })}
@@ -994,38 +1031,59 @@ function OrderList({ orders, showCompany = false }) {
 }
 
 // Shared job-history list used by both cards.
-function JobList({ jobs, showWho = false, emptyText }) {
+//
+// A row IS the shoot: date, studio, the person's role ON THAT JOB ("as model" —
+// not a repeat of their profile category, since the same person can be crewed
+// differently from job to job) and, when the shoot has an order, that order's
+// ref + status. Clicking the row opens that order; a shoot with no order opens
+// the calendar on its date instead, so every row leads somewhere.
+function JobList({ jobs, showWho = false, emptyText, orderForSet, onOpenJob }) {
   if (jobs.length === 0) return <p className="text-sm text-slate-400">{emptyText}</p>
   return (
     <ul className="space-y-1.5">
-      {jobs.map((j, i) => (
-        <li
-          key={`${j.id}-${i}`}
-          className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2"
-        >
-          <Briefcase size={14} className="shrink-0 text-slate-400" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-slate-800">{j.title}</div>
-            <div className="truncate text-xs text-slate-400">
-              {[
-                j.date,
-                j.studioId ? studioLabel(j.studioId) : null,
-                showWho ? j.who : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </div>
-          </div>
-          {j.role && (
-            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
-              {j.role}
-            </span>
-          )}
-          {j.status === 'canceled' && (
-            <span className="shrink-0 text-[11px] font-medium text-rose-500">canceled</span>
-          )}
-        </li>
-      ))}
+      {jobs.map((j, i) => {
+        const order = orderForSet ? orderForSet(j.id) : null
+        const st = order ? orderStatusMeta(order.status) : null
+        return (
+          <li key={`${j.id}-${i}`}>
+            <button
+              type="button"
+              onClick={() => onOpenJob?.(j, order)}
+              title={order ? 'Open this job’s order' : 'Show this shoot on the calendar'}
+              className="flex w-full items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50/40"
+            >
+              <Briefcase size={14} className="shrink-0 text-slate-400" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-slate-800">{j.title}</div>
+                <div className="truncate text-xs text-slate-400">
+                  {[
+                    j.date,
+                    j.studioId ? studioLabel(j.studioId) : null,
+                    showWho ? j.who : null,
+                    j.role ? `as ${String(j.role).toLowerCase()}` : null,
+                    order ? order.poNumber || order.number : 'no order',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </div>
+              {st && (
+                <span
+                  className={[
+                    'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1',
+                    st.pill,
+                  ].join(' ')}
+                >
+                  {st.label}
+                </span>
+              )}
+              {j.status === 'canceled' && (
+                <span className="shrink-0 text-[11px] font-medium text-rose-500">canceled</span>
+              )}
+            </button>
+          </li>
+        )
+      })}
     </ul>
   )
 }

@@ -670,6 +670,19 @@ export const useStore = create(
       },
       clearOrderFocus: () => set({ orderFocus: null }),
 
+      // Open the studio calendar on a given date. Used when a job has no order
+      // to open (a legacy order-less shoot), so a work-history row still leads
+      // somewhere. Bypasses setActiveView so the back trail survives.
+      openCalendarOn: (date, from = null) => {
+        if (from) get().pushNav(from)
+        set({
+          ...(date ? { selectedDate: date } : {}),
+          calendarMode: 'week',
+          activeView: 'calendar',
+          sidebarOpen: false,
+        })
+      },
+
       focusPeople: ({ personId = null, companyId = null, from = null } = {}) => {
         if (!personId && !companyId) return
         if (from) get().pushNav(from)

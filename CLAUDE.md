@@ -305,6 +305,23 @@
 > Verified in supabase mode end-to-end: add a unit with a typed barcode/serial (314→315, searchable by both),
 > duplicate-barcode refused on add AND edit, edit persisted, delete of a checked-out unit refused with the
 > reason, delete of a free unit succeeded (315→314), prod left with 0 test leftovers, 0 console errors.
+> **CLARITY PASS on the person / company cards.** Three reported confusions, all fixed rather than explained
+> away. (1) Work history wasn't clickable — now every row opens that job's ORDER (via `openOrder` + the back
+> trail); a shoot with no order opens the calendar on its date instead (new store action `openCalendarOn`,
+> which bypasses `setActiveView` so the trail survives), so no row is a dead end. (2) The bare `MODEL` /
+> `PHOTOGRAPHER` tag read as a duplicate of the person's profile category — it is actually their role ON THAT
+> JOB (`roster_entries.role`), so it now reads "as model" inline with date · studio. (3) "Work history" vs
+> "Orders on those jobs" were two sections describing the same shoots from different ends; the second is GONE
+> and its order is folded into the job row (PO/ref + status pill), which is what made the difference
+> unexplainable. Also: the `CLIENT` badge is gone from person cards entirely and, on the company card, the
+> direction badge is now worded — "Rented to us" / "For their job" instead of "Sub-rental" / "Client" (a bare
+> noun read like a customer segment). Company order rows became clickable too, and `OrderList` now takes its
+> status colours from `orderStatusMeta` — it had a local map painting CONFIRMED amber while the rest of the app
+> paints it green — and lost the stale "the Orders module lands in the next epic" empty text (it shipped).
+> Frontend-only, no migration. Verified in supabase mode: Ava Morgan's card (work history rows with "as model"
+> + PO + green Confirmed, no duplicate section), row → its order with "← Back to Ava Morgan" and back again,
+> vendor card shows "Rented to us", agency card shows "For their job". NOTE the console keeps a stale parse
+> error from a mid-edit HMR attempt (15:52:58) — later HMR updates and both prod builds are clean.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
