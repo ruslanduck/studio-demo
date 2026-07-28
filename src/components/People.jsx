@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Search,
   Plus,
@@ -80,6 +80,8 @@ export default function People() {
   const createCompanyType = useStore((s) => s.createCompanyType)
   const renameCompanyType = useStore((s) => s.renameCompanyType)
   const deleteCompanyType = useStore((s) => s.deleteCompanyType)
+  const peopleFocus = useStore((s) => s.peopleFocus)
+  const clearPeopleFocus = useStore((s) => s.clearPeopleFocus)
   const can = useCan()
 
   const [tab, setTab] = useState('people') // 'people' | 'companies'
@@ -140,6 +142,17 @@ export default function People() {
     setSelectedCompanyId(id)
     setShowDetailMobile(true)
   }
+
+  // Stepping back onto this view (e.g. from an item we drilled into off a
+  // vendor's card) restores the person/company that was open.
+  useEffect(() => {
+    if (!peopleFocus) return
+    if (peopleFocus.companyId && companies.some((c) => c.id === peopleFocus.companyId))
+      openCompany(peopleFocus.companyId)
+    else if (peopleFocus.personId && people.some((p) => p.id === peopleFocus.personId))
+      openPerson(peopleFocus.personId)
+    clearPeopleFocus()
+  }, [peopleFocus, people, companies, clearPeopleFocus])
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
@@ -886,7 +899,16 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
                   <Package size={14} className="shrink-0 text-slate-400" />
                   <button
                     type="button"
-                    onClick={() => focusInventory({ itemId: g.itemId })}
+                    onClick={() =>
+                      focusInventory({
+                        itemId: g.itemId,
+                        from: {
+                          view: 'people',
+                          label: company.name,
+                          focus: { companyId: company.id },
+                        },
+                      })
+                    }
                     title="Open this item’s history"
                     className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-800 hover:text-violet-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-violet-400"
                   >

@@ -179,6 +179,7 @@ export default function Inventory() {
   const deleteScenario = useStore((s) => s.deleteScenario)
   const inventoryFocus = useStore((s) => s.inventoryFocus)
   const clearInventoryFocus = useStore((s) => s.clearInventoryFocus)
+  const focusInventory = useStore((s) => s.focusInventory)
   const can = useCan()
 
   const [entryType, setEntryType] = useState('items') // 'items' | 'kits' | 'lists'
@@ -200,28 +201,42 @@ export default function Inventory() {
   // On phone/tablet-portrait the list and detail are separate screens.
   const [showDetailMobile, setShowDetailMobile] = useState(false)
 
-  // Drill-in from another view (e.g. clicking an item in an order's equipment):
-  // select the item and, when a concrete unit was named, open its history.
+  // Drill-in from elsewhere (an order's equipment, a vendor's gear, a kit slot)
+  // or a step back onto this view: switch to the right tab, clear the filters
+  // that would hide the target, select it, and — when a concrete unit was named —
+  // open that unit's history.
   useEffect(() => {
-    if (!inventoryFocus?.itemId) return
-    const item = inventory.find((i) => i.id === inventoryFocus.itemId)
-    if (item) {
-      setEntryType('items')
+    if (!inventoryFocus) return
+    const { itemId, unitId, kitId, listId } = inventoryFocus
+    const clearFilters = () => {
       setSearch('')
       setCategory('All')
       setBrand('All')
       setKind('All')
-      setSelectedId(item.id)
+    }
+    if (listId && scenarios.some((l) => l.id === listId)) {
+      setEntryType('lists')
+      setSelectedListId(listId)
       setShowDetailMobile(true)
-      if (inventoryFocus.unitId) {
-        const unit = (item.units || []).find(
-          (u) => u.id === inventoryFocus.unitId || u.barcode === inventoryFocus.unitId,
-        )
-        if (unit) setHistoryUnit(unit)
+    } else if (kitId && kits.some((k) => k.id === kitId)) {
+      setEntryType('kits')
+      setSelectedKitId(kitId)
+      setShowDetailMobile(true)
+    } else if (itemId) {
+      const item = inventory.find((i) => i.id === itemId)
+      if (item) {
+        setEntryType('items')
+        clearFilters()
+        setSelectedId(item.id)
+        setShowDetailMobile(true)
+        if (unitId) {
+          const unit = (item.units || []).find((u) => u.id === unitId || u.barcode === unitId)
+          if (unit) setHistoryUnit(unit)
+        }
       }
     }
     clearInventoryFocus()
-  }, [inventoryFocus, inventory, clearInventoryFocus])
+  }, [inventoryFocus, inventory, kits, scenarios, clearInventoryFocus])
 
   // Distinct brands present in the inventory (for the Brand filter).
   const brands = useMemo(
@@ -619,16 +634,26 @@ export default function Inventory() {
                   kits={kits}
                   canManage={can(CAP.SCENARIO_MANAGE)}
                   onEdit={() => setListModal({ open: true, list: selectedList })}
-                  onSelectItem={(id) => {
-                    setEntryType('items')
-                    setSearch('')
-                    setSelectedId(id)
-                  }}
-                  onSelectKit={(id) => {
-                    setEntryType('kits')
-                    setSearch('')
-                    setSelectedKitId(id)
-                  }}
+                  onSelectItem={(id) =>
+                    focusInventory({
+                      itemId: id,
+                      from: {
+                        view: 'inventory',
+                        label: selectedList.name,
+                        focus: { listId: selectedList.id },
+                      },
+                    })
+                  }
+                  onSelectKit={(id) =>
+                    focusInventory({
+                      kitId: id,
+                      from: {
+                        view: 'inventory',
+                        label: selectedList.name,
+                        focus: { listId: selectedList.id },
+                      },
+                    })
+                  }
                 />
               </>
             ) : (
@@ -655,11 +680,16 @@ export default function Inventory() {
                   inventory={inventory}
                   canManage={can(CAP.KIT_MANAGE)}
                   onEdit={() => setKitModal({ open: true, kit: selectedKit })}
-                  onSelectItem={(id) => {
-                    setEntryType('items')
-                    setSearch('')
-                    setSelectedId(id)
-                  }}
+                  onSelectItem={(id) =>
+                    focusInventory({
+                      itemId: id,
+                      from: {
+                        view: 'inventory',
+                        label: selectedKit.name,
+                        focus: { kitId: selectedKit.id },
+                      },
+                    })
+                  }
                 />
               </>
             ) : (

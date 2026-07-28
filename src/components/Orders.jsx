@@ -759,7 +759,17 @@ function OrderDetail({
                           {l.itemId ? (
                             <button
                               type="button"
-                              onClick={() => focusInventory({ itemId: l.itemId, unitId: l.unitId })}
+                              onClick={() =>
+                                focusInventory({
+                                  itemId: l.itemId,
+                                  unitId: l.unitId,
+                                  from: {
+                                    view: 'orders',
+                                    label: order.jobName || 'this order',
+                                    focus: { orderId: order.id },
+                                  },
+                                })
+                              }
                               title="Open this item’s history"
                               className="min-w-0 truncate text-left text-sm font-medium text-slate-800 hover:text-violet-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-violet-400"
                             >

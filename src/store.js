@@ -617,33 +617,86 @@ export const useStore = create(
 
       // --- UI state (not persisted — always starts on the current week) ---
       activeView: 'calendar', // 'calendar' | 'inventory'
-      setActiveView: (view) => set({ activeView: view }),
+      // Picking a view from the sidebar is a deliberate jump, not a drill-in, so
+      // it drops the back trail (nothing to return "up" to).
+      setActiveView: (view) => set({ activeView: view, navStack: [] }),
 
-      // Cross-view drill-in: "show me this item's history". Any screen that
-      // renders inventory (an order's equipment, a packing line, a vendor's gear)
-      // can call focusInventory to jump to the item in the Inventory view — and,
-      // when a concrete unit is known, straight into that unit's history. Not
-      // persisted; cleared once the Inventory view consumes it.
-      inventoryFocus: null, // { itemId, unitId, ts } | null
-      focusInventory: ({ itemId, unitId = null } = {}) => {
-        if (!itemId) return
+      // --- cross-view drill-in + a BACK STACK -------------------------------
+      //
+      // Drilling in ("show me this item's history", "open this shoot's order")
+      // used to be one-way: you landed in another view with no idea where you
+      // came from. Every drill-in now takes an optional `from` describing the
+      // place being left — { view, label, focus } — which is pushed onto
+      // `navStack`. `goBack()` pops it and restores that view's selection, and
+      // the shell renders a "Back to <label>" bar while the stack isn't empty.
+      // Each push also adds a browser history entry, so the browser's own back
+      // arrow works too (App.jsx listens for popstate).
+      //
+      // Focus payloads are per-view: inventory { itemId | kitId | listId, unitId },
+      // orders { orderId }, people { personId | companyId }. Not persisted.
+      navStack: [], // [{ view, label, focus }]
+      inventoryFocus: null, // { itemId, unitId, kitId, listId, ts } | null
+      orderFocus: null, // { orderId, ts } | null
+      peopleFocus: null, // { personId, companyId, ts } | null
+
+      // Send the caller's location to the stack + push a browser history entry.
+      pushNav: (from) => {
+        if (!from?.view) return
+        set({ navStack: [...get().navStack, from] })
+        if (typeof window !== 'undefined' && window.history?.pushState) {
+          window.history.pushState({ appNav: true }, '')
+        }
+      },
+
+      focusInventory: ({ itemId, unitId = null, kitId = null, listId = null, from = null } = {}) => {
+        if (!itemId && !kitId && !listId) return
+        if (from) get().pushNav(from)
         set({
-          inventoryFocus: { itemId, unitId, ts: Date.now() },
+          inventoryFocus: { itemId: itemId ?? null, unitId, kitId, listId, ts: Date.now() },
           activeView: 'inventory',
           sidebarOpen: false,
         })
       },
       clearInventoryFocus: () => set({ inventoryFocus: null }),
 
-      // Cross-view drill-in for orders: a shoot on the calendar IS its order, so
-      // clicking it opens that order in the Orders view. Not persisted; cleared
-      // once the Orders view consumes it.
-      orderFocus: null, // { orderId, ts } | null
-      openOrder: (orderId) => {
+      // A shoot on the calendar IS its order, so clicking it opens that order.
+      openOrder: (orderId, from = null) => {
         if (!orderId) return
+        if (from) get().pushNav(from)
         set({ orderFocus: { orderId, ts: Date.now() }, activeView: 'orders', sidebarOpen: false })
       },
       clearOrderFocus: () => set({ orderFocus: null }),
+
+      focusPeople: ({ personId = null, companyId = null, from = null } = {}) => {
+        if (!personId && !companyId) return
+        if (from) get().pushNav(from)
+        set({
+          peopleFocus: { personId, companyId, ts: Date.now() },
+          activeView: 'people',
+          sidebarOpen: false,
+        })
+      },
+      clearPeopleFocus: () => set({ peopleFocus: null }),
+
+      // Pop the stack and restore that location. Restoring never re-opens a
+      // modal (a returning unitId is dropped) — you came back to the page, not
+      // to the dialog you had open.
+      goBack: () => {
+        const stack = get().navStack
+        if (!stack.length) return
+        const target = stack[stack.length - 1]
+        const focus = target.focus || {}
+        const ts = Date.now()
+        set({
+          navStack: stack.slice(0, -1),
+          activeView: target.view,
+          sidebarOpen: false,
+          inventoryFocus:
+            target.view === 'inventory' ? { ...focus, unitId: null, ts } : get().inventoryFocus,
+          orderFocus: target.view === 'orders' ? { ...focus, ts } : get().orderFocus,
+          peopleFocus: target.view === 'people' ? { ...focus, ts } : get().peopleFocus,
+        })
+      },
 
       // Mobile/tablet off-canvas sidebar drawer.
       sidebarOpen: false,

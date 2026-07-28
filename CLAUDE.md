@@ -253,6 +253,21 @@
 > Verified in supabase mode: New order from calendar → Hold order + shoot on grid; chip → its order; order-less
 > fallback → BookingModal; 0 console errors. NOTE: deleting an order leaves its shoot on the calendar
 > (`sets.order_id` ON DELETE SET NULL) as an order-less booking — existing "the shoot stays booked" behaviour.
+> **FEATURE — back navigation for drill-ins.** Drilling in was one-way: you landed in another view with no
+> idea where you came from ("непонятно что выходит"). Every drill-in now takes an optional `from`
+> ({ view, label, focus }) which the store pushes onto `navStack`; the shell (App.jsx) renders a
+> "← Back to <label>" bar whenever the stack isn't empty, and `goBack()` pops it and restores that view's
+> selection. Each push ALSO adds a `history.pushState` entry and App.jsx listens for `popstate`, so the
+> BROWSER's own back arrow walks the same trail (the in-app button calls `history.back()` when there's an
+> entry to consume, keeping the two in step). Store: `navStack` + `pushNav`/`goBack`, focus payloads per view
+> (`inventoryFocus` {itemId|kitId|listId, unitId}, `orderFocus` {orderId}, `peopleFocus` {personId|companyId}).
+> Restoring never re-opens a modal (a returning `unitId` is dropped). `setActiveView` (sidebar) CLEARS the
+> trail — a deliberate jump has nothing to return up to. Wired: order EQ line → item, vendor card gear → item,
+> calendar shoot → its order, and the in-Inventory kit/list → item/kit jumps (which now route through
+> `focusInventory` instead of setting local state, so they're tracked too). People gained a `peopleFocus`
+> consumer; Inventory's effect handles kit/list targets. Frontend-only, no migration. Verified in supabase
+> mode: calendar → order → item, two-level trail rewinds correctly, browser back arrow does the same,
+> vendor → item → back restores the company card, kit → component → back restores the kit; 0 console errors.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

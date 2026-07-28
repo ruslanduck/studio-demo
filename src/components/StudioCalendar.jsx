@@ -111,7 +111,8 @@ export default function StudioCalendar() {
   // Click a shoot → open its order. A legacy shoot with no order still opens in
   // the booking modal so it can be edited/deleted.
   const openEdit = (booking) => {
-    if (booking.orderId) openOrder(booking.orderId)
+    if (booking.orderId)
+      openOrder(booking.orderId, { view: 'calendar', label: 'Studio Calendar', focus: {} })
     else setModal({ open: true, booking, prefill: null })
   }
   const closeModal = () => setModal((m) => ({ ...m, open: false }))
