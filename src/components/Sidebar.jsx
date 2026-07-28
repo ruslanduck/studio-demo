@@ -1,5 +1,6 @@
 import { Calendar, CalendarRange, Boxes, Users, ClipboardList, X } from 'lucide-react'
 import { useStore } from '../store'
+import Logo, { BRAND_NAME } from './Logo'
 
 const NAV = [
   { id: 'booking', label: 'Booking Calendar', icon: Calendar, disabled: true },
@@ -40,11 +41,9 @@ export default function Sidebar() {
         ].join(' ')}
       >
         <div className="flex h-14 items-center gap-2.5 border-b border-slate-200 px-5">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-violet-600 text-xs font-bold text-white">
-            AT
-          </div>
+          <Logo size={32} />
           <span className="text-sm font-semibold tracking-tight text-slate-900">
-            AnnTaylor
+            {BRAND_NAME}
           </span>
           {/* Close (mobile drawer only) */}
           <button

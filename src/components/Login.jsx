@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Loader2, LogIn } from 'lucide-react'
 import { useStore } from '../store'
+import Logo, { BRAND_NAME } from './Logo'
 
 // Sign-in only: accounts are issued by the studio, not self-registered. The
 // self-serve signup path was removed on request — the store still exposes
@@ -33,12 +34,8 @@ export default function Login() {
     <div className="flex h-screen w-screen items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-violet-600 text-sm font-bold text-white">
-            AT
-          </div>
-          <h1 className="text-lg font-semibold tracking-tight text-slate-900">
-            AnnTaylor Rental System
-          </h1>
+          <Logo size={44} radius="rounded-xl" className="mb-3" />
+          <h1 className="text-lg font-semibold tracking-tight text-slate-900">{BRAND_NAME}</h1>
           <p className="mt-1 text-sm text-slate-500">Sign in to continue</p>
         </div>
 

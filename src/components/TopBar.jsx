@@ -3,6 +3,7 @@ import { ChevronDown, RotateCcw, LogOut, Menu } from 'lucide-react'
 import { useStore } from '../store'
 import { usingSupabase } from '../data/repository'
 import { roleLabel } from '../lib/permissions'
+import Logo, { BRAND_NAME } from './Logo'
 
 const MENUS = ['Admin', 'View', 'Generate', 'Inventory']
 
@@ -36,9 +37,14 @@ export default function TopBar() {
         >
           <Menu size={20} />
         </button>
-        <h1 className="truncate text-sm font-semibold tracking-tight text-slate-900 sm:text-[15px]">
-          AnnTaylor Rental System
-        </h1>
+        {/* The sidebar carries the brand on desktop; below lg it's off-canvas,
+            so the mark + name stand in here rather than leaving a bare bar. */}
+        <div className="flex min-w-0 items-center gap-2 lg:hidden">
+          <Logo size={26} radius="rounded-md" />
+          <span className="truncate text-sm font-semibold tracking-tight text-slate-900">
+            {BRAND_NAME}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-3">
