@@ -14,8 +14,11 @@
 > - **English-only UI:** don't use native `<input type=date/time>` (locale-bound); use `DateField`/`TimeField`.
 > - **Secrets:** `.env.local` (gitignored) holds Supabase keys + DB password + service_role. Public
 >   URL+anon are in committed `.env.production` for the prod build. service_role = local seeding only.
-> - **Deploy:** push to `main` → GitHub Pages (~1–2 min). Confirm via the **CDN** (compare the served
->   `index-*.js` hash to local `dist/`), not the rate-limited GitHub API. Live at duck-agency.com/studio-demo/.
+> - **Deploy:** push to `main` → GitHub Pages (~1–2 min). Confirm via the **CDN**, not the rate-limited GitHub
+>   API. Live at duck-agency.com/studio-demo/. Usually the served `index-*.js` hash equals the local `dist/`
+>   one, but it CAN legitimately differ (CI runs its own `npm ci`, so the bundle isn't byte-identical) — when
+>   it does, don't assume the deploy failed: fetch the served bundle and grep it for a string unique to the new
+>   code (e.g. `curl -s .../assets/index-<hash>.js | grep -c "Coming soon"`). Content is the real check.
 > - **Seed:** `npm run seed:supabase` (wipes+reseeds). Demo logins: ann/marcus/sofia @anntaylor.demo, pw `StudioDemo!2026`.
 >
 > **Progress:** Build order #1 (V2 foundation) DONE. **Build order #2 (inventory) COMPLETE:** 2.1 types,
