@@ -558,14 +558,20 @@ export default function Orders() {
         order={editor.order}
         studios={studios}
         photographers={photographerNames}
+        inventory={inventory}
+        kits={kits}
+        scenarios={scenarios}
         onClose={() => setEditor({ open: false, order: null })}
-        onCreate={async (payload) => {
+        onCreate={async (payload, equipment = []) => {
           const res = await createOrder(payload)
-          // Straight on to the gear: the order exists to carry equipment.
           if (res?.id) {
             setSelectedId(res.id)
             setShowDetailMobile(true)
-            setPendingEqId(res.id)
+            // Gear picked in the form goes straight onto the order. Only when
+            // nothing was picked do we open the full picker, so the flow never
+            // dead-ends on an empty order.
+            if (equipment.length) await setOrderLines(res.id, equipment)
+            else setPendingEqId(res.id)
           }
           return res
         }}

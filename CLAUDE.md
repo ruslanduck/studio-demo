@@ -604,6 +604,25 @@
 > ℹ️ The names carry their own dates (24 Jun – 20 Jul) while the demo's shoots sit in the current week
 > (27 Jul – 2 Aug), so a name's date prefix does NOT match its shoot's date. Left as supplied; re-stamping the
 > prefixes to the real shoot dates (or moving the shoots) is a one-liner if the mismatch ever matters.
+> **CHANGE — equipment is picked IN the order form (the old New Booking behaviour).** Reported twice:
+> "все еще нет добавления инвентаря / раньше когда была кнопка New Booking — там была возможность добавлять".
+> The chained picker (create → OrderEquipmentModal opens) was not what was wanted: the crew writes the job and
+> the kit in ONE window. `OrderEditorModal` now carries an **Equipment** block in create mode — scenario list
+> preset, inventory search with the free/`add anyway` signal, ± quantities with `/N free · M short`, and whole
+> kits through the **unchanged epic-3 `KitStagingModal`** layered over the form (exactly what BookingModal
+> does). It builds the same line shape the full picker saves, so `onCreate(payload, lines)` writes them with
+> `setOrderLines` right after the order exists — and `eq_updated_by` picks up the author for free.
+> The full picker stays behind "Edit equipment" for what it alone owns: sub-rental vendors and the
+> zero-availability dialog; the form says so. If nothing was picked inline, creating still opens the full
+> picker (both entry points: Orders and the calendar), so the flow never dead-ends on an empty order.
+> The calendar's "New order" uses the same form, so it needed `inventory`/`kits`/`scenarios`/`setOrderLines`.
+> Verified on prod end-to-end: a form with 1 a-la-carte line + Camera Kit A wrote **5 order_lines** — four kit
+> lines with their pinned/assigned units and slot labels (#0956 Camera body, #0963 Lens, #0967 Monitor, #0968
+> Media) plus the loose Sandbag — attributed to Ann Taylor, with the shoot on the calendar. Test order removed
+> afterwards (orders back to 14: 13 demo + Ruslan's own "test").
+> ⚠️ While testing, a mid-flow HMR update remounted the modal and lost its draft, which looked like "the kit
+> didn't attach". Re-run from a clean reload before believing a picker bug — and note the DOM read right after
+> a click is stale (React hasn't flushed), which reads as the same symptom.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
