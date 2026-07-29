@@ -210,28 +210,36 @@ export const PEOPLE_SEED = [
 
   // --- Models (match the booking seed) ---
   {
-    name: 'Jordan Lee',
+    name: 'Jade Huber',
     category: 'Model',
     company: 'atlas-models',
-    instagram: '@jordanlee',
+    instagram: '@jadehuber',
   },
-  { name: 'Ava Morgan', category: 'Model', company: 'atlas-models', instagram: '@avamorgan' },
+  { name: 'Hailey Halter', category: 'Model', company: 'atlas-models', instagram: '@haileyhalter' },
   {
-    name: 'Kai Nakamura',
+    name: 'Lala Olsson',
     category: 'Model',
     company: 'vantage-mgmt',
-    instagram: '@kainakamura',
+    instagram: '@lalaolsson',
   },
-  { name: 'Zoe Bennett', category: 'Model', company: 'atlas-models', instagram: '@zoebennett' },
-  { name: 'Mateo Rossi', category: 'Model', company: 'vantage-mgmt', instagram: '@mateorossi' },
-  { name: 'Isla Fraser', category: 'Model', company: 'atlas-models' },
+  { name: 'Amanda Googe', category: 'Model', company: 'atlas-models', instagram: '@amandagooge' },
+  { name: 'Abigael Boivin', category: 'Model', company: 'vantage-mgmt', instagram: '@abigaelboivin' },
+  { name: 'Mia Speicher', category: 'Model', company: 'atlas-models' },
   {
-    name: 'Elena Petrova',
+    name: 'Hyunjoo',
     category: 'Model',
     company: 'vantage-mgmt',
-    instagram: '@elenapetrova',
+    instagram: '@hyunjoo',
   },
-  { name: 'Omar Haddad', category: 'Model', company: 'vantage-mgmt', instagram: '@omarhaddad' },
+  { name: 'Aira Ferreira', category: 'Model', company: 'vantage-mgmt', instagram: '@airaferreira' },
+  // The rest of the agency roster — on file, not yet crewed on a shoot this
+  // week, which is what most of a model list looks like.
+  { name: 'Valery Kaufman', category: 'Model', company: 'atlas-models', instagram: '@valerykaufman' },
+  { name: 'Rocio Marconi', category: 'Model', company: 'vantage-mgmt', instagram: '@rociomarconi' },
+  { name: 'Kenady Vareen', category: 'Model', company: 'atlas-models', instagram: '@kenadyvareen' },
+  { name: 'Katy', category: 'Model', company: 'vantage-mgmt' },
+  { name: 'Bibi Sharipova', category: 'Model', company: 'atlas-models', instagram: '@bibisharipova' },
+  { name: 'Kianna Carrol', category: 'Model', company: 'vantage-mgmt', instagram: '@kiannacarrol' },
 
   // --- Staff at partner companies (the rental-company side of the roster) ---
   {

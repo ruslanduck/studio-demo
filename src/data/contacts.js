@@ -11,12 +11,18 @@ export const PHOTOGRAPHERS = [
 ]
 
 export const MODELS = [
-  'Jordan Lee',
-  'Ava Morgan',
-  'Kai Nakamura',
-  'Zoe Bennett',
-  'Mateo Rossi',
-  'Isla Fraser',
-  'Elena Petrova',
-  'Omar Haddad',
+  'Jade Huber',
+  'Hailey Halter',
+  'Lala Olsson',
+  'Amanda Googe',
+  'Abigael Boivin',
+  'Mia Speicher',
+  'Hyunjoo',
+  'Aira Ferreira',
+  'Valery Kaufman',
+  'Rocio Marconi',
+  'Kenady Vareen',
+  'Katy',
+  'Bibi Sharipova',
+  'Kianna Carrol',
 ]
