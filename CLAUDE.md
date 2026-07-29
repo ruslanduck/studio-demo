@@ -590,6 +590,20 @@
 > files is the cheap check.
 > NOT included: purge/permanent delete from the Archive. It would need `service_role`, since the app no
 > longer holds DELETE.
+> **DEMO CONTENT — job names now follow the studio's real convention.** The brand-style placeholders
+> ("Wedding Editorial", "Nike SS26 Lookbook") were replaced with the client's actual format supplied by
+> Ruslan: `YYYYMMDD_AT_MAIN_<season>_<line>_<set>` e.g. `20260716_AT_MAIN_SepMM_Missy_OMSet1`. One rename map
+> covered everything, because `setTitle` is the link key between a shoot and its order: `data/bookings.js`
+> titles (11), `data/orders.js` `setTitle` (11 — which keeps each sub-rental order tied to the client job it
+> served, so the "N × PO" grouping still demonstrates one job with several orders), and the `data/usage.js`
+> JOBS pool (15 → the 13 supplied names; the two spare names carry the usage-history-only jobs). Prod updated
+> non-destructively by name: 13 `orders.job_name`, 11 `sets.title`, 235 `item_usage.job_title` and 12 `events`
+> whose `data.jobName` denormalises it. The two form placeholders now teach the convention too.
+> ⚠️ These names never fit a calendar cell, so both chip renderers gained a `title` — the full name plus the
+> time is on hover. Worth remembering for any new surface that shows a job name in a narrow column.
+> ℹ️ The names carry their own dates (24 Jun – 20 Jul) while the demo's shoots sit in the current week
+> (27 Jul – 2 Aug), so a name's date prefix does NOT match its shoot's date. Left as supplied; re-stamping the
+> prefixes to the real shoot dates (or moving the shoots) is a one-liner if the mismatch ever matters.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

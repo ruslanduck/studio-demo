@@ -350,6 +350,10 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
                   onOpenEdit(b)
                 }}
                 style={chipStyle(b.color)}
+                // Job names follow the studio's convention
+                // (20260716_AT_MAIN_SepMM_Missy_OMSet1), which never fits a day
+                // cell — the full name is on hover.
+                title={`${b.title} · ${b.startTime}–${b.endTime}`}
                 className="cursor-pointer rounded-md px-1.5 py-1 shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
               >
                 <div className="truncate text-xs font-semibold leading-tight">
@@ -470,6 +474,7 @@ function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek }) {
               onOpenEdit(b)
             }}
             style={chipStyle(studioColor(b.studioId))}
+            title={`${studioLabel(b.studioId)} · ${b.title}`}
             className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-[10px] leading-tight shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
           >
             <span className="font-bold">{b.studioId}</span>

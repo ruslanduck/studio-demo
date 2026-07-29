@@ -7,21 +7,21 @@
 
 // (jobTitle, studioId) pool — believable studio jobs the gear gets used on.
 const JOBS = [
-  ['Zara Denim Campaign', '1'],
-  ['Vogue Editorial', '3'],
-  ['Nike SS26 Lookbook', '2'],
-  ['Apple Product Shoot', 'L'],
-  ['H&M Kidswear', '4'],
-  ['Netflix BTS', 'L'],
-  ['Adidas Originals', '5'],
-  ['Glossier Beauty', '2'],
-  ['Spotify Podcast Set', '3'],
-  ['Wedding Editorial', '1'],
-  ['Samsung Unpacked Teaser', 'L'],
-  ['Sephora Holiday', '2'],
-  ['Reebok Court', '5'],
-  ['Away Luggage', '4'],
-  ['Bose QC Launch', '3'],
+  ['20260624_AT_MAIN_SepBOM_Missy_OMSet1', '1'],
+  ['20260629_AT_MAIN_SepBOM_Missy_OMSet1', '3'],
+  ['20260630_AT_MAIN_SepBOM_Missy_OMSet1', '2'],
+  ['20260630_AT_MAIN_SepBOM_Missy_OMSet2', 'L'],
+  ['20260706_AT_MAIN_SepBOM_Missy_OMSet1', '4'],
+  ['20260716_AT_MAIN_SepMM_Missy_OMSet1', 'L'],
+  ['20260629_AT_MAIN_SepBOM_Missy_OMSet2', '5'],
+  ['20260625_AT_MAIN_SepBOM_Missy_OMSet1', '2'],
+  ['20260715_AT_MAIN_SepMM_Missy_OMSet1', '3'],
+  ['20260701_AT_MAIN_SepBOM_Missy_OMSet1', '1'],
+  ['20260701_AT_MAIN_SepBOM_Missy_SLSet1', 'L'],
+  ['20260720_AT_MAIN_SepMM_Missy_OMSet1', '2'],
+  ['20260701_AT_MAIN_SepBOM_Missy_SLSet1', '5'],
+  ['20260720_AT_MAIN_SepMM_Missy_OMSet1', '4'],
+  ['20260701_AT_MAIN_SepBOM_Missy_SLSet1', '3'],
 ]
 
 // [itemId, eventsPerYear, [minQty, maxQty]]

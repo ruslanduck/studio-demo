@@ -16,62 +16,62 @@ export const ORDER_SEED = [
   // ---- This week's equipment pulls — these DRIVE the inventory reservations.
   {
     number: 'CL-26051', po: 'PO-4511', company: 'vantage-mgmt', kind: 'client',
-    status: 'confirmed', dayOffset: 0, setTitle: 'Zara Denim Campaign',
+    status: 'confirmed', dayOffset: 0, setTitle: '20260624_AT_MAIN_SepBOM_Missy_OMSet1',
     // No loose MacBook here: the only non-fixed 16" MacBook goes to Nike below
     // (the other two are pinned to the capture-cart kits), so stock stays honest.
     lines: [['kbd-magic', 2], ['mouse-magic', 2], ['cstand-40', 3], ['sandbag-25', 4]],
   },
   {
     number: 'CL-26052', po: 'PO-4512', company: 'atlas-models', kind: 'client',
-    status: 'confirmed', dayOffset: 1, setTitle: 'Vogue Editorial',
+    status: 'confirmed', dayOffset: 1, setTitle: '20260629_AT_MAIN_SepBOM_Missy_OMSet1',
     // one sub-rental line (extra tubes from Northlight) alongside the in-house pull
     lines: [['arri-2k', 2], ['stinger-25', 3], ['sandbag-25', 3], ['flag-24x36', 2], ['astera-titan', 2, 'northlight-rentals']],
   },
   {
     number: 'CL-26053', po: 'PO-4513', company: 'vantage-mgmt', kind: 'client',
-    status: 'confirmed', dayOffset: 1, setTitle: 'Adidas Originals',
+    status: 'confirmed', dayOffset: 1, setTitle: '20260629_AT_MAIN_SepBOM_Missy_OMSet2',
     lines: [['aputure-600d', 1], ['aputure-300x', 2], ['cstand-40', 2], ['kbd-magic', 1]],
   },
   {
     number: 'CL-26054', po: 'PO-4514', company: 'atlas-models', kind: 'client',
-    status: 'confirmed', dayOffset: 2, setTitle: 'Glossier Beauty',
+    status: 'confirmed', dayOffset: 2, setTitle: '20260625_AT_MAIN_SepBOM_Missy_OMSet1',
     lines: [['quasar-4ft', 4], ['astera-titan', 2], ['smallhd-702', 1]],
   },
   {
     number: 'CL-26055', po: 'PO-4515', company: 'vantage-mgmt', kind: 'client',
-    status: 'confirmed', dayOffset: 3, setTitle: 'Nike SS26 Lookbook',
+    status: 'confirmed', dayOffset: 3, setTitle: '20260630_AT_MAIN_SepBOM_Missy_OMSet1',
     lines: [['kbd-magic', 3], ['mouse-magic', 2], ['macbook-16', 1], ['sony-fx6', 1], ['sony-2470', 1]],
   },
   {
     number: 'CL-26056', po: 'PO-4516', company: 'atlas-models', kind: 'client',
-    status: 'confirmed', dayOffset: 3, setTitle: 'Apple Product Shoot',
+    status: 'confirmed', dayOffset: 3, setTitle: '20260630_AT_MAIN_SepBOM_Missy_OMSet2',
     lines: [['canon-r5', 1], ['sony-2470', 1], ['aputure-600d', 1], ['kbd-magic', 2]],
   },
   {
     number: 'CL-26057', po: 'PO-4517', company: 'vantage-mgmt', kind: 'client',
-    status: 'confirmed', dayOffset: 4, setTitle: 'H&M Kidswear',
+    status: 'confirmed', dayOffset: 4, setTitle: '20260706_AT_MAIN_SepBOM_Missy_OMSet1',
     lines: [['arri-750', 2], ['stinger-25', 2], ['director-chair', 2], ['applebox-half', 2]],
   },
   {
     // The visible HOLD example — nothing committed, so its gear (incl. the Canon)
     // stays available.
     number: 'CL-26058', po: 'PO-4503', company: 'atlas-models', kind: 'client',
-    status: 'hold', dayOffset: 5, setTitle: 'Wedding Editorial',
+    status: 'hold', dayOffset: 5, setTitle: '20260701_AT_MAIN_SepBOM_Missy_OMSet1',
     lines: [['canon-r5', 1], ['wireless-go-2', 1], ['sandbag-25', 2], ['cstand-40', 2]],
   },
   {
     number: 'CL-26059', po: 'PO-4519', company: 'vantage-mgmt', kind: 'client',
-    status: 'confirmed', dayOffset: 5, setTitle: 'Local Band EP',
+    status: 'confirmed', dayOffset: 5, setTitle: '20260701_AT_MAIN_SepBOM_Missy_OMSet2',
     lines: [['zoom-h6', 1], ['wireless-go-2', 1], ['astera-titan', 1]],
   },
   {
     number: 'CL-26060', po: 'PO-4520', company: 'atlas-models', kind: 'client',
-    status: 'confirmed', dayOffset: 6, setTitle: 'Spotify Podcast Set',
+    status: 'confirmed', dayOffset: 6, setTitle: '20260715_AT_MAIN_SepMM_Missy_OMSet1',
     lines: [['mkh-416', 2], ['zoom-h6', 1], ['wireless-go-2', 2], ['director-chair', 2]],
   },
   {
     number: 'CL-26061', po: 'PO-4521', company: 'vantage-mgmt', kind: 'client',
-    status: 'confirmed', dayOffset: 6, setTitle: 'Netflix BTS',
+    status: 'confirmed', dayOffset: 6, setTitle: '20260716_AT_MAIN_SepMM_Missy_OMSet1',
     lines: [['sony-fx6', 1], ['smallhd-702', 1], ['mixpre-6', 1], ['mkh-416', 1]],
   },
 
@@ -79,17 +79,17 @@ export const ORDER_SEED = [
   // confirmed, so they reserve nothing — pure record of gear rented from vendors.
   {
     number: 'SR-26014', po: 'PO-4471', company: 'northlight-rentals', kind: 'sub_rental',
-    status: 'fulfilled', dayOffset: -2, setTitle: 'Vogue Editorial',
+    status: 'fulfilled', dayOffset: -2, setTitle: '20260629_AT_MAIN_SepBOM_Missy_OMSet1',
     lines: [['arri-2k', 2, 'northlight-rentals'], ['stinger-25', 4, 'northlight-rentals']],
   },
   {
     number: 'SR-26015', po: 'PO-4482', company: 'kino-grip-co', kind: 'sub_rental',
-    status: 'fulfilled', dayOffset: -1, setTitle: 'Nike SS26 Lookbook',
+    status: 'fulfilled', dayOffset: -1, setTitle: '20260630_AT_MAIN_SepBOM_Missy_OMSet1',
     lines: [['sony-2470', 1, 'kino-grip-co'], ['smallhd-702', 1, 'kino-grip-co']],
   },
   {
     number: 'MS-26008', po: 'PO-4496', company: 'swiftline-couriers', kind: 'sub_rental',
-    status: 'fulfilled', dayOffset: -1, setTitle: 'H&M Kidswear',
+    status: 'fulfilled', dayOffset: -1, setTitle: '20260706_AT_MAIN_SepBOM_Missy_OMSet1',
     lines: [['lightning-cable', 6, 'swiftline-couriers']],
   },
 ]

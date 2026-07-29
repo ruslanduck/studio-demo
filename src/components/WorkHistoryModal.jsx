@@ -134,7 +134,7 @@ export default function WorkHistoryModal({ open, onClose, item, canLog, onLog })
                   type="text"
                   value={form.jobTitle}
                   onChange={set('jobTitle')}
-                  placeholder="e.g. Nike SS26"
+                  placeholder="e.g. 20260716_AT_MAIN"
                   className={field}
                 />
               </div>

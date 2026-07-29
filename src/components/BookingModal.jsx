@@ -247,7 +247,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
               type="text"
               value={form.title}
               onChange={set('title')}
-              placeholder="e.g. Nike SS26 Lookbook"
+              placeholder="e.g. 20260716_AT_MAIN_SepMM_Missy_OMSet1"
               className={fieldClass}
             />
           </div>
