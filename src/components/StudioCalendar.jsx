@@ -74,6 +74,9 @@ export default function StudioCalendar() {
     const map = new Map()
     for (const b of bookings) {
       if (b.status !== 'active') continue
+      // An archived shoot is off the calendar — it lives in the Archive until
+      // someone restores it (archiving its order takes it down with it).
+      if (b.archivedAt) continue
       if (!map.has(b.date)) map.set(b.date, [])
       map.get(b.date).push(b)
     }

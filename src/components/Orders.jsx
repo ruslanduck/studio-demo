@@ -19,8 +19,9 @@ import {
   Undo2,
   Truck,
   Briefcase,
+  Archive as ArchiveIcon,
 } from 'lucide-react'
-import { useStore } from '../store'
+import { useStore, notArchived } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
@@ -103,12 +104,13 @@ export default function Orders() {
   const clearPackingSignoff = useStore((s) => s.clearPackingSignoff)
   const createAddon = useStore((s) => s.createAddon)
   const setAddonLines = useStore((s) => s.setAddonLines)
-  const deleteAddon = useStore((s) => s.deleteAddon)
+  const archiveAddon = useStore((s) => s.archiveAddon)
   const createOrder = useStore((s) => s.createOrder)
   const updateOrder = useStore((s) => s.updateOrder)
-  const deleteOrder = useStore((s) => s.deleteOrder)
+  const archiveOrder = useStore((s) => s.archiveOrder)
   const orderFocus = useStore((s) => s.orderFocus)
   const clearOrderFocus = useStore((s) => s.clearOrderFocus)
+  const setActiveView = useStore((s) => s.setActiveView)
   const can = useCan()
 
   const [search, setSearch] = useState('')
@@ -170,16 +172,31 @@ export default function Orders() {
     return [...new Set([...fromPeople, ...photographers])]
   }, [people, photographers])
 
+  // Archived orders are still LOADED (a peek card, a back-trail or the Archive
+  // screen has to be able to open one) — the list and its filters use the live
+  // ones. Nothing is deleted any more, so this is the only thing hiding them.
+  const liveOrders = useMemo(() => orders.filter(notArchived), [orders])
+  const liveCompanies = useMemo(() => (companies || []).filter(notArchived), [companies])
+
   const filtered = useMemo(
-    () => searchOrders(orders, { text: search, status, photographer, studio: studioFilter, from, to, sort }),
-    [orders, search, status, photographer, studioFilter, from, to, sort],
+    () =>
+      searchOrders(liveOrders, {
+        text: search,
+        status,
+        photographer,
+        studio: studioFilter,
+        from,
+        to,
+        sort,
+      }),
+    [liveOrders, search, status, photographer, studioFilter, from, to, sort],
   )
 
   // How many orders share each PO — one job's PO covers every order raised
   // against it, so this is the job-history hint on a row.
-  const sharedPo = useMemo(() => poCounts(orders), [orders])
-  const photographerOptions = useMemo(() => photographersIn(orders), [orders])
-  const studioOptions = useMemo(() => studiosIn(orders), [orders])
+  const sharedPo = useMemo(() => poCounts(liveOrders), [liveOrders])
+  const photographerOptions = useMemo(() => photographersIn(liveOrders), [liveOrders])
+  const studioOptions = useMemo(() => studiosIn(liveOrders), [liveOrders])
 
   const activeFilters =
     (status !== 'All' ? 1 : 0) +
@@ -223,7 +240,7 @@ export default function Orders() {
     [checklistAddon, selected, inventory, kits, selectedBooking],
   )
 
-  const statuses = useMemo(() => [...new Set(orders.map((o) => o.status))], [orders])
+  const statuses = useMemo(() => [...new Set(liveOrders.map((o) => o.status))], [liveOrders])
 
   const holdCount = orders.filter((o) => o.status === 'hold').length
 
@@ -233,8 +250,21 @@ export default function Orders() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-slate-900">Orders</h2>
           <p className="text-sm text-slate-500">
-            {orders.length} orders
+            {liveOrders.length} orders
             {holdCount > 0 && ` · ${holdCount} on hold`}
+            {/* Nothing is deleted — say how much is waiting in the Archive. */}
+            {orders.length > liveOrders.length && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  onClick={() => setActiveView('archive')}
+                  className="font-medium text-violet-600 transition hover:text-violet-800 hover:underline"
+                >
+                  {orders.length - liveOrders.length} archived
+                </button>
+              </>
+            )}
           </p>
         </div>
         {can(CAP.ORDER_MANAGE) && (
@@ -501,7 +531,7 @@ export default function Orders() {
                 }}
                 onEditAddon={(addon) => setAddonEqId(addon.id)}
                 onAddonChecklist={(addon) => setAddonChecklistId(addon.id)}
-                onDeleteAddon={(addon) => deleteAddon(selected.id, addon.id)}
+                onDeleteAddon={(addon) => archiveAddon(selected.id, addon.id)}
                 onDownloadAddon={(addon) =>
                   downloadPackingListPdf(
                     buildEstimate(
@@ -541,7 +571,7 @@ export default function Orders() {
         }}
         onSave={(id, payload) => updateOrder(id, payload)}
         onDelete={(id) => {
-          deleteOrder(id)
+          archiveOrder(id)
           setSelectedId((cur) => (cur === id ? null : cur))
         }}
       />
@@ -552,7 +582,7 @@ export default function Orders() {
         inventory={inventory}
         kits={kits}
         scenarios={scenarios}
-        companies={companies}
+        companies={liveCompanies}
         onClose={() => setEqEditor({ open: false, order: null })}
         onSave={(id, lines) => setOrderLines(id, lines)}
       />
@@ -584,7 +614,7 @@ export default function Orders() {
         inventory={inventory}
         kits={kits}
         scenarios={scenarios}
-        companies={companies}
+        companies={liveCompanies}
         onClose={() => setAddonEqId(null)}
         onSave={(addonId, lines) => setAddonLines(selected.id, addonId, lines)}
       />
@@ -670,6 +700,13 @@ function OrderDetail({
               {order.jobName ?? order.setTitle ?? 'Untitled job'}
             </h3>
             <StatusPill status={order.status} />
+            {/* Reachable by link even when archived — say so rather than looking live. */}
+            {order.archivedAt && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+                <ArchiveIcon size={11} />
+                Archived
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {order.poNumber ? (
@@ -1079,7 +1116,7 @@ function OrderDetail({
                           <button
                             type="button"
                             onClick={() => onDeleteAddon(a)}
-                            title="Delete add-on"
+                            title="Archive this add-on — it stays in the Archive"
                             className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
                           >
                             <X size={15} />

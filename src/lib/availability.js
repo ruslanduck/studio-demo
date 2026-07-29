@@ -22,6 +22,10 @@ const asSet = (v) => (v instanceof Set ? v : new Set(v ?? []))
 // Is this individual unit takeable right now?
 export function isUnitFree(unit, { claimed, alsoFree } = {}) {
   if (!unit) return false
+  // A written-off (archived) copy is out of the pool everywhere. This one guard
+  // covers kits, staging, scenario lists, bookings, the order editor and the
+  // reservation sync, because they all resolve availability through here.
+  if (unit.archivedAt) return false
   const claimedSet = asSet(claimed)
   const alsoFreeSet = asSet(alsoFree)
   if (claimedSet.has(unit.id)) return false

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ClipboardCheck, Check, Trash2, AlertTriangle, Info } from 'lucide-react'
+import { ClipboardCheck, Check, AlertTriangle, Info, Archive as ArchiveIcon } from 'lucide-react'
 import Modal from './Modal'
 import DateField from './DateField'
 import { studioLabel } from '../data/studios'
@@ -227,7 +227,10 @@ export default function OrderEditorModal({
           {isEdit && onDelete ? (
             confirmDelete ? (
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-slate-500">Scrap this order? The shoot stays booked.</span>
+                <span className="text-slate-500">
+                  Archive this order? Its gear is released and the shoot leaves the calendar —
+                  both come back if you restore it.
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -236,7 +239,7 @@ export default function OrderEditorModal({
                   }}
                   className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
                 >
-                  Delete
+                  Archive
                 </button>
                 <button
                   type="button"
@@ -252,8 +255,8 @@ export default function OrderEditorModal({
                 onClick={() => setConfirmDelete(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
               >
-                <Trash2 size={15} />
-                Delete
+                <ArchiveIcon size={15} />
+                Archive
               </button>
             )
           ) : (

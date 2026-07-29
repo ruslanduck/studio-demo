@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import {
   Building2,
-  Check,
-  Trash2,
+  Check,
   AlertTriangle,
   Settings2,
   Plus,
   Pencil,
   X,
+  Archive as ArchiveIcon,
 } from 'lucide-react'
 import Modal from './Modal'
 
@@ -370,7 +370,7 @@ export default function CompanyEditorModal({
             confirmDelete ? (
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-slate-500">
-                  Delete this company?
+                  Archive this company?
                   {contactCount > 0 &&
                     ` ${contactCount} contact${contactCount === 1 ? '' : 's'} stay, unlinked.`}
                 </span>
@@ -382,7 +382,7 @@ export default function CompanyEditorModal({
                   }}
                   className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
                 >
-                  Delete
+                  Archive
                 </button>
                 <button
                   type="button"
@@ -398,8 +398,8 @@ export default function CompanyEditorModal({
                 onClick={() => setConfirmDelete(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
               >
-                <Trash2 size={15} />
-                Delete
+                <ArchiveIcon size={15} />
+                Archive
               </button>
             )
           ) : (

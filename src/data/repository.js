@@ -19,6 +19,70 @@ function occupies(su) {
   return su?.set?.status === 'active' && su.status !== 'returned'
 }
 
+// --- archive (nothing is deleted) -------------------------------------------
+//
+// The ten tables with their own identity carry `archived_at` / `archived_by`
+// instead of being deleted, and RLS no longer grants the app DELETE on them
+// (20260808120000). Reads DON'T filter on it: the app resolves display data by
+// id from the hydrated store, so an order line, a roster row or a PDF must
+// still find gear that has since been written off. Filtering happens in list
+// views, pickers and availability.
+const ARCHIVE_COLS = 'archived_at, archived_by'
+
+// Requested with a fallback, like every other column added after launch: a
+// database without this migration keeps loading, just with no archive.
+const stripArchive = (sel) =>
+  sel.replace(new RegExp(`\\s*${ARCHIVE_COLS},`), '').replace(new RegExp(`,\\s*${ARCHIVE_COLS}`), '')
+
+const archiveFields = (row) => ({
+  archivedAt: row?.archived_at ?? null,
+  archivedBy: row?.archived_by ?? null,
+})
+
+// Archive / restore one row. `table` is the caller's business, not the user's:
+// every call site is a store action, so an unknown table can't come from input.
+// Returns the stamp it wrote, which is what ties a cascade together (below).
+export async function archiveRow(table, id, actorId = null, stamp = null) {
+  const archived_at = stamp || new Date().toISOString()
+  const { error } = await supabase
+    .from(table)
+    .update({ archived_at, archived_by: actorId })
+    .eq('id', id)
+  if (error) throw error
+  return archived_at
+}
+
+export async function restoreRow(table, id) {
+  const { error } = await supabase
+    .from(table)
+    .update({ archived_at: null, archived_by: null })
+    .eq('id', id)
+  if (error) throw error
+}
+
+// Archiving an item takes its physical copies with it. The units get the ITEM's
+// timestamp, which is what makes the reverse exact: restoring brings back only
+// the copies that went down with the item, leaving a unit that had already been
+// written off on its own still archived.
+export async function archiveUnitsOfItem(itemId, stamp, actorId = null) {
+  const { error } = await supabase
+    .from('units')
+    .update({ archived_at: stamp, archived_by: actorId })
+    .eq('inventory_item_id', itemId)
+    .is('archived_at', null)
+  if (error) throw error
+}
+
+export async function restoreUnitsOfItem(itemId, stamp) {
+  if (!stamp) return
+  const { error } = await supabase
+    .from('units')
+    .update({ archived_at: null, archived_by: null })
+    .eq('inventory_item_id', itemId)
+    .eq('archived_at', stamp)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------- reads ----
 
 export async function getStudios() {
@@ -33,11 +97,11 @@ export async function getStudios() {
 //     without them so kits keep working (every slot treated as generic) until
 //     the migration runs. This lets the frontend deploy before the migration.
 export async function getKits() {
-  const enriched = `id, name, category, notes,
+  const enriched = `id, name, category, notes, ${ARCHIVE_COLS},
      kit_slots ( id, label, position, slot_type, inventory_item_id,
                  fixed_unit:units!fixed_unit_id ( id, barcode ),
                  item:inventory_items ( name, category, kind ) )`
-  const basic = `id, name, category, notes,
+  const basic = `id, name, category, notes, ${ARCHIVE_COLS},
      kit_slots ( id, label, position, inventory_item_id,
                  item:inventory_items ( name, category, kind ) )`
 
@@ -46,12 +110,19 @@ export async function getKits() {
     // 3.3 columns not present yet → fall back to the pre-3.3 shape.
     ;({ data, error } = await supabase.from('kits').select(basic).order('name'))
   }
+  if (error) {
+    // No archive columns (pre-20260808) → same shapes without them.
+    ;({ data, error } = await supabase.from('kits').select(stripArchive(enriched)).order('name'))
+    if (error)
+      ({ data, error } = await supabase.from('kits').select(stripArchive(basic)).order('name'))
+  }
   if (error) return [] // kit_slots table itself absent (pre-3.1)
   return (data || []).map((k) => ({
     id: k.id,
     name: k.name,
     category: k.category,
     notes: k.notes,
+    ...archiveFields(k),
     slots: (k.kit_slots || [])
       .slice()
       .sort((a, b) => a.position - b.position)
@@ -73,23 +144,25 @@ export async function getKits() {
 // Predefined scenario lists with their entries (3.5). Like kits, this degrades
 // to [] when the table isn't migrated yet, so the frontend can ship first.
 export async function getScenarioLists() {
-  const { data, error } = await supabase
-    .from('scenario_lists')
-    .select(
-      `id, name, category, notes,
+  const sel = `id, name, category, notes, ${ARCHIVE_COLS},
        scenario_list_entries (
          id, entry_type, quantity, position, note, inventory_item_id, kit_id,
          item:inventory_items ( name, category, kind ),
          kit:kits ( name, category )
-       )`,
-    )
-    .order('name')
+       )`
+  let { data, error } = await supabase.from('scenario_lists').select(sel).order('name')
+  if (error)
+    ({ data, error } = await supabase
+      .from('scenario_lists')
+      .select(stripArchive(sel))
+      .order('name'))
   if (error) return []
   return (data || []).map((l) => ({
     id: l.id,
     name: l.name,
     category: l.category,
     notes: l.notes,
+    ...archiveFields(l),
     entries: (l.scenario_list_entries || [])
       .slice()
       .sort((a, b) => a.position - b.position)
@@ -185,19 +258,24 @@ export async function getInventory() {
   // app's backbone, so a pre-4.5 database must still load it.
   // `placement` on units (the per-copy storage location) is its own layer, so a
   // database without that migration still loads inventory.
-  const withUnitPlacement = `id, name, category, kind, quantity,
+  // Archive columns on BOTH levels: an item can be archived, and so can a single
+  // physical copy (a write-off).
+  const withArchive = `id, name, category, kind, quantity, ${ARCHIVE_COLS},
      brand, asset_type, placement, subcategory, purchase_date, replacement_price, day_rate,
      units (
-       id, barcode, serial, ownership, sub_rental_vendor_id, placement,
+       id, barcode, serial, ownership, sub_rental_vendor_id, placement, ${ARCHIVE_COLS},
        set_units ( status, set:sets ( title, studio_id, status ) )
      )`
+  const withUnitPlacement = stripArchive(withArchive)
   const withVendor = withUnitPlacement.replace('sub_rental_vendor_id, placement,', 'sub_rental_vendor_id,')
   const withoutVendor = withVendor.replace(', sub_rental_vendor_id', '')
   const withoutRate = withoutVendor.replace(', day_rate', '')
-  let { data, error } = await supabase
-    .from('inventory_items')
-    .select(withUnitPlacement)
-    .order('name')
+  let { data, error } = await supabase.from('inventory_items').select(withArchive).order('name')
+  if (error)
+    ({ data, error } = await supabase
+      .from('inventory_items')
+      .select(withUnitPlacement)
+      .order('name'))
   if (error)
     ({ data, error } = await supabase.from('inventory_items').select(withVendor).order('name'))
   if (error)
@@ -224,6 +302,7 @@ export async function getInventory() {
     purchaseDate: item.purchase_date,
     replacementPrice: item.replacement_price,
     dayRate: item.day_rate != null ? Number(item.day_rate) : null,
+    ...archiveFields(item),
     usage: usageByItem[item.id] || [],
     units: (item.units || []).map((u) => {
       const repairs = repairsByUnit[u.id] || []
@@ -247,6 +326,7 @@ export async function getInventory() {
         status,
         location, // derived: where it IS right now (job / repair / available)
         placement: u.placement ?? null, // stored: where it LIVES when it's in
+        ...archiveFields(u), // written off, but still here for the history
         repairs,
       }
     }),
@@ -256,15 +336,12 @@ export async function getInventory() {
 // Bookings (sets) mapped to the app's booking shape. photographer/model come
 // from the roster (requires auth to read — under anon they resolve to '').
 export async function getBookings() {
-  const { data, error } = await supabase
-    .from('sets')
-    .select(
-      `id, title, studio_id, date, start_time, end_time, status, color, notes, order_id,
-       created_by, creator:profiles!created_by ( full_name ),
+  const sel = `id, title, studio_id, date, start_time, end_time, status, color, notes, order_id,
+       ${ARCHIVE_COLS}, created_by, creator:profiles!created_by ( full_name ),
        set_units ( unit_id ),
-       roster_entries ( role, contact:contacts ( full_name ) )`,
-    )
-    .order('date')
+       roster_entries ( role, contact:contacts ( full_name ) )`
+  let { data, error } = await supabase.from('sets').select(sel).order('date')
+  if (error) ({ data, error } = await supabase.from('sets').select(stripArchive(sel)).order('date'))
   if (error) throw error
 
   return data.map((s) => {
@@ -287,6 +364,7 @@ export async function getBookings() {
       photographer: byRole('photographer'),
       model: byRole('model'),
       createdBy: s.creator?.full_name || null,
+      ...archiveFields(s),
     }
   })
 }
@@ -402,9 +480,17 @@ export async function updateBooking(setId, changes) {
   }
 }
 
-export async function deleteBooking(setId) {
-  const { error } = await supabase.from('sets').delete().eq('id', setId)
-  if (error) throw error
+// Archiving a shoot takes it off the calendar and releases its gear. The
+// reservations themselves ARE deleted — they are derived state, not a record,
+// and the set_units trigger logs the release into `events`.
+export async function archiveBooking(setId, actorId = null) {
+  await setReservationsForSet(setId, [])
+  return archiveRow('sets', setId, actorId)
+}
+
+export async function restoreBooking(setId) {
+  // Deliberately does NOT re-reserve: the gear may be on another job by now.
+  return restoreRow('sets', setId)
 }
 
 // --- activity log ----------------------------------------------------------
@@ -559,11 +645,15 @@ export async function updateUnit(unitId, { barcode, serial, placement } = {}) {
 // A unit pinned to a kit's FIXED slot is still refused by the DB
 // (kit_slots.fixed_unit_id is RESTRICT) — the store checks for that up front so
 // the user gets a reason instead of a raw error.
-export async function deleteUnit(unitId) {
-  const { error: suErr } = await supabase.from('set_units').delete().eq('unit_id', unitId)
-  if (suErr) throw suErr
-  const { error } = await supabase.from('units').delete().eq('id', unitId)
-  if (error) throw error
+// Writing off a unit archives it. Its `set_units` rows stay: they are the
+// history of the jobs it went out on, and the store refuses the write-off while
+// the unit is actually out or in repair, so nothing live is left dangling.
+export async function archiveUnit(unitId, actorId = null) {
+  return archiveRow('units', unitId, actorId)
+}
+
+export async function restoreUnit(unitId) {
+  return restoreRow('units', unitId)
 }
 
 // Send a unit out for repair (opens a repair row → unit becomes unavailable).
@@ -665,15 +755,18 @@ export async function updateInventoryItem(itemId, { name, category, kind, quanti
 // Delete an item (write-off). Frees any reservations on its units first, then
 // deletes the item (units cascade). Event-log history is preserved — events hold
 // only soft references (see deleteUnit).
-export async function deleteInventoryItem(itemId) {
-  const { data: units } = await supabase.from('units').select('id').eq('inventory_item_id', itemId)
-  const unitIds = (units || []).map((u) => u.id)
-  if (unitIds.length) {
-    const { error: suErr } = await supabase.from('set_units').delete().in('unit_id', unitIds)
-    if (suErr) throw suErr
-  }
-  const { error } = await supabase.from('inventory_items').delete().eq('id', itemId)
-  if (error) throw error
+// Archiving an item retires the type and every copy of it. No FK games are
+// needed any more: order lines, kit slots and usage rows keep pointing at it,
+// which is exactly why a past order still shows what it had on it.
+export async function archiveInventoryItem(itemId, actorId = null) {
+  const stamp = await archiveRow('inventory_items', itemId, actorId)
+  await archiveUnitsOfItem(itemId, stamp, actorId)
+  return stamp
+}
+
+export async function restoreInventoryItem(itemId, stamp) {
+  await restoreRow('inventory_items', itemId)
+  await restoreUnitsOfItem(itemId, stamp)
 }
 
 // ---------------------------------------------------------------------------
@@ -730,9 +823,13 @@ export async function updateKit(kitId, { name, category, notes, slots }) {
 
 // Delete a kit. kit_slots cascade; scenario_list_entries pointing at it cascade
 // too (both declare on delete cascade), so lists lose that line cleanly.
-export async function deleteKit(kitId) {
-  const { error } = await supabase.from('kits').delete().eq('id', kitId)
-  if (error) throw error
+// The kit's slots stay, so a scenario list line pointing at it still reads.
+export async function archiveKit(kitId, actorId = null) {
+  return archiveRow('kits', kitId, actorId)
+}
+
+export async function restoreKit(kitId) {
+  return restoreRow('kits', kitId)
 }
 
 // ---------------------------------------------------------------------------
@@ -791,9 +888,12 @@ export async function updateScenarioList(listId, { name, category, notes, entrie
   if (entries) await replaceScenarioEntries(listId, entries)
 }
 
-export async function deleteScenarioList(listId) {
-  const { error } = await supabase.from('scenario_lists').delete().eq('id', listId)
-  if (error) throw error
+export async function archiveScenarioList(listId, actorId = null) {
+  return archiveRow('scenario_lists', listId, actorId)
+}
+
+export async function restoreScenarioList(listId) {
+  return restoreRow('scenario_lists', listId)
 }
 
 // ---------------------------------------------------------------------------
@@ -804,10 +904,12 @@ export async function deleteScenarioList(listId) {
 
 export async function getCompanies() {
   // Layered like getKits: full 4.3 shape, then 4.2, then the original columns.
-  const full = 'id, name, kind, notes, company_type, address, opening_hours, website, email, phone'
+  const withArchive = `id, name, kind, notes, company_type, address, opening_hours, website, email, phone, ${ARCHIVE_COLS}`
+  const full = stripArchive(withArchive)
   const mid = 'id, name, kind, notes, company_type'
   const basic = 'id, name, kind, notes'
-  let { data, error } = await supabase.from('companies').select(full).order('name')
+  let { data, error } = await supabase.from('companies').select(withArchive).order('name')
+  if (error) ({ data, error } = await supabase.from('companies').select(full).order('name'))
   if (error) ({ data, error } = await supabase.from('companies').select(mid).order('name'))
   if (error) ({ data, error } = await supabase.from('companies').select(basic).order('name'))
   if (error) return []
@@ -822,18 +924,29 @@ export async function getCompanies() {
     website: c.website ?? null,
     email: c.email ?? null,
     phone: c.phone ?? null,
+    ...archiveFields(c),
   }))
 }
 
 // The user-editable Type option list (4.4). Missing table → the app falls back to
 // the types already in use, so the dropdown is never empty.
 export async function getCompanyTypes() {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('company_types')
-    .select('id, name, position')
+    .select(`id, name, position, ${ARCHIVE_COLS}`)
     .order('position')
+  if (error)
+    ({ data, error } = await supabase
+      .from('company_types')
+      .select('id, name, position')
+      .order('position'))
   if (error) return []
-  return (data || []).map((t) => ({ id: t.id, name: t.name, position: t.position }))
+  return (data || []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    position: t.position,
+    ...archiveFields(t),
+  }))
 }
 
 export async function createCompanyType(name, position = 999) {
@@ -864,9 +977,14 @@ export async function renameCompanyType(id, oldName, newName) {
 
 // Removing an option leaves companies that already use it untouched — the label
 // stays, it just stops being offered.
-export async function deleteCompanyType(id) {
-  const { error } = await supabase.from('company_types').delete().eq('id', id)
-  if (error) throw error
+// Archiving a Type only takes the option out of the dropdown: companies store
+// their type as text, so existing labels keep reading (marked "(removed)").
+export async function archiveCompanyType(id, actorId = null) {
+  return archiveRow('company_types', id, actorId)
+}
+
+export async function restoreCompanyType(id) {
+  return restoreRow('company_types', id)
 }
 
 function companyColumns(c) {
@@ -892,11 +1010,15 @@ export async function updateCompany(id, changes) {
   if (error) throw error
 }
 
-// contacts.company_id and orders.company_id are ON DELETE SET NULL, so deleting a
-// company detaches its people and orders rather than destroying them.
-export async function deleteCompany(id) {
-  const { error } = await supabase.from('companies').delete().eq('id', id)
-  if (error) throw error
+// Archiving a company keeps its links: its people and orders used to be silently
+// detached by `ON DELETE SET NULL`, which destroyed history as a side effect of
+// removing one row. Now nothing moves — the company just stops being offered.
+export async function archiveCompany(id, actorId = null) {
+  return archiveRow('companies', id, actorId)
+}
+
+export async function restoreCompany(id) {
+  return restoreRow('companies', id)
 }
 
 // Orders, used by 4.5 as the work-history source for company cards. Epic #5 owns
@@ -949,10 +1071,17 @@ async function getAddonsByOrder() {
                      vendor:companies!vendor_company_id ( id, name ) )`
   // `created_by` was stored and never read — an add-on is the most day-of,
   // most disputable action in the app, so it should say who added it.
+  const withArchive = `id, order_id, label, created_at, ${ARCHIVE_COLS}, author:profiles!created_by ( full_name ), ${lines}`
   let { data, error } = await supabase
     .from('order_addons')
-    .select(`id, order_id, label, created_at, author:profiles!created_by ( full_name ), ${lines}`)
+    .select(withArchive)
     .order('created_at')
+  if (error) {
+    ;({ data, error } = await supabase
+      .from('order_addons')
+      .select(stripArchive(withArchive))
+      .order('created_at'))
+  }
   if (error) {
     ;({ data, error } = await supabase
       .from('order_addons')
@@ -968,6 +1097,7 @@ async function getAddonsByOrder() {
       createdAt: a.created_at,
       createdBy: a.author?.full_name ?? null,
       lines: (a.addon_lines || []).map(mapLineRow),
+      ...archiveFields(a),
     })
   }
   return map
@@ -991,13 +1121,17 @@ export async function getOrders() {
   // shape WITH creator/created_at instead of skipping straight past it — that
   // used to turn a real author into "unknown".
   const full = `${fullNoEq}, eq_updated_at, eq_editor:profiles!eq_updated_by ( full_name )`
+  // Archived orders are still fetched — the list hides them, but a link, a PDF
+  // or the archive screen must find them. Its own layer, like eq_updated_*.
+  const withArchive = `${full}, ${ARCHIVE_COLS}`
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
      order_lines ( quantity, item:inventory_items ( id, name ) ),
      sets ( id, title, date )`
   const withoutKind = withKind.replace('kind, ', '')
 
-  let { data, error } = await supabase.from('orders').select(full).order('ordered_at')
+  let { data, error } = await supabase.from('orders').select(withArchive).order('ordered_at')
+  if (error) ({ data, error } = await supabase.from('orders').select(full).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(fullNoEq).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withKind).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withoutKind).order('ordered_at'))
@@ -1031,6 +1165,7 @@ export async function getOrders() {
     packing: packing[o.id] || {},
     addons: addonsByOrder[o.id] || [],
     lines: (o.order_lines || []).map(mapLineRow),
+    ...archiveFields(o),
   }))
 }
 
@@ -1070,9 +1205,26 @@ export async function updateOrder(id, changes) {
 
 // order_lines cascade; sets.order_id is ON DELETE SET NULL, so the shoot itself
 // survives an order being scrapped.
-export async function deleteOrder(id) {
-  const { error } = await supabase.from('orders').delete().eq('id', id)
-  if (error) throw error
+// Archiving an order releases its gear and takes its shoot off the calendar —
+// the shoot only exists because this order equips it. Its lines, add-ons and
+// packing sign-offs all stay, so restoring brings the whole document back.
+export async function archiveOrder(id, setId = null, actorId = null) {
+  const stamp = await archiveRow('orders', id, actorId)
+  if (setId) {
+    await setReservationsForSet(setId, [])
+    await archiveRow('sets', setId, actorId, stamp)
+  }
+  return stamp
+}
+
+// Restores the shoot only if it went down WITH this order (same stamp), so a
+// shoot archived separately beforehand stays archived.
+export async function restoreOrder(id, setId = null, stamp = null) {
+  await restoreRow('orders', id)
+  if (!setId) return
+  if (!stamp) return restoreRow('sets', setId)
+  const { data } = await supabase.from('sets').select('archived_at').eq('id', setId).maybeSingle()
+  if (data?.archived_at === stamp) await restoreRow('sets', setId)
 }
 
 // Replace a Set's reservations with exactly `unitIds` (empty = release all).
@@ -1151,12 +1303,14 @@ export async function setUnitVendor(unitId, companyId) {
 // comes from roster_entries → sets.
 export async function getPeople() {
   const jobs = `roster_entries ( role, set:sets ( id, title, date, studio_id, status ) )`
-  const enriched = `id, full_name, email, phone, notes,
-     category, subcategory, website, instagram, cv_url, cv_filename,
+  const withArchive = `id, full_name, email, phone, notes,
+     category, subcategory, website, instagram, cv_url, cv_filename, ${ARCHIVE_COLS},
      company:companies ( id, name ), ${jobs}`
+  const enriched = stripArchive(withArchive)
   const basic = `id, full_name, email, phone, notes, company:companies ( id, name ), ${jobs}`
 
-  let { data, error } = await supabase.from('contacts').select(enriched).order('full_name')
+  let { data, error } = await supabase.from('contacts').select(withArchive).order('full_name')
+  if (error) ({ data, error } = await supabase.from('contacts').select(enriched).order('full_name'))
   if (error) ({ data, error } = await supabase.from('contacts').select(basic).order('full_name'))
   if (error) return []
 
@@ -1185,6 +1339,7 @@ export async function getPeople() {
         role: r.role,
       }))
       .sort((a, b) => (a.date < b.date ? 1 : -1)),
+    ...archiveFields(p),
   }))
 }
 
@@ -1227,9 +1382,15 @@ export async function updatePerson(id, changes) {
 // roster_entries references contacts with ON DELETE RESTRICT, so a person who
 // worked a job can't be deleted — the caller checks job count first and explains
 // why instead of letting the DB throw.
-export async function deletePerson(id) {
-  const { error } = await supabase.from('contacts').delete().eq('id', id)
-  if (error) throw error
+// `roster_entries.contact_id` is ON DELETE RESTRICT, which meant a person who
+// had worked a single job could never be removed. Archiving retires them and
+// keeps every job they were on.
+export async function archivePerson(id, actorId = null) {
+  return archiveRow('contacts', id, actorId)
+}
+
+export async function restorePerson(id) {
+  return restoreRow('contacts', id)
 }
 
 export async function createCompany({ name, companyType, kind = 'client', notes }) {
@@ -1343,7 +1504,11 @@ export async function setAddonLines(addonId, lines) {
   if (error) throw error
 }
 
-export async function deleteAddon(addonId) {
-  const { error } = await supabase.from('order_addons').delete().eq('id', addonId)
-  if (error) throw error
+// The add-on's lines and its namespaced packing sign-offs stay with it.
+export async function archiveAddon(addonId, actorId = null) {
+  return archiveRow('order_addons', addonId, actorId)
+}
+
+export async function restoreAddon(addonId) {
+  return restoreRow('order_addons', addonId)
 }

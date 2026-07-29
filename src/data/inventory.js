@@ -32,9 +32,17 @@ export function kindLabel(kind) {
   return kind === 'barcoded' ? 'Barcoded' : 'Non-barcoded'
 }
 
+// The copies still in the register. A written-off unit is ARCHIVED, not deleted
+// (20260808120000), so it stays on the item for its history but must never be
+// counted, listed or offered. Use this anywhere a unit list is shown or counted;
+// use raw `item.units` only to look one up by id (history, an old order line).
+export function activeUnits(item) {
+  return (item?.units || []).filter((u) => !u.archivedAt)
+}
+
 // On-hand count: barcoded items count their tracked units; the rest use qty.
 export function itemCount(item) {
-  return item.kind === 'barcoded' ? item.units.length : (item.quantity ?? 0)
+  return item.kind === 'barcoded' ? activeUnits(item).length : (item.quantity ?? 0)
 }
 
 // Best-effort brand from an item name (for realistic seed data).

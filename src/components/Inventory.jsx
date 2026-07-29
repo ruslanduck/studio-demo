@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine, ClipboardList, Trash2, AlertTriangle } from 'lucide-react'
-import { useStore } from '../store'
-import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel } from '../data/inventory'
+import { useStore, notArchived } from '../store'
+import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel, activeUnits } from '../data/inventory'
 import { availableCount } from '../lib/availability'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -175,22 +175,23 @@ export default function Inventory() {
   const addUnits = useStore((s) => s.addUnits)
   const adjustStock = useStore((s) => s.adjustStock)
   const updateUnit = useStore((s) => s.updateUnit)
-  const deleteUnit = useStore((s) => s.deleteUnit)
+  const archiveUnit = useStore((s) => s.archiveUnit)
   const nextBarcode = useStore((s) => s.nextBarcode)
   const addInventoryItem = useStore((s) => s.addInventoryItem)
   const updateInventoryItem = useStore((s) => s.updateInventoryItem)
-  const deleteInventoryItem = useStore((s) => s.deleteInventoryItem)
+  const archiveInventoryItem = useStore((s) => s.archiveInventoryItem)
   const createKit = useStore((s) => s.createKit)
   const updateKit = useStore((s) => s.updateKit)
-  const deleteKit = useStore((s) => s.deleteKit)
+  const archiveKit = useStore((s) => s.archiveKit)
   const createScenario = useStore((s) => s.createScenario)
   const updateScenario = useStore((s) => s.updateScenario)
-  const deleteScenario = useStore((s) => s.deleteScenario)
+  const archiveScenario = useStore((s) => s.archiveScenario)
   const inventoryFocus = useStore((s) => s.inventoryFocus)
   const clearInventoryFocus = useStore((s) => s.clearInventoryFocus)
   const focusInventory = useStore((s) => s.focusInventory)
   const peek = useStore((s) => s.peek)
   const people = useStore((s) => s.people)
+  const setActiveView = useStore((s) => s.setActiveView)
   const can = useCan()
 
   const [entryType, setEntryType] = useState('items') // 'items' | 'kits' | 'lists'
@@ -264,28 +265,40 @@ export default function Inventory() {
 
   // Companies we actually rent from — the only sensible sub-rental vendors (4.5).
   const vendors = useMemo(
-    () => companies.filter((c) => c.kind === 'vendor' || c.kind === 'both'),
+    () => companies.filter((c) => notArchived(c) && (c.kind === 'vendor' || c.kind === 'both')),
     [companies],
   )
+
+  // Archived records are still LOADED (an order line or a unit history must be
+  // able to resolve them) — the lists, the counts and the pickers work off the
+  // live ones. See store.notArchived.
+  const liveInventory = useMemo(() => inventory.filter(notArchived), [inventory])
+  const liveKits = useMemo(() => kits.filter(notArchived), [kits])
+  const liveLists = useMemo(() => scenarios.filter(notArchived), [scenarios])
+  const archivedCounts = {
+    items: inventory.length - liveInventory.length,
+    kits: kits.length - liveKits.length,
+    lists: scenarios.length - liveLists.length,
+  }
 
   const query = search.trim().toLowerCase()
 
   // Search matches name, barcode, or serial (scan a barcode/serial → find the
   // item). Category / brand / type narrow the list independently.
   const filtered = useMemo(() => {
-    return inventory.filter((item) => {
+    return liveInventory.filter((item) => {
       if (category !== 'All' && item.category !== category) return false
       if (brand !== 'All' && item.brand !== brand) return false
       if (kind !== 'All' && item.kind !== kind) return false
       if (query === '') return true
       if (item.name.toLowerCase().includes(query)) return true
-      return item.units.some(
+      return activeUnits(item).some(
         (u) =>
           u.barcode.toLowerCase().includes(query) ||
           u.serial.toLowerCase().includes(query),
       )
     })
-  }, [inventory, query, category, brand, kind])
+  }, [liveInventory, query, category, brand, kind])
 
   const filtersActive =
     query !== '' || category !== 'All' || brand !== 'All' || kind !== 'All'
@@ -337,8 +350,9 @@ export default function Inventory() {
 
   // Kits (entry type #2): filter by name when searching, derive the selection.
   const filteredKits = useMemo(
-    () => (query === '' ? kits : kits.filter((k) => k.name.toLowerCase().includes(query))),
-    [kits, query],
+    () =>
+      query === '' ? liveKits : liveKits.filter((k) => k.name.toLowerCase().includes(query)),
+    [liveKits, query],
   )
   const selectedKit = kits.find((k) => k.id === selectedKitId) ?? null
 
@@ -346,9 +360,9 @@ export default function Inventory() {
   const filteredLists = useMemo(
     () =>
       query === ''
-        ? scenarios
-        : scenarios.filter((l) => l.name.toLowerCase().includes(query)),
-    [scenarios, query],
+        ? liveLists
+        : liveLists.filter((l) => l.name.toLowerCase().includes(query)),
+    [liveLists, query],
   )
   const selectedList =
     scenarios.find((l) => l.id === selectedListId) ?? scenarios[0] ?? null
@@ -357,7 +371,7 @@ export default function Inventory() {
   // it reflects mutations (send / return) without reopening.
   const repairUnit = selected?.units.find((u) => u.id === repairUnitId) ?? null
 
-  const totalUnits = inventory.reduce((n, i) => n + i.units.length, 0)
+  const totalUnits = liveInventory.reduce((n, i) => n + activeUnits(i).length, 0)
 
   const closeItemModal = () => setItemModal({ open: false, item: null })
 
@@ -374,11 +388,16 @@ export default function Inventory() {
     closeItemModal()
   }
 
+  // Archiving can be REFUSED (a copy is out on a job or at a repairer). It used
+  // to be a silent no-op: the DB rejected the delete because order lines point
+  // at the item, and nothing said so. Now the reason is shown.
   async function handleDelete(id) {
-    await deleteInventoryItem(id)
+    const res = await archiveInventoryItem(id)
+    if (res?.error) return res
     setSelectedId(null)
     setShowDetailMobile(false)
     closeItemModal()
+    return res
   }
 
   return (
@@ -390,8 +409,21 @@ export default function Inventory() {
             Inventory
           </h2>
           <p className="text-sm text-slate-500">
-            {inventory.length} items · {kits.length} kits · {scenarios.length} lists ·{' '}
+            {liveInventory.length} items · {liveKits.length} kits · {liveLists.length} lists ·{' '}
             {totalUnits} units
+            {/* Nothing is deleted — say how much is sitting in the Archive. */}
+            {archivedCounts[entryType] > 0 && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  onClick={() => setActiveView('archive')}
+                  className="font-medium text-violet-600 transition hover:text-violet-800 hover:underline"
+                >
+                  {archivedCounts[entryType]} archived
+                </button>
+              </>
+            )}
           </p>
         </div>
         {/* The primary action follows the active tab: add stock, author a kit
@@ -748,7 +780,7 @@ export default function Inventory() {
                 }}
                 onDeleteUnit={async (unit) => {
                   setUnitError(null)
-                  const res = await deleteUnit(selected.id, unit.id)
+                  const res = await archiveUnit(selected.id, unit.id)
                   if (res?.error) setUnitError(res.error)
                 }}
                 onShowWorkHistory={() => setWorkHistoryOpen(true)}
@@ -786,7 +818,7 @@ export default function Inventory() {
         }}
         onSave={(id, payload) => updateKit(id, payload)}
         onDelete={(id) => {
-          deleteKit(id)
+          archiveKit(id)
           setSelectedKitId((cur) => (cur === id ? null : cur))
         }}
       />
@@ -803,7 +835,7 @@ export default function Inventory() {
         }}
         onSave={(id, payload) => updateScenario(id, payload)}
         onDelete={(id) => {
-          deleteScenario(id)
+          archiveScenario(id)
           setSelectedListId((cur) => (cur === id ? null : cur))
         }}
       />
@@ -868,18 +900,21 @@ export default function Inventory() {
 
 function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, vendors, onSetVendor, onShowHistory, onShowRepair, onShowWorkHistory, canWriteOff, unitError, onDismissUnitError, onAddUnit, onAddStock, onEditUnit, onDeleteUnit }) {
   const isBarcoded = item.kind === 'barcoded'
-  // Deleting a physical unit is a write-off — confirm in place, per row.
+  // Writing off a physical unit archives it — confirm in place, per row.
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  // Only the copies still in the register: a written-off one is archived, and it
+  // shows up on the Archive screen (and in this item's Activity), not here.
+  const units = activeUnits(item)
   const available = availableCount(item)
-  const inRepair = item.units.filter((u) => u.status === 'in_repair').length
-  const checkedOut = item.units.length - available - inRepair
+  const inRepair = units.filter((u) => u.status === 'in_repair').length
+  const checkedOut = units.length - available - inRepair
 
   // A unit matches the search when its barcode or serial contains the query.
   const unitMatches = (u) =>
     !!query &&
     (u.barcode.toLowerCase().includes(query) || u.serial.toLowerCase().includes(query))
   const firstMatchId = isBarcoded
-    ? item.units.find(unitMatches)?.id ?? null
+    ? units.find(unitMatches)?.id ?? null
     : null
 
   // Scroll the first matched unit into view when the search / item changes.
@@ -909,7 +944,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
             </span>
             {isBarcoded ? (
               <>
-                <span>{item.units.length} units</span>
+                <span>{units.length} units</span>
                 <span className="text-emerald-600">{available} available</span>
                 <span className="text-orange-600">{checkedOut} checked out</span>
                 {inRepair > 0 && (
@@ -1004,7 +1039,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {item.units.map((unit, idx) => {
+            {units.map((unit, idx) => {
               const matched = unitMatches(unit)
               return (
               <tr
@@ -1100,9 +1135,10 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                           setConfirmDeleteId(null)
                           onDeleteUnit(unit)
                         }}
+                        title="Archives the copy — the register keeps its barcode and history"
                         className="rounded-md bg-rose-600 px-2 py-1 font-medium text-white transition hover:bg-rose-700"
                       >
-                        Delete
+                        Write off
                       </button>
                       <button
                         type="button"

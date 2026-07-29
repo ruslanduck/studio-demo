@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Archive as ArchiveIcon, AlertTriangle } from 'lucide-react'
 import { CATEGORIES, ITEM_KINDS } from '../data/inventory'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -84,14 +84,19 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
     }
   }
 
-  function handleDelete() {
-    if (
-      window.confirm(
-        `Delete "${item.name}"? This writes it off and removes it from any bookings. This can't be undone.`,
-      )
-    ) {
-      onDelete(item.id)
+  // Archiving, not deleting: an inline confirm (window.confirm can't be exercised
+  // in the preview pane, and this reads better anyway).
+  const [confirmArchive, setConfirmArchive] = useState(false)
+  const [archiveError, setArchiveError] = useState(null)
+
+  async function handleArchive() {
+    const res = await onDelete(item.id)
+    if (res?.error) {
+      setConfirmArchive(false)
+      setArchiveError(res.error)
+      return
     }
+    setConfirmArchive(false)
   }
 
   const field =
@@ -206,16 +211,49 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
           </div>
         </div>
 
+        {archiveError && (
+          <div className="mx-5 mb-3 flex shrink-0 items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            {archiveError}
+          </div>
+        )}
+
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 py-3">
           {isEdit && can(CAP.INVENTORY_DELETE) ? (
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
-            >
-              <Trash2 size={15} />
-              Delete
-            </button>
+            confirmArchive ? (
+              <span className="flex items-center gap-2 text-xs">
+                <span className="text-slate-600">
+                  Archive it? Its copies go too — restorable from the Archive.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleArchive}
+                  className="rounded-md bg-rose-600 px-2 py-1 text-xs font-semibold text-white transition hover:bg-rose-700"
+                >
+                  Archive
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmArchive(false)}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100"
+                >
+                  Keep
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setArchiveError(null)
+                  setConfirmArchive(true)
+                }}
+                title="Take it out of circulation — nothing is deleted"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+              >
+                <ArchiveIcon size={15} />
+                Archive
+              </button>
+            )
           ) : (
             <span />
           )}

@@ -540,6 +540,56 @@
 > `kind='consumable'` through PostgREST is now refused with `23514`. Gaffer Tape reads "Non-barcoded · 24 on
 > hand" with an Add stock button and its usage history (58 used / 22 jobs) intact, and the "Loft e-commerce"
 > scenario list still resolves its tape line as "2× · 24 on hand". 0 console errors.
+> **ARCHITECTURE — nothing is deleted any more: everything archives.** Requested after the deletion audit
+> ("можем сделать так, чтобы из базы по факту ничего не удалялось, а просто архивировалось?").
+> `20260808120000_archive_not_delete.sql` adds `archived_at` + `archived_by` to the TEN tables with their own
+> identity (orders, sets, inventory_items, units, contacts, companies, kits, scenario_lists, order_addons,
+> company_types), partial `where archived_at is null` indexes, and — the real guarantee — **replaces each
+> table's blanket `for all` RLS policy with explicit `for insert` + `for update`, so DELETE is never granted
+> to the app**. Child rows that are the CONTENTS of a document (order_lines, addon_lines, kit_slots,
+> scenario_list_entries, set_units, roster_entries, packing_signoffs) keep their DELETE: they're replaced
+> wholesale on save and the diff already lives in `events`.
+> ⚠️ With no DELETE policy, a delete does NOT error — Postgres RLS filters every row, so it silently affects
+> 0 rows. Verified with a throwaway order: DELETE as `authenticated` → no error, row survived; UPDATE
+> archived_at → works; `order_lines` DELETE → still allowed. Nothing can be destroyed, but a missed
+> hard-delete path would look like success, which is why every one was converted.
+> **The structural decision: archived rows stay LOADED and are filtered in the views, not in the queries.**
+> The app resolves display data by id from the hydrated store (an order line → item name, a roster row →
+> person, a PDF → item), so query-level filtering would fill history with holes. Repository reads pass
+> `archivedAt`/`archivedBy` through with a strip-and-retry fallback layer (`stripArchive`), and generic
+> `archiveRow`/`restoreRow` replace the ten `deleteX` functions.
+> Side effects: an ORDER releases its gear and archives its shoot **with the same timestamp** (that shared
+> stamp is what makes restore exact — a shoot archived separately stays archived); an ITEM archives its live
+> units the same way, so restoring brings back only the copies that went down with it, not one written off
+> earlier; a UNIT write-off is now an archive (barcode stays taken, history readable). Store: `archiveRecord`
+> /`restoreRecord` serve the five flat types from an `ARCHIVABLE` config; orders/items/units/bookings/addons
+> have their own actions. `isArchived`/`notArchived` are exported from the store as the single predicate.
+> **persist v5.** New `EVENT.ARCHIVED`/`RESTORED` (+ `ARCHIVE_KINDS`) — 5 Node assertions.
+> Filtering audit: `isUnitFree` gets ONE guard that covers kits, staging, scenario lists, bookings, the order
+> editor and the reservation sync; `activeUnits`/`itemCount` exclude written-off copies; every list view,
+> every picker, the calendar, `orderSearch` and `lib/scenarios` (archived kit/item reported as unsatisfiable,
+> never silently resolved). 8 Node assertions on the availability side.
+> UI: new **Archive** view (`src/components/Archive.jsx` + `nav.js`) grouped by type with Restore, "N archived"
+> links from Inventory/Orders/People, an Archived badge on a card reached by link, and Delete → **Archive**
+> wording everywhere (AddInventoryModal's `window.confirm` became an inline confirm, so it's testable).
+> **Removed a real blocker:** the person editor used to HIDE its delete button for anyone with job history
+> ("On 2 jobs — kept for history"), because `roster_entries` is RESTRICT — the roster could only ever grow.
+> Archiving retires them and keeps every job.
+> Verified end-to-end on prod with row counts before/after: archiving **Apple Lightning Cable** (on an H&M
+> order line — the case that used to fail SILENTLY) took it and its 20 units out of every list while the DB
+> still held 44 items / 317 units and that order line still resolved its name; archiving **Ava Morgan**
+> (2 jobs) worked with contacts 25 and roster_entries 22 untouched; archiving the CONFIRMED **Wedding
+> Editorial** order released 5 reservations (set_units 74→69), took its shoot off the calendar (11→10 chips)
+> and kept its 4 lines, then Restore reported "5 piece(s) reserved · 1 could not be — nothing free for those
+> lines" (the Canon, correctly). All three restored; every table back to its exact baseline, 0 rows archived,
+> 0 console errors.
+> ⚠️ Two bugs I introduced and caught in the browser, both worth remembering: `notArchived` used in
+> `OrderEquipmentModal` without an import (it takes props, so it had no store import) → white screen with only
+> a React warning; and `livePeople` referenced in a `useMemo` defined ABOVE it in `People.jsx` (temporal dead
+> zone) — neither is caught by `npm run build`. A grep for "uses the helper but doesn't import it" across all
+> files is the cheap check.
+> NOT included: purge/permanent delete from the Archive. It would need `service_role`, since the app no
+> longer holds DELETE.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

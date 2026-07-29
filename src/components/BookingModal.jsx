@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  Trash2,
+import {
   Search,
   Minus,
   Plus,
@@ -9,8 +8,9 @@ import {
   ClipboardList,
   AlertTriangle,
   Check,
+  Archive as ArchiveIcon,
 } from 'lucide-react'
-import { useStore } from '../store'
+import { useStore, notArchived } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
 import { availableCount, resolveUnitsForQuantities } from '../lib/availability'
 import { studioLabel } from '../data/studios'
@@ -47,7 +47,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   const models = useStore((s) => s.models)
   const createBooking = useStore((s) => s.createBooking)
   const updateBooking = useStore((s) => s.updateBooking)
-  const deleteBooking = useStore((s) => s.deleteBooking)
+  const archiveBooking = useStore((s) => s.archiveBooking)
   const sendToRepair = useStore((s) => s.sendToRepair)
   const setUnitBarcode = useStore((s) => s.setUnitBarcode)
 
@@ -150,7 +150,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
     const q = invSearch.trim().toLowerCase()
     if (q === '') return []
     return inventory
-      .filter((i) => i.name.toLowerCase().includes(q))
+      .filter((i) => notArchived(i) && i.name.toLowerCase().includes(q))
       .slice(0, 8)
   }, [invSearch, inventory])
 
@@ -217,10 +217,10 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   async function handleDelete() {
     if (
       window.confirm(
-        `Delete "${booking.title}"? This frees its reserved inventory units.`,
+        `Archive "${booking.title}"? It leaves the calendar and frees its gear — you can restore it from the Archive.`,
       )
     ) {
-      await deleteBooking(booking.id)
+      await archiveBooking(booking.id)
       onClose()
     }
   }
@@ -640,8 +640,8 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
               onClick={handleDelete}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
             >
-              <Trash2 size={15} />
-              Delete
+              <ArchiveIcon size={15} />
+              Archive
             </button>
           ) : (
             <span />

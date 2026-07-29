@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   UserPlus,
   Check,
-  Trash2,
   AlertTriangle,
   Globe,
   AtSign,
@@ -10,6 +9,7 @@ import {
   Paperclip,
   Loader2,
   X,
+  Archive as ArchiveIcon,
 } from 'lucide-react'
 import Modal from './Modal'
 import { PEOPLE_CATEGORIES } from '../data/people'
@@ -371,14 +371,18 @@ export default function PersonEditorModal({
         </div>
 
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 py-3">
+          {/* Job history no longer BLOCKS this. Deleting was impossible for anyone
+              who had worked a shoot (roster_entries is ON DELETE RESTRICT), which
+              meant the roster could only grow; archiving retires them and keeps
+              every job. The count stays on screen as context, not as a refusal. */}
           {isEdit && onDelete ? (
-            jobCount > 0 ? (
-              <span className="text-[11px] text-slate-400">
-                On {jobCount} job{jobCount === 1 ? '' : 's'} — kept for history
-              </span>
-            ) : confirmDelete ? (
+            confirmDelete ? (
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-500">Delete this person?</span>
+                <span className="text-slate-500">
+                  Archive this person?
+                  {jobCount > 0 &&
+                    ` Their ${jobCount} job${jobCount === 1 ? '' : 's'} stay on record.`}
+                </span>
                 <button
                   type="button"
                   onClick={async () => {
@@ -388,7 +392,7 @@ export default function PersonEditorModal({
                   }}
                   className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
                 >
-                  Delete
+                  Archive
                 </button>
                 <button
                   type="button"
@@ -404,8 +408,8 @@ export default function PersonEditorModal({
                 onClick={() => setConfirmDelete(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
               >
-                <Trash2 size={15} />
-                Delete
+                <ArchiveIcon size={15} />
+                Archive
               </button>
             )
           ) : (

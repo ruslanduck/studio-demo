@@ -32,7 +32,28 @@ export const EVENT = {
   UNIT_VENDOR: 'unit.vendor_changed',
   UNIT_REPAIR_OUT: 'unit.sent_to_repair',
   UNIT_REPAIR_BACK: 'unit.returned_from_repair',
+  // Nothing is deleted any more (20260808120000): every "delete" is an archive,
+  // and an archive can be undone. One pair of verbs for all ten entity types —
+  // the `data.what` says which kind it was, so the feed reads in plain words.
+  ARCHIVED: 'record.archived',
+  RESTORED: 'record.restored',
 }
+
+// How each archivable thing is named in the feed and on the Archive screen.
+export const ARCHIVE_KINDS = {
+  order: 'order',
+  booking: 'shoot',
+  item: 'inventory item',
+  unit: 'unit',
+  person: 'person',
+  company: 'company',
+  kit: 'kit',
+  scenario: 'scenario list',
+  addon: 'add-on list',
+  companyType: 'company type',
+}
+
+export const archiveKindLabel = (what) => ARCHIVE_KINDS[what] ?? 'record'
 
 // Reservations are written per unit by the DB trigger, and the reservation sync
 // rewrites every row of a set on each confirm — so they are noise on an ORDER
@@ -155,6 +176,20 @@ export function describeEvent(ev) {
       }
     case EVENT.ITEM_DELETED:
       return { icon: 'trash', title: 'Wrote off the item', detail: d.name ?? null }
+    case EVENT.ARCHIVED:
+      return {
+        icon: 'archive',
+        title: `Archived this ${archiveKindLabel(d.what)}`,
+        detail: [d.name, d.releasedUnits ? `${d.releasedUnits} piece(s) released` : null]
+          .filter(Boolean)
+          .join(' · '),
+      }
+    case EVENT.RESTORED:
+      return {
+        icon: 'undo',
+        title: `Restored this ${archiveKindLabel(d.what)}`,
+        detail: d.name ?? null,
+      }
     case EVENT.STOCK_ADJUSTED: {
       const delta = Number(d.delta) || 0
       const move = `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`

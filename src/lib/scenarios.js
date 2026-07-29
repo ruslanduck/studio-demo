@@ -98,6 +98,12 @@ export function applyScenarioList({
       warnings.push(`${entry.kitName || 'Kit'} — not found`)
       continue
     }
+    // An archived kit is REPORTED, never silently resolved: the list line still
+    // exists (nothing is deleted), it just can't be pulled until it's restored.
+    if (kit.archivedAt) {
+      warnings.push(`${kit.name} — archived, restore it to pull this line`)
+      continue
+    }
     const { units, unresolved } = resolveKit(kit, inventory, ctx)
     nextStaged.push(...units)
     kitCount++
@@ -109,6 +115,10 @@ export function applyScenarioList({
     const wanted = entry.quantity ?? 1
     if (!item) {
       warnings.push(`${entry.itemName || 'Item'} — no longer in inventory`)
+      continue
+    }
+    if (item.archivedAt) {
+      warnings.push(`${item.name} — archived, restore it to pull this line`)
       continue
     }
     // Non-barcoded stock has no unit rows to reserve; surface it

@@ -19,7 +19,8 @@ import {
   getScenarioLists as sbGetScenarioLists,
   createBooking as sbCreateBooking,
   updateBooking as sbUpdateBooking,
-  deleteBooking as sbDeleteBooking,
+  archiveBooking as sbArchiveBooking,
+  restoreBooking as sbRestoreBooking,
   toggleOwnership as sbToggleOwnership,
   setUnitBarcode as sbSetUnitBarcode,
   setReservationsForSet as sbSetReservationsForSet,
@@ -29,36 +30,44 @@ import {
   touchOrderEquipment as sbTouchOrderEquipment,
   addUnits as sbAddUnits,
   updateUnit as sbUpdateUnit,
-  deleteUnit as sbDeleteUnit,
+  archiveUnit as sbArchiveUnit,
+  restoreUnit as sbRestoreUnit,
   sendToRepair as sbSendToRepair,
   returnFromRepair as sbReturnFromRepair,
   logItemUsage as sbLogItemUsage,
   addInventoryItem as sbAddInventoryItem,
   updateInventoryItem as sbUpdateInventoryItem,
-  deleteInventoryItem as sbDeleteInventoryItem,
+  archiveInventoryItem as sbArchiveInventoryItem,
+  restoreInventoryItem as sbRestoreInventoryItem,
   createKit as sbCreateKit,
   updateKit as sbUpdateKit,
-  deleteKit as sbDeleteKit,
+  archiveKit as sbArchiveKit,
+  restoreKit as sbRestoreKit,
   createScenarioList as sbCreateScenarioList,
   updateScenarioList as sbUpdateScenarioList,
-  deleteScenarioList as sbDeleteScenarioList,
+  archiveScenarioList as sbArchiveScenarioList,
+  restoreScenarioList as sbRestoreScenarioList,
   getPeople as sbGetPeople,
   getCompanies as sbGetCompanies,
   createPerson as sbCreatePerson,
   updatePerson as sbUpdatePerson,
-  deletePerson as sbDeletePerson,
+  archivePerson as sbArchivePerson,
+  restorePerson as sbRestorePerson,
   createCompany as sbCreateCompany,
   updateCompany as sbUpdateCompany,
-  deleteCompany as sbDeleteCompany,
+  archiveCompany as sbArchiveCompany,
+  restoreCompany as sbRestoreCompany,
   getCompanyTypes as sbGetCompanyTypes,
   createCompanyType as sbCreateCompanyType,
   renameCompanyType as sbRenameCompanyType,
-  deleteCompanyType as sbDeleteCompanyType,
+  archiveCompanyType as sbArchiveCompanyType,
+  restoreCompanyType as sbRestoreCompanyType,
   getOrders as sbGetOrders,
   setUnitVendor as sbSetUnitVendor,
   createOrder as sbCreateOrder,
   updateOrder as sbUpdateOrder,
-  deleteOrder as sbDeleteOrder,
+  archiveOrder as sbArchiveOrder,
+  restoreOrder as sbRestoreOrder,
   createSetForOrder as sbCreateSetForOrder,
   countSetsOn as sbCountSetsOn,
   setOrderLines as sbSetOrderLines,
@@ -66,7 +75,8 @@ import {
   clearPackingSignoff as sbClearPackingSignoff,
   createAddon as sbCreateAddon,
   setAddonLines as sbSetAddonLines,
-  deleteAddon as sbDeleteAddon,
+  archiveAddon as sbArchiveAddon,
+  restoreAddon as sbRestoreAddon,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 import { reservedUnitsForOrder } from './lib/availability'
@@ -76,6 +86,36 @@ const STORAGE_KEY = 'anntaylor-rental-demo'
 
 // Local demo mode has no auth, so activity is attributed to the machine's user.
 const LOCAL_ACTOR = 'Demo user'
+
+// The flat archivable types: which collection holds them, how to name one in the
+// feed, and the repository calls. Anything with side effects (orders release
+// gear, items take their units) has its own action instead.
+const ARCHIVABLE = {
+  kit: { list: 'kits', name: (r) => r.name, archive: sbArchiveKit, restore: sbRestoreKit },
+  scenario: {
+    list: 'scenarios',
+    name: (r) => r.name,
+    archive: sbArchiveScenarioList,
+    restore: sbRestoreScenarioList,
+  },
+  person: { list: 'people', name: (r) => r.name, archive: sbArchivePerson, restore: sbRestorePerson },
+  company: {
+    list: 'companies',
+    name: (r) => r.name,
+    archive: sbArchiveCompany,
+    restore: sbRestoreCompany,
+  },
+  companyType: {
+    list: 'companyTypes',
+    name: (r) => r.name,
+    archive: sbArchiveCompanyType,
+    restore: sbRestoreCompanyType,
+  },
+}
+
+// Is this record archived? One predicate so every filter reads the same.
+export const isArchived = (r) => !!r?.archivedAt
+export const notArchived = (r) => !r?.archivedAt
 
 // Build a fresh copy of the seeded data: clone the inventory, resolve booking
 // dates to the current week, and reserve units (status -> checked_out,
@@ -558,6 +598,8 @@ function reservationsFromOrders(bookings, orders, inventory, fixedUnitIds = []) 
   const orderedSets = new Set()
   for (const o of orders || []) {
     if (o.setId) orderedSets.add(o.setId)
+    // An archived order holds nothing — that's how archiving releases its gear.
+    if (o.archivedAt) continue
     if (o.status !== 'confirmed') continue
     const ids = reservedUnitsForOrder(o, rawInventory, claimed)
     if (!o.setId) continue
@@ -1184,7 +1226,9 @@ export const useStore = create(
 
       // Write off ONE unit. Refused with a reason while it's on a job or out for
       // repair, or while a kit pins it to a FIXED slot (the DB forbids that one).
-      deleteUnit: async (itemId, unitId) => {
+      // Write off one physical copy. Archives it — the register keeps the row,
+      // so its barcode stays taken and its job history stays readable.
+      archiveUnit: async (itemId, unitId) => {
         const state = get()
         const item = state.inventory.find((i) => i.id === itemId)
         const unit = item?.units?.find((u) => u.id === unitId)
@@ -1201,8 +1245,6 @@ export const useStore = create(
             error: `#${unit.barcode} is the fixed unit of kit “${pinnedBy.name}”. Change that slot first.`,
           }
 
-        // Logged BEFORE the delete so the barcode/serial can still be read — the
-        // event has to stay readable after the unit is gone.
         const logWriteOff = () =>
           get().logActivity({
             type: EVENT.UNIT_WRITTEN_OFF,
@@ -1212,9 +1254,11 @@ export const useStore = create(
             data: { barcode: unit.barcode, serial: unit.serial, itemName: item?.name ?? null },
           })
 
+        // A write-off ARCHIVES the unit: it leaves every list, picker and count,
+        // but its barcode, serial and job history stay readable for ever.
         if (usingSupabase) {
           try {
-            await sbDeleteUnit(unitId)
+            await sbArchiveUnit(unitId, get().session?.user?.id ?? null)
           } catch (e) {
             return { error: e.message }
           }
@@ -1223,8 +1267,16 @@ export const useStore = create(
           return { ok: true }
         }
         logWriteOff()
+        const stamp = new Date().toISOString()
         const inventory = state.inventory.map((it) =>
-          it.id === itemId ? { ...it, units: it.units.filter((u) => u.id !== unitId) } : it,
+          it.id === itemId
+            ? {
+                ...it,
+                units: it.units.map((u) =>
+                  u.id === unitId ? { ...u, archivedAt: stamp, archivedBy: LOCAL_ACTOR } : u,
+                ),
+              }
+            : it,
         )
         // Drop it from any booking that still lists it, then re-project.
         const bookings = state.bookings.map((b) =>
@@ -1233,6 +1285,43 @@ export const useStore = create(
             : b,
         )
         set({ bookings, inventory: withReservations(inventory, bookings) })
+        return { ok: true }
+      },
+
+      // Bring a written-off copy back into the register.
+      restoreUnit: async (itemId, unitId) => {
+        const state = get()
+        const item = state.inventory.find((i) => i.id === itemId)
+        const unit = item?.units?.find((u) => u.id === unitId)
+        if (!unit) return { error: 'Unit not found.' }
+        get().logActivity({
+          type: EVENT.RESTORED,
+          entityType: 'item',
+          entityId: itemId,
+          unitId,
+          data: { what: 'unit', name: `#${unit.barcode}`, itemName: item?.name ?? null },
+        })
+        if (usingSupabase) {
+          try {
+            await sbRestoreUnit(unitId)
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        set({
+          inventory: state.inventory.map((it) =>
+            it.id === itemId
+              ? {
+                  ...it,
+                  units: it.units.map((u) =>
+                    u.id === unitId ? { ...u, archivedAt: null, archivedBy: null } : u,
+                  ),
+                }
+              : it,
+          ),
+        })
         return { ok: true }
       },
 
@@ -1517,33 +1606,167 @@ export const useStore = create(
         })
       },
 
-      // Delete an item (write-off). Frees its units from any bookings.
-      deleteInventoryItem: async (id) => {
-        const doomed = get().inventory.find((i) => i.id === id)
-        const logDelete = () =>
-          get().logActivity({
-            type: EVENT.ITEM_DELETED,
-            entityType: 'item',
-            entityId: id,
-            data: { name: doomed?.name ?? null },
-          })
-        if (usingSupabase) {
-          await sbDeleteInventoryItem(id)
-          logDelete()
-          await get().hydrate({ quiet: true })
-          return
-        }
+      // Retire an item: it and all its copies are archived, never deleted, so
+      // every order line, kit slot and usage row that mentions it still reads.
+      // Refused while a copy is physically out, for the same reason a single
+      // write-off is: you can't retire gear that is on a job or at a repairer.
+      archiveInventoryItem: async (id) => {
         const state = get()
         const item = state.inventory.find((i) => i.id === id)
-        const unitIds = new Set((item?.units || []).map((u) => u.id))
-        logDelete()
+        if (!item) return { error: 'Item not found.' }
+        const live = (item.units || []).filter((u) => !u.archivedAt)
+        const out = live.find((u) => u.status === 'checked_out')
+        if (out)
+          return { error: `#${out.barcode} is out on “${out.location}”. Free it from that job first.` }
+        const fixing = live.find((u) => u.status === 'in_repair')
+        if (fixing)
+          return { error: `#${fixing.barcode} is out for repair. Mark it returned first.` }
+
+        const logIt = () =>
+          get().logActivity({
+            type: EVENT.ARCHIVED,
+            entityType: 'item',
+            entityId: id,
+            data: { what: 'item', name: item.name, units: live.length },
+          })
+
+        if (usingSupabase) {
+          try {
+            await sbArchiveInventoryItem(id, get().session?.user?.id ?? null)
+          } catch (e) {
+            return { error: e.message }
+          }
+          logIt()
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        logIt()
+        const stamp = new Date().toISOString()
+        const unitIds = new Set(live.map((u) => u.id))
         set({
-          inventory: state.inventory.filter((i) => i.id !== id),
+          inventory: state.inventory.map((i) =>
+            i.id === id
+              ? {
+                  ...i,
+                  archivedAt: stamp,
+                  archivedBy: LOCAL_ACTOR,
+                  units: (i.units || []).map((u) =>
+                    unitIds.has(u.id) ? { ...u, archivedAt: stamp, archivedBy: LOCAL_ACTOR } : u,
+                  ),
+                }
+              : i,
+          ),
           bookings: state.bookings.map((b) => ({
             ...b,
             unitIds: (b.unitIds || []).filter((uid) => !unitIds.has(uid)),
           })),
         })
+        return { ok: true }
+      },
+
+      restoreInventoryItem: async (id) => {
+        const state = get()
+        const item = state.inventory.find((i) => i.id === id)
+        if (!item) return { error: 'Item not found.' }
+        const stamp = item.archivedAt
+        get().logActivity({
+          type: EVENT.RESTORED,
+          entityType: 'item',
+          entityId: id,
+          data: { what: 'item', name: item.name },
+        })
+        if (usingSupabase) {
+          try {
+            await sbRestoreInventoryItem(id, stamp)
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        set({
+          inventory: state.inventory.map((i) =>
+            i.id === id
+              ? {
+                  ...i,
+                  archivedAt: null,
+                  archivedBy: null,
+                  // Only the copies that went down WITH the item come back; one
+                  // written off on its own beforehand stays written off.
+                  units: (i.units || []).map((u) =>
+                    u.archivedAt && u.archivedAt === stamp
+                      ? { ...u, archivedAt: null, archivedBy: null }
+                      : u,
+                  ),
+                }
+              : i,
+          ),
+        })
+        return { ok: true }
+      },
+
+      // ---- archive / restore, the flat entities --------------------------
+      //
+      // Kits, scenario lists, people, companies and company types have nothing to
+      // release and no children to follow, so one implementation serves all five:
+      // stamp the row, log it, and let the filters in the views do the hiding.
+      // Orders, shoots, items, units and add-ons have side effects and live above.
+      archiveRecord: async (what, id) => {
+        const cfg = ARCHIVABLE[what]
+        if (!cfg) return { error: `Unknown record type: ${what}` }
+        const record = (get()[cfg.list] || []).find((r) => r.id === id)
+        if (!record) return { error: 'Record not found.' }
+        get().logActivity({
+          type: EVENT.ARCHIVED,
+          entityType: what,
+          entityId: id,
+          data: { what, name: cfg.name(record) },
+        })
+        if (usingSupabase) {
+          try {
+            await cfg.archive(id, get().session?.user?.id ?? null)
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        set({
+          [cfg.list]: get()[cfg.list].map((r) =>
+            r.id === id
+              ? { ...r, archivedAt: new Date().toISOString(), archivedBy: LOCAL_ACTOR }
+              : r,
+          ),
+        })
+        return { ok: true }
+      },
+
+      restoreRecord: async (what, id) => {
+        const cfg = ARCHIVABLE[what]
+        if (!cfg) return { error: `Unknown record type: ${what}` }
+        const record = (get()[cfg.list] || []).find((r) => r.id === id)
+        if (!record) return { error: 'Record not found.' }
+        get().logActivity({
+          type: EVENT.RESTORED,
+          entityType: what,
+          entityId: id,
+          data: { what, name: cfg.name(record) },
+        })
+        if (usingSupabase) {
+          try {
+            await cfg.restore(id)
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        set({
+          [cfg.list]: get()[cfg.list].map((r) =>
+            r.id === id ? { ...r, archivedAt: null, archivedBy: null } : r,
+          ),
+        })
+        return { ok: true }
       },
 
       // ---- Kit authoring (3.6) ------------------------------------------
@@ -1587,23 +1810,11 @@ export const useStore = create(
         })
       },
 
-      // Deleting a kit also drops any scenario-list line pointing at it (the DB
-      // cascades; local mode mirrors that so the two sources agree).
-      deleteKit: async (id) => {
-        if (usingSupabase) {
-          await sbDeleteKit(id)
-          await get().hydrate({ quiet: true })
-          return
-        }
-        const state = get()
-        set({
-          kits: state.kits.filter((k) => k.id !== id),
-          scenarios: state.scenarios.map((l) => ({
-            ...l,
-            entries: (l.entries || []).filter((e) => e.kitId !== id),
-          })),
-        })
-      },
+      // Archiving a kit leaves its slots and every scenario-list line pointing at
+      // it intact — the line simply reports the kit as unavailable until it's
+      // restored, instead of the line being destroyed as it was before.
+      archiveKit: (id) => get().archiveRecord('kit', id),
+      restoreKit: (id) => get().restoreRecord('kit', id),
 
       // ---- Scenario list authoring (3.6) --------------------------------
       // Editor entries arrive as { type, itemId|kitId, quantity, note }.
@@ -1649,14 +1860,8 @@ export const useStore = create(
         })
       },
 
-      deleteScenario: async (id) => {
-        if (usingSupabase) {
-          await sbDeleteScenarioList(id)
-          await get().hydrate({ quiet: true })
-          return
-        }
-        set({ scenarios: get().scenarios.filter((l) => l.id !== id) })
-      },
+      archiveScenario: (id) => get().archiveRecord('scenario', id),
+      restoreScenario: (id) => get().restoreRecord('scenario', id),
 
       // ---- People & companies (4.1 / 4.2) --------------------------------
       createPerson: async (person) => {
@@ -1697,25 +1902,12 @@ export const useStore = create(
         })
       },
 
-      // A person who worked a job is kept: roster_entries references contacts
-      // with ON DELETE RESTRICT, and their history shouldn't silently vanish.
-      // Returns { error } so the caller can explain instead of failing silently.
-      deletePerson: async (id) => {
-        const person = get().people.find((p) => p.id === id)
-        if (person?.jobs?.length)
-          return {
-            error: `${person.name} appears on ${person.jobs.length} job${
-              person.jobs.length === 1 ? '' : 's'
-            } — work history keeps the record.`,
-          }
-        if (usingSupabase) {
-          await sbDeletePerson(id)
-          await get().hydrate({ quiet: true })
-          return { ok: true }
-        }
-        set({ people: get().people.filter((p) => p.id !== id) })
-        return { ok: true }
-      },
+      // Retiring a person used to be REFUSED outright for anyone who had worked a
+      // job (roster_entries references contacts with ON DELETE RESTRICT), so the
+      // roster could only ever grow. Archiving does what was actually wanted:
+      // they leave the pickers, and every job they were on keeps their name.
+      archivePerson: (id) => get().archiveRecord('person', id),
+      restorePerson: (id) => get().restoreRecord('person', id),
 
       // Used both by the company editor (4.3) and as a quick-add from the person
       // editor when the company isn't on file yet.
@@ -1761,34 +1953,11 @@ export const useStore = create(
         })
       },
 
-      // Deleting a company detaches its people and orders (the DB columns are ON
-      // DELETE SET NULL); local mode mirrors that rather than cascading.
-      deleteCompany: async (id) => {
-        if (usingSupabase) {
-          await sbDeleteCompany(id)
-          await get().hydrate({ quiet: true })
-          return
-        }
-        const state = get()
-        const companies = state.companies.filter((c) => c.id !== id)
-        set({
-          companies,
-          people: state.people.map((p) =>
-            p.companyId === id
-              ? resolvePerson({ ...p, companyId: null }, companies, state.bookings)
-              : p,
-          ),
-          orders: state.orders.map((o) =>
-            o.companyId === id ? { ...o, companyId: null, companyName: null } : o,
-          ),
-          inventory: state.inventory.map((item) => ({
-            ...item,
-            units: (item.units || []).map((u) =>
-              u.subRentalVendorId === id ? { ...u, subRentalVendorId: null } : u,
-            ),
-          })),
-        })
-      },
+      // Deleting a company used to DETACH its people, orders and sub-rented gear
+      // (those columns are ON DELETE SET NULL) — removing one row quietly damaged
+      // the history around it. Archiving keeps every link exactly as it was.
+      archiveCompany: (id) => get().archiveRecord('company', id),
+      restoreCompany: (id) => get().restoreRecord('company', id),
 
       // ---- Editable company Type options (4.4) --------------------------
       createCompanyType: async (name) => {
@@ -1836,16 +2005,9 @@ export const useStore = create(
       },
 
       // Removing an option leaves companies already labelled with it untouched —
-      // the label stays, it just stops being offered in the dropdown.
-      deleteCompanyType: async (id) => {
-        if (usingSupabase) {
-          await sbDeleteCompanyType(id)
-          await get().hydrate({ quiet: true })
-          return { ok: true }
-        }
-        set({ companyTypes: get().companyTypes.filter((t) => t.id !== id) })
-        return { ok: true }
-      },
+      // the label stays (marked "(removed)"), it just stops being offered.
+      archiveCompanyType: (id) => get().archiveRecord('companyType', id),
+      restoreCompanyType: (id) => get().restoreRecord('companyType', id),
 
       // ---- Orders / Estimates (epic #5, 5.1 / 5.2) -----------------------
       // An Order equips one Set: creating it also creates the shoot, so the job
@@ -2287,63 +2449,171 @@ export const useStore = create(
         return { ok: true }
       },
 
-      deleteAddon: async (orderId, addonId) => {
+      // An add-on list is archived with its lines and its namespaced packing
+      // sign-offs, so a day-of dispute can still be reconstructed afterwards.
+      archiveAddon: async (orderId, addonId) => {
         const label =
           (get().orders.find((o) => o.id === orderId)?.addons || []).find((a) => a.id === addonId)
             ?.label ?? null
         const logGone = () =>
           get().logActivity({
-            type: EVENT.ADDON_DELETED,
+            type: EVENT.ARCHIVED,
             entityType: 'order',
             entityId: orderId,
-            data: { label },
+            data: { what: 'addon', name: label },
           })
         if (usingSupabase) {
-          await sbDeleteAddon(addonId)
+          try {
+            await sbArchiveAddon(addonId, get().session?.user?.id ?? null)
+          } catch (e) {
+            return { error: e.message }
+          }
           logGone()
           await get().hydrate({ quiet: true })
-          return
+          return { ok: true }
         }
         logGone()
+        const stamp = new Date().toISOString()
         set({
           orders: get().orders.map((o) =>
-            o.id !== orderId ? o : { ...o, addons: (o.addons || []).filter((a) => a.id !== addonId) },
+            o.id !== orderId
+              ? o
+              : {
+                  ...o,
+                  addons: (o.addons || []).map((a) =>
+                    a.id === addonId ? { ...a, archivedAt: stamp, archivedBy: LOCAL_ACTOR } : a,
+                  ),
+                },
           ),
         })
+        return { ok: true }
       },
 
-      // Scrapping an order leaves its Set alone (sets.order_id is ON DELETE SET
-      // NULL) — the studio booking is a separate fact from the paperwork.
-      deleteOrder: async (id) => {
+      restoreAddon: async (orderId, addonId) => {
+        get().logActivity({
+          type: EVENT.RESTORED,
+          entityType: 'order',
+          entityId: orderId,
+          data: {
+            what: 'addon',
+            name:
+              (get().orders.find((o) => o.id === orderId)?.addons || []).find(
+                (a) => a.id === addonId,
+              )?.label ?? null,
+          },
+        })
         if (usingSupabase) {
-          // Scrapping the order releases its gear — the shoot stays booked, but
-          // nothing should still be held for an order that no longer exists.
-          const setId = get().orders.find((o) => o.id === id)?.setId ?? null
-          await sbDeleteOrder(id)
-          if (setId) {
-            try {
-              await sbSetReservationsForSet(setId, [])
-            } catch (e) {
-              console.error('releasing reservations failed:', e)
-            }
+          try {
+            await sbRestoreAddon(addonId)
+          } catch (e) {
+            return { error: e.message }
           }
           await get().hydrate({ quiet: true })
           return { ok: true }
         }
+        set({
+          orders: get().orders.map((o) =>
+            o.id !== orderId
+              ? o
+              : {
+                  ...o,
+                  addons: (o.addons || []).map((a) =>
+                    a.id === addonId ? { ...a, archivedAt: null, archivedBy: null } : a,
+                  ),
+                },
+          ),
+        })
+        return { ok: true }
+      },
+
+      // Archiving an order releases its gear AND takes its shoot off the calendar:
+      // the shoot exists because this order equips it, so leaving a phantom
+      // booking behind (which is what deleting used to do) was the wrong default.
+      // Its lines, add-ons and packing sign-offs are all kept.
+      archiveOrder: async (id) => {
+        const order = get().orders.find((o) => o.id === id)
+        if (!order) return { error: 'Order not found.' }
+        const held = get().bookings.find((b) => b.id === order.setId)?.unitIds?.length ?? 0
+        const logIt = () =>
+          get().logActivity({
+            type: EVENT.ARCHIVED,
+            entityType: 'order',
+            entityId: id,
+            data: {
+              what: 'order',
+              name: order.jobName || order.number,
+              releasedUnits: held || null,
+            },
+          })
+
+        if (usingSupabase) {
+          try {
+            await sbArchiveOrder(id, order.setId ?? null, get().session?.user?.id ?? null)
+          } catch (e) {
+            return { error: e.message }
+          }
+          logIt()
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        logIt()
         const state = get()
-        const nextOrders = state.orders.filter((o) => o.id !== id)
-        // The deleted order's Set is no longer order-driven — unlink it and drop
-        // its reserved units so they free up.
-        const unlinked = state.bookings.map((b) =>
-          b.orderId === id ? { ...b, orderId: null, unitIds: [] } : b,
+        const stamp = new Date().toISOString()
+        const orders = state.orders.map((o) =>
+          o.id === id ? { ...o, archivedAt: stamp, archivedBy: LOCAL_ACTOR } : o,
         )
+        // The shoot goes with it, and its units are freed by the re-derivation
+        // (an archived order reserves nothing — see reservationsFromOrders).
         const bookings = reservationsFromOrders(
-          unlinked,
-          nextOrders,
+          state.bookings.map((b) =>
+            b.id === order.setId ? { ...b, archivedAt: stamp, archivedBy: LOCAL_ACTOR } : b,
+          ),
+          orders,
           state.inventory,
           fixedUnitIdsOf(state.kits),
         )
-        set({ orders: nextOrders, bookings, inventory: withReservations(state.inventory, bookings) })
+        set({ orders, bookings, inventory: withReservations(state.inventory, bookings) })
+        return { ok: true }
+      },
+
+      // Restoring re-runs the reservation sync rather than assuming the gear is
+      // still free — it reports what it could and couldn't take back.
+      restoreOrder: async (id) => {
+        const state = get()
+        const order = state.orders.find((o) => o.id === id)
+        if (!order) return { error: 'Order not found.' }
+        const stamp = order.archivedAt
+        get().logActivity({
+          type: EVENT.RESTORED,
+          entityType: 'order',
+          entityId: id,
+          data: { what: 'order', name: order.jobName || order.number },
+        })
+        if (usingSupabase) {
+          try {
+            await sbRestoreOrder(id, order.setId ?? null, stamp)
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate({ quiet: true })
+          const res = await get().syncReservationsForOrder(id)
+          return { ok: true, ...res }
+        }
+        const orders = state.orders.map((o) =>
+          o.id === id ? { ...o, archivedAt: null, archivedBy: null } : o,
+        )
+        const bookings = reservationsFromOrders(
+          state.bookings.map((b) =>
+            // Only the shoot that went down with THIS order comes back.
+            b.id === order.setId && b.archivedAt === stamp
+              ? { ...b, archivedAt: null, archivedBy: null }
+              : b,
+          ),
+          orders,
+          state.inventory,
+          fixedUnitIdsOf(state.kits),
+        )
+        set({ orders, bookings, inventory: withReservations(state.inventory, bookings) })
         return { ok: true }
       },
 
@@ -2381,16 +2651,68 @@ export const useStore = create(
         set({ bookings, inventory: withReservations(state.inventory, bookings) })
       },
 
-      // Delete a booking and free its reserved units.
-      deleteBooking: async (id) => {
+      // Archive a shoot: off the calendar, its gear released, its roster and unit
+      // history kept. (An order-driven shoot normally goes via archiveOrder; this
+      // is the path for a legacy order-less booking.)
+      archiveBooking: async (id) => {
+        const booking = get().bookings.find((b) => b.id === id)
+        if (!booking) return { error: 'Shoot not found.' }
+        const logIt = () =>
+          get().logActivity({
+            type: EVENT.ARCHIVED,
+            entityType: 'booking',
+            entityId: id,
+            data: {
+              what: 'booking',
+              name: booking.title,
+              releasedUnits: booking.unitIds?.length || null,
+            },
+          })
         if (usingSupabase) {
-          await sbDeleteBooking(id)
+          try {
+            await sbArchiveBooking(id, get().session?.user?.id ?? null)
+          } catch (e) {
+            return { error: e.message }
+          }
+          logIt()
           await get().hydrate({ quiet: true })
-          return
+          return { ok: true }
         }
+        logIt()
         const state = get()
-        const bookings = state.bookings.filter((b) => b.id !== id)
+        const bookings = state.bookings.map((b) =>
+          b.id === id
+            ? { ...b, archivedAt: new Date().toISOString(), archivedBy: LOCAL_ACTOR, unitIds: [] }
+            : b,
+        )
         set({ bookings, inventory: withReservations(state.inventory, bookings) })
+        return { ok: true }
+      },
+
+      restoreBooking: async (id) => {
+        const state = get()
+        const booking = state.bookings.find((b) => b.id === id)
+        if (!booking) return { error: 'Shoot not found.' }
+        get().logActivity({
+          type: EVENT.RESTORED,
+          entityType: 'booking',
+          entityId: id,
+          data: { what: 'booking', name: booking.title },
+        })
+        if (usingSupabase) {
+          try {
+            await sbRestoreBooking(id)
+          } catch (e) {
+            return { error: e.message }
+          }
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        const bookings = state.bookings.map((b) =>
+          b.id === id ? { ...b, archivedAt: null, archivedBy: null } : b,
+        )
+        set({ bookings, inventory: withReservations(state.inventory, bookings) })
+        return { ok: true }
       },
     }),
     {
@@ -2402,9 +2724,12 @@ export const useStore = create(
       // half-filled shape would quietly total $0.00 — so it is reseeded.
       // v4 adds the local-mode activity log: a v3 snapshot has no `activity`, so
       // the seeded "who did what" narrative would be missing forever.
-      version: 4,
+      // v5 adds the archive fields. A v4 snapshot's records have no `archivedAt`,
+      // which reads as "live" — harmless in itself, but the seed also gains the
+      // archive-aware projections, so it is reseeded like every bump before it.
+      version: 5,
       migrate: (persisted, version) => {
-        if (version >= 4) return persisted
+        if (version >= 5) return persisted
         return usingSupabase
           ? { activeView: persisted?.activeView ?? 'calendar' }
           : { ...buildSeedData(), activeView: persisted?.activeView ?? 'calendar' }

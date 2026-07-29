@@ -4,15 +4,16 @@ import {
   Search,
   Plus,
   X,
-  Check,
-  Trash2,
+  Check,
   ChevronUp,
   ChevronDown,
   Layers,
   Package,
   AlertTriangle,
+  Archive as ArchiveIcon,
 } from 'lucide-react'
 import Modal from './Modal'
+import { notArchived } from '../store'
 
 // Scenario list editor (Build order #3, 3.6). A list is the preset pull list for
 // a *type of shoot* — it mixes whole KITS and a-la-carte ITEMS with quantities.
@@ -108,13 +109,13 @@ export default function ScenarioEditorModal({
     const q = pickerSearch.trim().toLowerCase()
     if (picker === 'kit') {
       return kits
-        .filter((k) => !usedKitIds.has(k.id))
+        .filter((k) => notArchived(k) && !usedKitIds.has(k.id))
         .filter((k) => q === '' || k.name.toLowerCase().includes(q))
         .slice(0, 8)
     }
     if (picker === 'item') {
       return inventory
-        .filter((i) => !usedItemIds.has(i.id))
+        .filter((i) => notArchived(i) && !usedItemIds.has(i.id))
         .filter((i) => q === '' || i.name.toLowerCase().includes(q))
         .slice(0, 8)
     }
@@ -379,7 +380,7 @@ export default function ScenarioEditorModal({
           {isEdit && onDelete ? (
             confirmDelete ? (
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-500">Delete this list?</span>
+                <span className="text-slate-500">Archive this list?</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -388,7 +389,7 @@ export default function ScenarioEditorModal({
                   }}
                   className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
                 >
-                  Delete
+                  Archive
                 </button>
                 <button
                   type="button"
@@ -404,8 +405,8 @@ export default function ScenarioEditorModal({
                 onClick={() => setConfirmDelete(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
               >
-                <Trash2 size={15} />
-                Delete
+                <ArchiveIcon size={15} />
+                Archive
               </button>
             )
           ) : (

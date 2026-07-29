@@ -4,15 +4,17 @@ import {
   Search,
   Plus,
   X,
-  Check,
-  Trash2,
+  Check,
   ChevronUp,
   ChevronDown,
   Lock,
   ScanLine,
   AlertTriangle,
+  Archive as ArchiveIcon,
 } from 'lucide-react'
 import Modal from './Modal'
+import { notArchived } from '../store'
+import { activeUnits } from '../data/inventory'
 
 // Kit editor (Build order #3, 3.6). Authors a kit's *slot definitions* — the
 // counterpart to KitStagingModal, which fills them at pull time.
@@ -116,7 +118,7 @@ export default function KitEditorModal({
   const pickerResults = useMemo(() => {
     const q = pickerSearch.trim().toLowerCase()
     return inventory
-      .filter((i) => i.kind === 'barcoded' && (i.units || []).length > 0)
+      .filter((i) => notArchived(i) && i.kind === 'barcoded' && activeUnits(i).length > 0)
       .filter((i) => q === '' || i.name.toLowerCase().includes(q))
       .slice(0, 8)
   }, [inventory, pickerSearch])
@@ -391,7 +393,7 @@ export default function KitEditorModal({
           {isEdit && onDelete ? (
             confirmDelete ? (
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-500">Delete this kit?</span>
+                <span className="text-slate-500">Archive this kit?</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -400,7 +402,7 @@ export default function KitEditorModal({
                   }}
                   className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
                 >
-                  Delete
+                  Archive
                 </button>
                 <button
                   type="button"
@@ -416,8 +418,8 @@ export default function KitEditorModal({
                 onClick={() => setConfirmDelete(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
               >
-                <Trash2 size={15} />
-                Delete
+                <ArchiveIcon size={15} />
+                Archive
               </button>
             )
           ) : (

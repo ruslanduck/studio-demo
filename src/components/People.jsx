@@ -20,7 +20,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
 } from 'lucide-react'
-import { useStore } from '../store'
+import { useStore, notArchived } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
@@ -72,19 +72,20 @@ export default function People() {
   const inventory = useStore((s) => s.inventory)
   const createPerson = useStore((s) => s.createPerson)
   const updatePerson = useStore((s) => s.updatePerson)
-  const deletePerson = useStore((s) => s.deletePerson)
+  const archivePerson = useStore((s) => s.archivePerson)
   const createCompany = useStore((s) => s.createCompany)
   const updateCompany = useStore((s) => s.updateCompany)
-  const deleteCompany = useStore((s) => s.deleteCompany)
+  const archiveCompany = useStore((s) => s.archiveCompany)
   const companyTypes = useStore((s) => s.companyTypes)
   const orders = useStore((s) => s.orders)
   const createCompanyType = useStore((s) => s.createCompanyType)
   const renameCompanyType = useStore((s) => s.renameCompanyType)
-  const deleteCompanyType = useStore((s) => s.deleteCompanyType)
+  const archiveCompanyType = useStore((s) => s.archiveCompanyType)
   const peopleFocus = useStore((s) => s.peopleFocus)
   const clearPeopleFocus = useStore((s) => s.clearPeopleFocus)
   const openCalendarOn = useStore((s) => s.openCalendarOn)
   const peek = useStore((s) => s.peek)
+  const setActiveView = useStore((s) => s.setActiveView)
   const can = useCan()
 
   const [tab, setTab] = useState('people') // 'people' | 'companies'
@@ -98,28 +99,37 @@ export default function People() {
 
   const query = search.trim().toLowerCase()
 
+  // Archived people / companies / type options are not offered anywhere new; the
+  // labels already on a record keep reading (companies store the type as text).
+  // Defined before the filters below, which depend on them.
+  const livePeople = useMemo(() => people.filter(notArchived), [people])
+  const liveCompanies = useMemo(() => companies.filter(notArchived), [companies])
+  const liveCompanyTypes = useMemo(() => companyTypes.filter(notArchived), [companyTypes])
+  const archivedCount =
+    people.length - livePeople.length + (companies.length - liveCompanies.length)
+
   // Search matches name, company, email, phone or subcategory; the category
   // dropdown narrows independently.
   const filteredPeople = useMemo(
     () =>
-      people.filter((p) => {
+      livePeople.filter((p) => {
         if (category !== 'All' && p.category !== category) return false
         if (query === '') return true
         return [p.name, p.companyName, p.email, p.phone, p.subcategory]
           .filter(Boolean)
           .some((v) => v.toLowerCase().includes(query))
       }),
-    [people, category, query],
+    [livePeople, category, query],
   )
 
   const filteredCompanies = useMemo(
     () =>
-      companies.filter(
+      liveCompanies.filter(
         (c) =>
           query === '' ||
           [c.name, c.companyType].filter(Boolean).some((v) => v.toLowerCase().includes(query)),
       ),
-    [companies, query],
+    [liveCompanies, query],
   )
 
   const selectedPerson = people.find((p) => p.id === selectedPersonId) ?? null
@@ -172,7 +182,20 @@ export default function People() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-slate-900">People</h2>
           <p className="text-sm text-slate-500">
-            {people.length} contacts · {companies.length} companies
+            {livePeople.length} contacts · {liveCompanies.length} companies
+            {/* Nothing is deleted — say how much is waiting in the Archive. */}
+            {archivedCount > 0 && (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  onClick={() => setActiveView('archive')}
+                  className="font-medium text-violet-600 transition hover:text-violet-800 hover:underline"
+                >
+                  {archivedCount} archived
+                </button>
+              </>
+            )}
           </p>
         </div>
         {tab === 'people'
@@ -358,8 +381,8 @@ export default function People() {
       <PersonEditorModal
         open={editor.open}
         person={editor.person}
-        companies={companies}
-        companyTypes={companyTypes}
+        companies={liveCompanies}
+        companyTypes={liveCompanyTypes}
         jobCount={editor.person?.jobs?.length ?? 0}
         onClose={() => setEditor({ open: false, person: null })}
         onCreate={async (payload) => {
@@ -368,7 +391,7 @@ export default function People() {
         }}
         onSave={(id, payload) => updatePerson(id, payload)}
         onDelete={async (id) => {
-          const res = await deletePerson(id)
+          const res = await archivePerson(id)
           if (res?.ok) setSelectedPersonId((cur) => (cur === id ? null : cur))
           return res
         }}
@@ -392,12 +415,12 @@ export default function People() {
         }}
         onSave={(id, payload) => updateCompany(id, payload)}
         onDelete={(id) => {
-          deleteCompany(id)
+          archiveCompany(id)
           setSelectedCompanyId((cur) => (cur === id ? null : cur))
         }}
         onCreateType={(name) => createCompanyType(name)}
         onRenameType={(id, name) => renameCompanyType(id, name)}
-        onDeleteType={(id) => deleteCompanyType(id)}
+        onDeleteType={(id) => archiveCompanyType(id)}
       />
     </div>
   )
@@ -542,6 +565,11 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpen
           </span>
           <div className="min-w-0">
             <h3 className="truncate text-lg font-semibold text-slate-900">{person.name}</h3>
+            {person.archivedAt && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+                Archived
+              </span>
+            )}
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               {person.category && (
                 <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
@@ -758,6 +786,11 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
           <div className="flex items-center gap-2">
             <Building2 size={18} className="shrink-0 text-violet-500" />
             <h3 className="truncate text-lg font-semibold text-slate-900">{company.name}</h3>
+            {company.archivedAt && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+                Archived
+              </span>
+            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {company.companyType && (

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import Modal from './Modal'
 import KitStagingModal from './KitStagingModal'
+import { notArchived } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
 import { buildEstimate, money } from '../lib/estimate'
 import { availableCount, freeUnitsOf, resolveUnitsForQuantities } from '../lib/availability'
@@ -95,7 +96,7 @@ export default function OrderEquipmentModal({
   const itemsById = useMemo(() => Object.fromEntries(inventory.map((i) => [i.id, i])), [inventory])
   const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
   const vendors = useMemo(
-    () => companies.filter((c) => c.kind === 'vendor' || c.kind === 'both'),
+    () => companies.filter((c) => notArchived(c) && (c.kind === 'vendor' || c.kind === 'both')),
     [companies],
   )
 
@@ -279,12 +280,17 @@ export default function OrderEquipmentModal({
   const removeStaged = (unitId) => setStagedUnits((prev) => prev.filter((u) => u.unitId !== unitId))
   const removeKit = (kitId) => setStagedUnits((prev) => prev.filter((u) => u.kitId !== kitId))
 
+  // Archived kits and lists are not offered for new work (they stay resolvable
+  // by id so an existing line still reads).
+  const liveKits = useMemo(() => (kits || []).filter(notArchived), [kits])
+  const liveScenarios = useMemo(() => (scenarios || []).filter(notArchived), [scenarios])
+
   // The picker deliberately shows exhausted stock too — that is how the crew
   // discovers a sub-rental is needed.
   const pickerResults = useMemo(() => {
     const q = pickerSearch.trim().toLowerCase()
     return inventory
-      .filter((i) => q === '' || i.name.toLowerCase().includes(q))
+      .filter((i) => notArchived(i) && (q === '' || i.name.toLowerCase().includes(q)))
       .slice(0, 10)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory, pickerSearch, itemLines, stagedIds])
@@ -324,7 +330,7 @@ export default function OrderEquipmentModal({
     <>
       <Modal open={open} onClose={onClose} size="lg" title="Order equipment">
         <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
-          {scenarios.length > 0 && (
+          {liveScenarios.length > 0 && (
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
                 Start from a scenario list
@@ -332,14 +338,14 @@ export default function OrderEquipmentModal({
               <select
                 value=""
                 onChange={(e) => {
-                  const list = scenarios.find((l) => l.id === e.target.value)
+                  const list = liveScenarios.find((l) => l.id === e.target.value)
                   if (list) applyList(list)
                   e.target.value = ''
                 }}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
               >
                 <option value="">Pick a preset…</option>
-                {scenarios.map((l) => (
+                {liveScenarios.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
                     {l.category ? ` · ${l.category}` : ''} ({l.entries.length} lines)
@@ -680,7 +686,7 @@ export default function OrderEquipmentModal({
                   className="rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-500 outline-none transition hover:border-violet-300 hover:text-violet-600"
                 >
                   <option value="">Add a kit…</option>
-                  {kits.map((k) => (
+                  {liveKits.map((k) => (
                     <option key={k.id} value={k.id}>
                       {k.name}
                     </option>
