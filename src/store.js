@@ -1024,42 +1024,57 @@ export const useStore = create(
         return String(max + 1).padStart(4, '0')
       },
 
-      // Add `count` units to a barcoded item. An explicit barcode/serial applies
-      // to the first one; the rest are generated. Returns { ok } or { error }.
-      addUnits: async (itemId, { count = 1, barcode = '', serial = '', placement = '' } = {}) => {
+      // Register physical copies of a barcoded item. `rows` is ONE ENTRY PER
+      // COPY ([{ barcode, serial }]) — each may be typed or left blank to be
+      // generated, so a batch of 6 and 6 hand-entered serials are the same call.
+      // `count` alone still works: it means that many generated copies.
+      // Returns { ok, count } or { error }.
+      addUnits: async (itemId, { units: rows, count = 1, placement = '' } = {}) => {
         const state = get()
         const item = state.inventory.find((i) => i.id === itemId)
         if (!item) return { error: 'Item not found.' }
         if (item.kind !== 'barcoded')
           return { error: 'Only barcoded items track individual units — edit the quantity instead.' }
 
-        const n = Math.max(1, Math.min(100, Number(count) || 1))
+        const specs = (Array.isArray(rows) && rows.length
+          ? rows
+          : Array.from({ length: Math.max(1, Math.min(100, Number(count) || 1)) }, () => ({}))
+        )
+          .slice(0, 100)
+          .map((r) => ({
+            barcode: String(r?.barcode ?? '').trim(),
+            serial: String(r?.serial ?? '').trim(),
+          }))
+
         const taken = new Set()
         for (const it of state.inventory) for (const u of it.units || []) taken.add(u.barcode)
 
-        const wanted = String(barcode || '').trim()
-        if (wanted && taken.has(wanted)) return { error: `#${wanted} is already used by another unit.` }
-
-        // Barcodes: the typed one first (if any), then the next free numbers.
-        let next = parseInt(get().nextBarcode(), 10)
-        const codes = []
-        for (let i = 0; i < n; i++) {
-          if (i === 0 && wanted) {
-            codes.push(wanted)
-            continue
-          }
-          let code = String(next).padStart(4, '0')
-          while (taken.has(code) || codes.includes(code)) code = String(++next).padStart(4, '0')
-          codes.push(code)
-          next++
+        // A typed barcode must be free, and no two rows may claim the same one.
+        const claimed = new Set()
+        for (const s of specs) {
+          if (!s.barcode) continue
+          if (taken.has(s.barcode)) return { error: `#${s.barcode} is already used by another unit.` }
+          if (claimed.has(s.barcode))
+            return { error: `#${s.barcode} is listed twice — each copy needs its own barcode.` }
+          claimed.add(s.barcode)
         }
 
-        const typedSerial = String(serial || '').trim()
+        // Blank rows take the next free numbers, skipping anything typed above.
+        let next = parseInt(get().nextBarcode(), 10)
+        const codes = specs.map((s) => {
+          if (s.barcode) return s.barcode
+          let code = String(next).padStart(4, '0')
+          while (taken.has(code) || claimed.has(code)) code = String(++next).padStart(4, '0')
+          next++
+          claimed.add(code)
+          return code
+        })
+
         const typedPlacement = String(placement || '').trim()
         const units = codes.map((code, i) => ({
           id: usingSupabase ? `tmp-${code}` : `u-${code}`,
           barcode: code,
-          serial: i === 0 && typedSerial ? typedSerial : serialFor(`${itemId}-${code}`),
+          serial: specs[i].serial || serialFor(`${itemId}-${code}`),
           status: 'available',
           location: 'Available',
           // Where the copy lives. Applies to the whole batch: units received

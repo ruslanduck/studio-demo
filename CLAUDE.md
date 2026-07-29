@@ -289,8 +289,8 @@
 > **FEATURE — per-UNIT CRUD (the asset register).** Reported gap: "Add inventory" creates an item TYPE, and
 > there was no way to register one more physical copy with its own serial, nor to correct or remove a unit —
 > units only ever came from the quantity typed at item creation. Now, on a barcoded item's card:
-> a primary **+ Add unit** button (modal: how many, plus optional barcode/serial that apply to the first one —
-> empty = generated next free number + deterministic serial, so receiving a batch is one field), and a new
+> a primary **+ Add unit** button (modal: ONE ROW PER COPY — see the naming/rows fix at the end of this file —
+> empty row = generated next free number + deterministic serial, so receiving a batch is one field), and a new
 > **UNIT** column with a pencil (correct barcode/serial) and a trash (write off, inline "Write off? Delete /
 > Keep" confirm). The header's "Edit" is now **"Edit item"** so item-level vs unit-level is unmistakable.
 > Store: `nextBarcode` / `addUnits` / `updateUnit` / `deleteUnit` (local + supabase); repository `addUnits` /
@@ -472,6 +472,24 @@
 > clean (only the pre-existing KitStagingModal hooks error remains).
 > ℹ️ Prod is at **317 units** (not 314): the activity log shows Ruslan added 4 units to Applebox Full and wrote
 > one off while testing 6.x — real user data, deliberately left in place. Unit #0734 keeps the demo placement.
+> **CLARITY — one name for "where it's kept", and one ROW PER COPY when adding units.** Two reports, both
+> about the same modals. (1) "негде ввести локацию при создании" — the field existed in all three places but
+> under three names: "Placement" in the item modal, "Storage location" in the unit modal, "Location" as the
+> column. Now **Storage location** everywhere (item modal + its helper line, item card, peek card); the column
+> keeps the name **Location** with a tooltip saying it shows the job/repair the unit is out on, otherwise its
+> storage location. The DB column stays `placement` — no migration. (2) "не понимаю как создать больше одного
+> юнита, если данные ввожу только по одному" — the old modal took a count PLUS one barcode/serial that applied
+> to the FIRST unit only, so asking for 4 produced 1 typed + 3 generated with no way to enter the other three.
+> `UnitEditorModal` (add mode) now renders **a row per copy**: "How many?" grows/shrinks the rows, each row has
+> its own barcode + serial, "Add another copy" / × per row, and the greyed placeholders show exactly what a
+> blank row will generate — computed skipping numbers typed in other rows, so the preview never promises a
+> barcode it can't use. Storage location stays batch-wide (copies received together share a shelf) and says so.
+> `store.addUnits` took `{count, barcode, serial}` and now takes `{ units: [{barcode, serial}], placement }`
+> (a bare `count` still means "that many generated"), validating every typed barcode against the register AND
+> against the other rows ("#1021 is listed twice"). Repository already accepted a per-unit array.
+> Verified on prod: 3 rows → previews 1020/1021/1022; typing 1021 in row 1 re-previewed the others as
+> 1020/1022; a deliberate duplicate was refused with nothing written; then 2 copies added — #1021 with the
+> hand-typed serial and #1020 with a generated one — and both written off again (317 units, as found).
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
