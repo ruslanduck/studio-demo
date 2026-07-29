@@ -165,9 +165,16 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
               <label className={label}>Asset type</label>
               <input type="text" value={form.assetType} onChange={set('assetType')} placeholder="e.g. Fixture" className={field} />
             </div>
+            {/* Same concept, same name as the per-unit field in UnitEditorModal
+                and the Location column: where the gear is KEPT. */}
             <div>
-              <label className={label}>Placement</label>
-              <input type="text" value={form.placement} onChange={set('placement')} placeholder="e.g. Shelf B3" className={field} />
+              <label className={label}>Storage location</label>
+              <input type="text" value={form.placement} onChange={set('placement')} placeholder="e.g. Grip room · Shelf B3" className={field} />
+              <p className="mt-1.5 text-xs text-slate-400">
+                {isBarcoded
+                  ? 'Where it lives on the shelf. Every unit inherits it unless that copy gets its own.'
+                  : 'Where this stock is kept.'}
+              </p>
             </div>
             <div>
               <label className={label}>Replacement price</label>

@@ -130,7 +130,7 @@ export default function UnitEditorModal({
               Where this copy is kept when it&apos;s in.{' '}
               {itemPlacement
                 ? `Leave empty to use the item's — ${itemPlacement}.`
-                : 'Leave empty to use the item’s placement.'}{' '}
+                : 'The item has no storage location yet — set one under “Edit item” and every copy inherits it.'}{' '}
               The table&apos;s Location column shows the job it&apos;s out on instead, which comes
               from the orders.
             </p>

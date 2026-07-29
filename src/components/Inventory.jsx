@@ -938,7 +938,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
             <button
               type="button"
               onClick={onEdit}
-              title="Edit the item — name, category, brand, placement, price"
+              title="Edit the item — name, category, brand, storage location, price"
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
             >
               <Pencil size={14} />
@@ -975,7 +975,12 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
               <th className="px-3 py-2.5 font-medium">Barcode</th>
               <th className="px-3 py-2.5 font-medium">Serial</th>
               <th className="px-3 py-2.5 font-medium">Status</th>
-              <th className="px-3 py-2.5 font-medium">Location</th>
+              <th
+                className="px-3 py-2.5 font-medium"
+                title="Where the unit is: the job or repair it's out on, otherwise its storage location"
+              >
+                Location
+              </th>
               <th className="px-3 py-2.5 font-medium">Ownership</th>
               <th className="px-3 py-2.5 font-medium">Vendor</th>
               <th className="px-3 py-2.5 font-medium">History</th>
@@ -1170,7 +1175,7 @@ function ItemDetailsGrid({ item }) {
   const rows = [
     ['Brand', item.brand],
     ['Asset type', item.assetType],
-    ['Placement', item.placement],
+    ['Storage location', item.placement],
     ['Subcategory', item.subcategory],
     ['Replacement price', price],
     ['Purchase date', item.purchaseDate],

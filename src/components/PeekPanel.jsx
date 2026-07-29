@@ -461,7 +461,7 @@ function ItemPeek({ id, unitId }) {
           <div className="space-y-1.5">
             {item.brand && <Field label="Brand">{item.brand}</Field>}
             {item.assetType && <Field label="Asset type">{item.assetType}</Field>}
-            {item.placement && <Field label="Placement">{item.placement}</Field>}
+            {item.placement && <Field label="Storage location">{item.placement}</Field>}
             {item.dayRate != null && <Field label="Day rate">{money(item.dayRate)}/day</Field>}
           </div>
         </Section>
