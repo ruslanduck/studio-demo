@@ -223,7 +223,7 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
             confirmArchive ? (
               <span className="flex items-center gap-2 text-xs">
                 <span className="text-slate-600">
-                  Archive it? Its copies go too — restorable from the Archive.
+                  Archive it? It and all its copies leave the app.
                 </span>
                 <button
                   type="button"

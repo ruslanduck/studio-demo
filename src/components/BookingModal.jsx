@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
+import {
   Search,
   Minus,
   Plus,
@@ -217,7 +217,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   async function handleDelete() {
     if (
       window.confirm(
-        `Archive "${booking.title}"? It leaves the calendar and frees its gear — you can restore it from the Archive.`,
+        `Archive "${booking.title}"? It leaves the calendar and frees its gear.`,
       )
     ) {
       await archiveBooking(booking.id)

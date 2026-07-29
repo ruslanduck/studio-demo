@@ -19,6 +19,11 @@ import { studioLabel } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 
+// ⚠️ CURRENTLY UNROUTED — hidden on request ("скрыть с UI вкладку и все"):
+// records are still archived (never deleted) in the DB, but the UI offers no
+// way to view or restore them. To bring this screen back, add an entry in
+// data/nav.js and a branch in App.jsx; everything below still works.
+//
 // The Archive (20260808120000): nothing in this app is deleted any more, so this
 // is where everything that was taken out of circulation lives — and where it
 // comes back from.

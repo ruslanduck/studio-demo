@@ -19,7 +19,6 @@ import {
   Undo2,
   Truck,
   Briefcase,
-  Archive as ArchiveIcon,
 } from 'lucide-react'
 import { useStore, notArchived } from '../store'
 import { useCan } from '../lib/useCan'
@@ -110,7 +109,6 @@ export default function Orders() {
   const archiveOrder = useStore((s) => s.archiveOrder)
   const orderFocus = useStore((s) => s.orderFocus)
   const clearOrderFocus = useStore((s) => s.clearOrderFocus)
-  const setActiveView = useStore((s) => s.setActiveView)
   const can = useCan()
 
   const [search, setSearch] = useState('')
@@ -214,7 +212,9 @@ export default function Orders() {
     setTo('')
   }
 
-  const selected = orders.find((o) => o.id === selectedId) ?? null
+  // Live only: an archived order is not viewable anywhere (no Archive screen),
+  // so neither a stale selection nor a drill-in may open one.
+  const selected = liveOrders.find((o) => o.id === selectedId) ?? null
 
   // Built once and shared by the detail card, the estimate/packing PDFs and the
   // digital checklist so they all read the same grouped lines.
@@ -252,19 +252,6 @@ export default function Orders() {
           <p className="text-sm text-slate-500">
             {liveOrders.length} orders
             {holdCount > 0 && ` · ${holdCount} on hold`}
-            {/* Nothing is deleted — say how much is waiting in the Archive. */}
-            {orders.length > liveOrders.length && (
-              <>
-                {' · '}
-                <button
-                  type="button"
-                  onClick={() => setActiveView('archive')}
-                  className="font-medium text-violet-600 transition hover:text-violet-800 hover:underline"
-                >
-                  {orders.length - liveOrders.length} archived
-                </button>
-              </>
-            )}
           </p>
         </div>
         {can(CAP.ORDER_MANAGE) && (
@@ -706,13 +693,6 @@ function OrderDetail({
               {order.jobName ?? order.setTitle ?? 'Untitled job'}
             </h3>
             <StatusPill status={order.status} />
-            {/* Reachable by link even when archived — say so rather than looking live. */}
-            {order.archivedAt && (
-              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
-                <ArchiveIcon size={11} />
-                Archived
-              </span>
-            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {order.poNumber ? (
@@ -1122,7 +1102,7 @@ function OrderDetail({
                           <button
                             type="button"
                             onClick={() => onDeleteAddon(a)}
-                            title="Archive this add-on — it stays in the Archive"
+                            title="Archive this add-on"
                             className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
                           >
                             <X size={15} />

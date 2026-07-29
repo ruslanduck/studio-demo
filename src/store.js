@@ -710,8 +710,35 @@ export const useStore = create(
         }
       },
 
+      // With the Archive screen hidden (on request), an archived record is not
+      // viewable ANYWHERE — so a link that would open one is silently ignored.
+      // One predicate serves every drill-in and every peek card.
+      isViewBlocked: (kind, id) => {
+        if (!id) return false
+        const s = get()
+        const rec =
+          kind === 'item'
+            ? s.inventory.find((r) => r.id === id)
+            : kind === 'kit'
+              ? s.kits.find((r) => r.id === id)
+              : kind === 'list'
+                ? s.scenarios.find((r) => r.id === id)
+                : kind === 'order'
+                  ? s.orders.find((r) => r.id === id)
+                  : kind === 'person'
+                    ? s.people.find((r) => r.id === id)
+                    : kind === 'company'
+                      ? s.companies.find((r) => r.id === id)
+                      : kind === 'job'
+                        ? s.bookings.find((r) => r.id === id)
+                        : null
+        return !!rec?.archivedAt
+      },
+
       focusInventory: ({ itemId, unitId = null, kitId = null, listId = null, from = null } = {}) => {
         if (!itemId && !kitId && !listId) return
+        const blocked = get().isViewBlocked
+        if (blocked('item', itemId) || blocked('kit', kitId) || blocked('list', listId)) return
         if (from) get().pushNav(from)
         set({
           inventoryFocus: { itemId: itemId ?? null, unitId, kitId, listId, ts: Date.now() },
@@ -727,6 +754,7 @@ export const useStore = create(
       // makes "create an order" land on adding equipment instead of a dead end.
       openOrder: (orderId, from = null, { equipment = false } = {}) => {
         if (!orderId) return
+        if (get().isViewBlocked('order', orderId)) return
         if (from) get().pushNav(from)
         set({
           orderFocus: { orderId, openEquipment: equipment, ts: Date.now() },
@@ -815,6 +843,9 @@ export const useStore = create(
       peekStack: [],
       peek: (target) => {
         if (!target?.type || !target?.id) return
+        // An archived record has no card anywhere (the Archive screen is
+        // hidden) — the click is ignored rather than opening a ghost.
+        if (get().isViewBlocked(target.type, target.id)) return
         const stack = get().peekStack
         const top = stack[stack.length - 1]
         // Clicking the thing you're already looking at shouldn't deepen the stack.
@@ -840,6 +871,8 @@ export const useStore = create(
 
       focusPeople: ({ personId = null, companyId = null, from = null } = {}) => {
         if (!personId && !companyId) return
+        const blocked = get().isViewBlocked
+        if (blocked('person', personId) || blocked('company', companyId)) return
         if (from) get().pushNav(from)
         set({
           peopleFocus: { personId, companyId, ts: Date.now() },

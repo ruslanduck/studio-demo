@@ -191,7 +191,6 @@ export default function Inventory() {
   const focusInventory = useStore((s) => s.focusInventory)
   const peek = useStore((s) => s.peek)
   const people = useStore((s) => s.people)
-  const setActiveView = useStore((s) => s.setActiveView)
   const can = useCan()
 
   const [entryType, setEntryType] = useState('items') // 'items' | 'kits' | 'lists'
@@ -275,11 +274,6 @@ export default function Inventory() {
   const liveInventory = useMemo(() => inventory.filter(notArchived), [inventory])
   const liveKits = useMemo(() => kits.filter(notArchived), [kits])
   const liveLists = useMemo(() => scenarios.filter(notArchived), [scenarios])
-  const archivedCounts = {
-    items: inventory.length - liveInventory.length,
-    kits: kits.length - liveKits.length,
-    lists: scenarios.length - liveLists.length,
-  }
 
   const query = search.trim().toLowerCase()
 
@@ -345,8 +339,11 @@ export default function Inventory() {
       })
   }, [filtered])
 
+  // Selection resolves against the LIVE collections: an archived record has no
+  // Archive screen any more and must not be viewable anywhere — not even via a
+  // stale selection, a drill-in link or the "first item" fallback.
   const selected =
-    inventory.find((i) => i.id === selectedId) ?? inventory[0] ?? null
+    liveInventory.find((i) => i.id === selectedId) ?? liveInventory[0] ?? null
 
   // Kits (entry type #2): filter by name when searching, derive the selection.
   const filteredKits = useMemo(
@@ -354,7 +351,7 @@ export default function Inventory() {
       query === '' ? liveKits : liveKits.filter((k) => k.name.toLowerCase().includes(query)),
     [liveKits, query],
   )
-  const selectedKit = kits.find((k) => k.id === selectedKitId) ?? null
+  const selectedKit = liveKits.find((k) => k.id === selectedKitId) ?? null
 
   // Predefined scenario lists (3.5) — same list/detail pattern as kits.
   const filteredLists = useMemo(
@@ -365,7 +362,7 @@ export default function Inventory() {
     [liveLists, query],
   )
   const selectedList =
-    scenarios.find((l) => l.id === selectedListId) ?? scenarios[0] ?? null
+    liveLists.find((l) => l.id === selectedListId) ?? liveLists[0] ?? null
 
   // Live unit for the repair modal — re-derived from the store each render so
   // it reflects mutations (send / return) without reopening.
@@ -411,19 +408,6 @@ export default function Inventory() {
           <p className="text-sm text-slate-500">
             {liveInventory.length} items · {liveKits.length} kits · {liveLists.length} lists ·{' '}
             {totalUnits} units
-            {/* Nothing is deleted — say how much is sitting in the Archive. */}
-            {archivedCounts[entryType] > 0 && (
-              <>
-                {' · '}
-                <button
-                  type="button"
-                  onClick={() => setActiveView('archive')}
-                  className="font-medium text-violet-600 transition hover:text-violet-800 hover:underline"
-                >
-                  {archivedCounts[entryType]} archived
-                </button>
-              </>
-            )}
           </p>
         </div>
         {/* The primary action follows the active tab: add stock, author a kit

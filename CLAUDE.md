@@ -623,6 +623,28 @@
 > ⚠️ While testing, a mid-flow HMR update remounted the modal and lost its draft, which looked like "the kit
 > didn't attach". Re-run from a clean reload before believing a picker bug — and note the DOM read right after
 > a click is stale (React hasn't flushed), which reads as the same symptom.
+> **CHANGE — the Archive tab is hidden; archived records are not viewable at all.** Requested: "по архивам
+> просто надо скрыть с UI вкладку и все… если запись заархивирована, то не давать доступ в ЮИ ее просматривать".
+> The MECHANICS are untouched — nothing is ever deleted, RLS still refuses DELETE, every "Archive" button still
+> stamps `archived_at` — but the UI now has no way to see or restore an archived record: nav entry + App.jsx
+> branch removed (`Archive.jsx` kept UNROUTED with a header note; re-adding is two lines), the "N archived"
+> links dropped from Inventory/Orders/People, the Archived badges dropped, and confirm texts no longer promise
+> "restorable from the Archive" (now e.g. "It and all its copies leave the app"). **Restore = service_role/SQL
+> only** (`update … set archived_at = null, archived_by = null`; for an item, also its units
+> `where archived_at = <the item's stamp>` — the shared-stamp rule keeps separately written-off units archived).
+> Enforcement is layered: selection resolvers in Inventory/Orders/People resolve against the LIVE collections
+> (so a stale selection or "first item" fallback can't show an archived card), and a store predicate
+> `isViewBlocked(kind, id)` makes `focusInventory`/`openOrder`/`focusPeople`/`peek` silently ignore a click that
+> would open one. Old references still READ (an archived item's name and price stay on its order lines and in
+> the estimate) — they just stop being links that go anywhere.
+> Verified in supabase mode: nav has 4 tabs; archiving Apple Lightning Cable removed it + its 20 units from every
+> count with NO "archived" hint anywhere; the H&M order still shows the line and totals; clicking the item name
+> does nothing (no peek, no navigation); restored via service_role, prod back to 44 items / 317 live units,
+> 0 archived rows.
+> ⚠️ Testing note that bit me AGAIN: clicking a list row and then grabbing "Edit" in the SAME synchronous JS
+> block clicks the button of the PREVIOUS render (React hasn't flushed) — I archived A-Clamp 2" instead of the
+> cable. Split row-click and detail-pane interaction into separate tool calls, and verify WHICH record a modal
+> is editing before confirming a destructive action.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

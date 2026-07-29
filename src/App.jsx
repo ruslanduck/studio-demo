@@ -8,7 +8,6 @@ import StudioCalendar from './components/StudioCalendar'
 import Inventory from './components/Inventory'
 import People from './components/People'
 import Orders from './components/Orders'
-import Archive from './components/Archive'
 import Login from './components/Login'
 import PeekPanel from './components/PeekPanel'
 
@@ -94,9 +93,9 @@ export default function App() {
             <People />
           ) : activeView === 'orders' ? (
             <Orders />
-          ) : activeView === 'archive' ? (
-            <Archive />
           ) : (
+            // Also the fallback for a persisted activeView that no longer has a
+            // tab (e.g. 'archive' — hidden on request).
             <StudioCalendar />
           )}
         </main>

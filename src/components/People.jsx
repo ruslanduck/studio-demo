@@ -85,7 +85,6 @@ export default function People() {
   const clearPeopleFocus = useStore((s) => s.clearPeopleFocus)
   const openCalendarOn = useStore((s) => s.openCalendarOn)
   const peek = useStore((s) => s.peek)
-  const setActiveView = useStore((s) => s.setActiveView)
   const can = useCan()
 
   const [tab, setTab] = useState('people') // 'people' | 'companies'
@@ -105,8 +104,6 @@ export default function People() {
   const livePeople = useMemo(() => people.filter(notArchived), [people])
   const liveCompanies = useMemo(() => companies.filter(notArchived), [companies])
   const liveCompanyTypes = useMemo(() => companyTypes.filter(notArchived), [companyTypes])
-  const archivedCount =
-    people.length - livePeople.length + (companies.length - liveCompanies.length)
 
   // Search matches name, company, email, phone or subcategory; the category
   // dropdown narrows independently.
@@ -132,8 +129,10 @@ export default function People() {
     [liveCompanies, query],
   )
 
-  const selectedPerson = people.find((p) => p.id === selectedPersonId) ?? null
-  const selectedCompany = companies.find((c) => c.id === selectedCompanyId) ?? null
+  // Live only: with the Archive screen hidden, an archived person or company is
+  // not viewable anywhere — not even via a stale selection or a drill-in.
+  const selectedPerson = livePeople.find((p) => p.id === selectedPersonId) ?? null
+  const selectedCompany = liveCompanies.find((c) => c.id === selectedCompanyId) ?? null
 
   // Categories actually present, so the filter never offers an empty option.
   const categories = useMemo(() => {
@@ -183,19 +182,6 @@ export default function People() {
           <h2 className="text-xl font-semibold tracking-tight text-slate-900">People</h2>
           <p className="text-sm text-slate-500">
             {livePeople.length} contacts · {liveCompanies.length} companies
-            {/* Nothing is deleted — say how much is waiting in the Archive. */}
-            {archivedCount > 0 && (
-              <>
-                {' · '}
-                <button
-                  type="button"
-                  onClick={() => setActiveView('archive')}
-                  className="font-medium text-violet-600 transition hover:text-violet-800 hover:underline"
-                >
-                  {archivedCount} archived
-                </button>
-              </>
-            )}
           </p>
         </div>
         {tab === 'people'
@@ -565,11 +551,6 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpen
           </span>
           <div className="min-w-0">
             <h3 className="truncate text-lg font-semibold text-slate-900">{person.name}</h3>
-            {person.archivedAt && (
-              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
-                Archived
-              </span>
-            )}
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               {person.category && (
                 <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
@@ -786,11 +767,6 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
           <div className="flex items-center gap-2">
             <Building2 size={18} className="shrink-0 text-violet-500" />
             <h3 className="truncate text-lg font-semibold text-slate-900">{company.name}</h3>
-            {company.archivedAt && (
-              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
-                Archived
-              </span>
-            )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {company.companyType && (
