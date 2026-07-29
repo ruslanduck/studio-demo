@@ -681,11 +681,13 @@ export const useStore = create(
       clearInventoryFocus: () => set({ inventoryFocus: null }),
 
       // A shoot on the calendar IS its order, so clicking it opens that order.
-      openOrder: (orderId, from = null) => {
+      // `equipment: true` also opens the gear picker on arrival — that's what
+      // makes "create an order" land on adding equipment instead of a dead end.
+      openOrder: (orderId, from = null, { equipment = false } = {}) => {
         if (!orderId) return
         if (from) get().pushNav(from)
         set({
-          orderFocus: { orderId, ts: Date.now() },
+          orderFocus: { orderId, openEquipment: equipment, ts: Date.now() },
           activeView: 'orders',
           sidebarOpen: false,
           peekStack: [],

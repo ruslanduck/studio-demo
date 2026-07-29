@@ -432,6 +432,26 @@
 > repair, one held by Apple) → "Add anyway" → line "1 over capacity" + footer "· 1 over capacity"; booking
 > modal → "0 free · add anyway" → header "10 of 11 units reserved · 1 over capacity" + amber banner + line
 > "/0 free · 1 short". Both cancelled, so prod data is unchanged. Build + lint clean.
+> **FIX — creating an order now leads straight into adding equipment.** Reported: "при создании ордер
+> невозможно добавить инвентарь. Раньше это было под созданием букинга" — the old BookingModal had the
+> inventory picker inline, but `OrderEditorModal` only collects job/studio/dates/PO, so gear needed a second,
+> undiscoverable trip through the card's "Edit equipment". Now saving a NEW order opens `OrderEquipmentModal`
+> on it immediately, from BOTH entry points: the Orders view (`onCreate` → `setPendingEqId`) and the CALENDAR
+> (`createOrder` → `openOrder(id, from, { equipment: true })` → `orderFocus.openEquipment` → the same pending
+> flag). A new `pendingEqId` + effect waits for the created order to appear in `orders` after the refetch
+> instead of opening the picker on a half-known record. Button relabelled **"Create & add equipment"** and the
+> banner now promises it ("items, kits and scenario lists"), so the two steps read as one flow.
+> Deliberately NOT embedded inline: `OrderEquipmentModal` owns kit staging (`KitStagingModal`), scenario
+> lists, the in-house/sub-rental switch and the over-capacity rule — inlining it would either duplicate all of
+> that or nest a dialog inside a dialog. Chaining reuses it whole. Cancelling the picker leaves an empty HOLD
+> order, which is honest (the studio slot IS booked) and matches the banner.
+> Frontend-only, no migration. Verified on prod end-to-end: empty calendar cell → "Create & add equipment" →
+> landed in the Orders view with the picker open → added Sandbag 25lb → saved → card shows EQUIPMENT · 1 PCS
+> with "Created by Ann Taylor · Equipment by Ann Taylor" (the new activity log picked the flow up for free) and
+> a working "← Back to Studio Calendar" trail. Test order + its shoot removed afterwards; prod back to 13
+> orders / 11 sets, 0 leftovers, 0 console errors.
+> ⚠️ `window.confirm` (BookingModal's delete) is auto-dismissed in the preview pane — deletes that go through
+> it can't be exercised from the browser tool; verify those against the DB instead.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

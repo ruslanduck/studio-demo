@@ -131,6 +131,11 @@ export default function Orders() {
   // What the last confirm/hold did to the stock (supabase mode reports it).
   const [reserveNote, setReserveNote] = useState(null)
 
+  // An order whose equipment picker should open as soon as the order itself
+  // exists in state. Set by creating one (here or from the calendar) — adding
+  // gear is the next thing you always do, so the flow shouldn't stop at "saved".
+  const [pendingEqId, setPendingEqId] = useState(null)
+
   // Opened from the calendar (a shoot IS its order): select that order + show
   // its detail on mobile.
   useEffect(() => {
@@ -138,9 +143,20 @@ export default function Orders() {
     if (orders.some((o) => o.id === orderFocus.orderId)) {
       setSelectedId(orderFocus.orderId)
       setShowDetailMobile(true)
+      if (orderFocus.openEquipment) setPendingEqId(orderFocus.orderId)
     }
     clearOrderFocus()
   }, [orderFocus, orders, clearOrderFocus])
+
+  // A freshly created order only appears after the refetch, so wait for it
+  // rather than opening the picker on a half-known record.
+  useEffect(() => {
+    if (!pendingEqId) return
+    const order = orders.find((o) => o.id === pendingEqId)
+    if (!order) return
+    setEqEditor({ open: true, order })
+    setPendingEqId(null)
+  }, [pendingEqId, orders])
 
   // Highlight marks the first search term; matching itself is multi-term (5.7).
   const query = search.trim().toLowerCase().split(/\s+/)[0] ?? ''
@@ -515,7 +531,12 @@ export default function Orders() {
         onClose={() => setEditor({ open: false, order: null })}
         onCreate={async (payload) => {
           const res = await createOrder(payload)
-          if (res?.id) setSelectedId(res.id)
+          // Straight on to the gear: the order exists to carry equipment.
+          if (res?.id) {
+            setSelectedId(res.id)
+            setShowDetailMobile(true)
+            setPendingEqId(res.id)
+          }
           return res
         }}
         onSave={(id, payload) => updateOrder(id, payload)}

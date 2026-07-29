@@ -56,6 +56,7 @@ export default function StudioCalendar() {
   const calendarMode = useStore((s) => s.calendarMode)
   const setCalendarMode = useStore((s) => s.setCalendarMode)
   const createOrder = useStore((s) => s.createOrder)
+  const openOrder = useStore((s) => s.openOrder)
   const peek = useStore((s) => s.peek)
   const can = useCan()
   const canCreate = can(CAP.BOOKING_CREATE)
@@ -212,7 +213,16 @@ export default function StudioCalendar() {
         studios={studios}
         photographers={photographers}
         onClose={() => setOrderEditor({ open: false, prefill: null })}
-        onCreate={createOrder}
+        onCreate={async (payload) => {
+          const res = await createOrder(payload)
+          // The shoot is now on the grid; hand over to the order's equipment
+          // picker (which lives in the Orders view) so gear can go on right away.
+          if (res?.id)
+            openOrder(res.id, { view: 'calendar', label: 'Studio Calendar', focus: {} }, {
+              equipment: true,
+            })
+          return res
+        }}
       />
     </div>
   )
