@@ -183,15 +183,23 @@ async function getUsageByItem() {
 export async function getInventory() {
   // `sub_rental_vendor_id` (4.5) is requested with a fallback: inventory is the
   // app's backbone, so a pre-4.5 database must still load it.
-  const withVendor = `id, name, category, kind, quantity,
+  // `placement` on units (the per-copy storage location) is its own layer, so a
+  // database without that migration still loads inventory.
+  const withUnitPlacement = `id, name, category, kind, quantity,
      brand, asset_type, placement, subcategory, purchase_date, replacement_price, day_rate,
      units (
-       id, barcode, serial, ownership, sub_rental_vendor_id,
+       id, barcode, serial, ownership, sub_rental_vendor_id, placement,
        set_units ( status, set:sets ( title, studio_id, status ) )
      )`
+  const withVendor = withUnitPlacement.replace('sub_rental_vendor_id, placement,', 'sub_rental_vendor_id,')
   const withoutVendor = withVendor.replace(', sub_rental_vendor_id', '')
   const withoutRate = withoutVendor.replace(', day_rate', '')
-  let { data, error } = await supabase.from('inventory_items').select(withVendor).order('name')
+  let { data, error } = await supabase
+    .from('inventory_items')
+    .select(withUnitPlacement)
+    .order('name')
+  if (error)
+    ({ data, error } = await supabase.from('inventory_items').select(withVendor).order('name'))
   if (error)
     ({ data, error } = await supabase.from('inventory_items').select(withoutVendor).order('name'))
   if (error)
@@ -237,7 +245,8 @@ export async function getInventory() {
         ownership: u.ownership,
         subRentalVendorId: u.sub_rental_vendor_id ?? null,
         status,
-        location,
+        location, // derived: where it IS right now (job / repair / available)
+        placement: u.placement ?? null, // stored: where it LIVES when it's in
         repairs,
       }
     }),
@@ -517,17 +526,26 @@ export async function addUnits(itemId, units) {
     barcode: u.barcode,
     serial: u.serial,
     ownership: u.ownership || 'owned',
+    placement: u.placement || null,
   }))
   if (!rows.length) return
-  const { error } = await supabase.from('units').insert(rows)
+  let { error } = await supabase.from('units').insert(rows)
+  if (error) {
+    // Pre-placement database: retry without the column rather than fail the add.
+    ;({ error } = await supabase
+      .from('units')
+      .insert(rows.map(({ placement: _p, ...rest }) => rest)))
+  }
   if (error) throw error
 }
 
 // Correct one unit's identifiers.
-export async function updateUnit(unitId, { barcode, serial } = {}) {
+export async function updateUnit(unitId, { barcode, serial, placement } = {}) {
   const patch = {}
   if (barcode != null) patch.barcode = barcode
   if (serial != null) patch.serial = serial
+  // Explicit '' clears it (back to inheriting the item's placement).
+  if (placement !== undefined) patch.placement = placement || null
   if (!Object.keys(patch).length) return
   const { error } = await supabase.from('units').update(patch).eq('id', unitId)
   if (error) throw error

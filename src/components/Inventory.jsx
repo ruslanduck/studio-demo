@@ -808,6 +808,7 @@ export default function Inventory() {
         open={unitEditor.open}
         unit={unitEditor.unit}
         itemName={selected?.name}
+        itemPlacement={selected?.placement ?? null}
         suggestedBarcode={unitEditor.open && !unitEditor.unit ? nextBarcode() : null}
         onClose={() => setUnitEditor({ open: false, unit: null })}
         onAdd={(payload) => addUnits(selected.id, payload)}
@@ -1001,11 +1002,25 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                 <td className="px-3 py-2.5">
                   <StatusBadge status={unit.status} />
                 </td>
+                {/* Out on a job or in repair → the DERIVED whereabouts (comes
+                    from the orders, so it isn't typed). Otherwise → where the
+                    copy is kept, which IS editable via the pencil. */}
                 <td className="whitespace-nowrap px-3 py-2.5">
-                  {unit.location === 'Available' ? (
-                    <span className="text-slate-400">—</span>
-                  ) : (
+                  {unit.location !== 'Available' ? (
                     <span className="text-slate-700">{unit.location}</span>
+                  ) : unit.placement ? (
+                    <span title="Storage location — edit with the pencil" className="text-slate-700">
+                      {unit.placement}
+                    </span>
+                  ) : item.placement ? (
+                    <span
+                      title="Inherited from the item's placement — set a per-unit one with the pencil"
+                      className="text-slate-400"
+                    >
+                      {item.placement}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
                   )}
                 </td>
                 <td className="px-3 py-2.5">

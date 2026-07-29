@@ -452,6 +452,26 @@
 > orders / 11 sets, 0 leftovers, 0 console errors.
 > ⚠️ `window.confirm` (BookingModal's delete) is auto-dismissed in the preview pane — deletes that go through
 > it can't be exercised from the browser tool; verify those against the DB instead.
+> **FEATURE — per-unit storage location (`units.placement`).** Reported: barcode and serial are editable but
+> LOCATION isn't. LOCATION is **derived on read** (`repository.js` getInventory: "Available" /
+> "In repair — <vendor>" / "<job> — <studio>" from set_units + open repairs) — there is no `units.location`
+> column, and after "orders drive reservations" hand-editing where a unit IS would be recomputed away or would
+> lie about gear that's out. What was genuinely missing is the OTHER location: the shelf a copy returns to.
+> `20260806120000_unit_placement.sql` adds `units.placement` (item-level `inventory_items.placement` says where
+> the TYPE lives; this says where THIS copy lives, because copies drift — one body in the van, one in the cage).
+> **Null = inherit the item's placement**, so nothing is entered twice. UI: a "Storage location" field in
+> `UnitEditorModal` (add + edit; empty clears the override) and the LOCATION column now shows — in priority
+> order — the job/repair it's out on (derived, not typed), else the unit's own placement, else the item's in
+> grey with a tooltip saying it's inherited, else "—". Repository reads it via a new fallback layer in
+> getInventory and accepts it in `addUnits` (retries without the column on a pre-migration DB) / `updateUnit`
+> (`placement: ''` clears). `describeEvent` for `unit.updated` now names WHICH field moved, so a relocation
+> reads "**moved a unit** · stored: item default → Grip room · Shelf B3" while a barcode fix stays "corrected a
+> unit" (7 Node assertions, incl. legacy events that predate the key).
+> Verified on prod: set unit #0734 of Applebox Full to "Grip room · Shelf B3" → shows in the LOCATION column,
+> `units.placement` written in the DB, and the item's Activity logged it as a MOVE by Ann Taylor. Build + lint
+> clean (only the pre-existing KitStagingModal hooks error remains).
+> ℹ️ Prod is at **317 units** (not 314): the activity log shows Ruslan added 4 units to Applebox Full and wrote
+> one off while testing 6.x — real user data, deliberately left in place. Unit #0734 keeps the demo placement.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

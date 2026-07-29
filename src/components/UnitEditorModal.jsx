@@ -10,10 +10,20 @@ import Modal from './Modal'
 // (next free barcode, deterministic serial), which is what you want when
 // receiving a batch — set the count and go. Filled in, they apply to the first
 // unit, which is the "I have this exact body in my hand" case.
-export default function UnitEditorModal({ open, unit, itemName, suggestedBarcode, onClose, onAdd, onSave }) {
+export default function UnitEditorModal({
+  open,
+  unit,
+  itemName,
+  itemPlacement,
+  suggestedBarcode,
+  onClose,
+  onAdd,
+  onSave,
+}) {
   const isEdit = !!unit
   const [barcode, setBarcode] = useState('')
   const [serial, setSerial] = useState('')
+  const [placement, setPlacement] = useState('')
   const [count, setCount] = useState(1)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -22,6 +32,7 @@ export default function UnitEditorModal({ open, unit, itemName, suggestedBarcode
     if (!open) return
     setBarcode(isEdit ? unit.barcode ?? '' : '')
     setSerial(isEdit ? unit.serial ?? '' : '')
+    setPlacement(isEdit ? unit.placement ?? '' : '')
     setCount(1)
     setError(null)
     setBusy(false)
@@ -31,8 +42,8 @@ export default function UnitEditorModal({ open, unit, itemName, suggestedBarcode
     e?.preventDefault()
     setBusy(true)
     const res = isEdit
-      ? await onSave({ barcode, serial })
-      : await onAdd({ count, barcode, serial })
+      ? await onSave({ barcode, serial, placement })
+      : await onAdd({ count, barcode, serial, placement })
     setBusy(false)
     if (res?.error) return setError(res.error)
     onClose()
@@ -102,6 +113,27 @@ export default function UnitEditorModal({ open, unit, itemName, suggestedBarcode
                 className={[field, 'font-mono'].join(' ')}
               />
             </div>
+          </div>
+
+          {/* Where the copy LIVES. Not the same as the LOCATION column in the
+              table, which is derived (a job or a repair) and can't be typed. */}
+          <div>
+            <label className={label}>Storage location</label>
+            <input
+              type="text"
+              value={placement}
+              onChange={(e) => setPlacement(e.target.value)}
+              placeholder={itemPlacement || 'e.g. Camera cage · Shelf A1'}
+              className={field}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">
+              Where this copy is kept when it&apos;s in.{' '}
+              {itemPlacement
+                ? `Leave empty to use the item's — ${itemPlacement}.`
+                : 'Leave empty to use the item’s placement.'}{' '}
+              The table&apos;s Location column shows the job it&apos;s out on instead, which comes
+              from the orders.
+            </p>
           </div>
 
           {error && (

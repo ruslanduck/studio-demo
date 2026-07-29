@@ -158,12 +158,22 @@ export function describeEvent(ev) {
         title: 'Registered a unit',
         detail: [d.barcode ? `#${d.barcode}` : null, d.serial].filter(Boolean).join(' · '),
       }
-    case EVENT.UNIT_UPDATED:
-      return {
-        icon: 'pencil',
-        title: 'Corrected a unit',
-        detail: d.from && d.to ? `#${d.from.barcode} → #${d.to.barcode}` : null,
+    case EVENT.UNIT_UPDATED: {
+      // Say WHICH field moved — a relocation and a barcode fix read differently.
+      const bits = []
+      if (d.from && d.to) {
+        if (d.from.barcode !== d.to.barcode) bits.push(`#${d.from.barcode} → #${d.to.barcode}`)
+        if (d.from.serial !== d.to.serial) bits.push(`serial ${d.to.serial ?? '—'}`)
+        if (d.from.placement !== d.to.placement)
+          bits.push(`stored: ${d.from.placement || 'item default'} → ${d.to.placement || 'item default'}`)
       }
+      const moved = d.from && d.to && d.from.placement !== d.to.placement
+      return {
+        icon: moved ? 'tag' : 'pencil',
+        title: moved && bits.length === 1 ? 'Moved a unit' : 'Corrected a unit',
+        detail: bits.length ? bits.join(' · ') : d.to?.barcode ? `#${d.to.barcode}` : null,
+      }
+    }
     case EVENT.UNIT_WRITTEN_OFF:
       return {
         icon: 'trash',

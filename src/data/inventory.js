@@ -73,7 +73,8 @@ export function createUnits(itemId, count, startBarcode) {
       barcode,
       serial: serialFor(`${itemId}-${i}`),
       status: 'available', // "available" | "checked_out"
-      location: 'Available', // "Available" OR a set name
+      location: 'Available', // DERIVED: "Available" OR the set/repair it's on
+      placement: null, // STORED: this copy's shelf; null = inherit the item's
       ownership: 'owned', // "owned" | "sub_rental"
     })
   }

@@ -1026,7 +1026,7 @@ export const useStore = create(
 
       // Add `count` units to a barcoded item. An explicit barcode/serial applies
       // to the first one; the rest are generated. Returns { ok } or { error }.
-      addUnits: async (itemId, { count = 1, barcode = '', serial = '' } = {}) => {
+      addUnits: async (itemId, { count = 1, barcode = '', serial = '', placement = '' } = {}) => {
         const state = get()
         const item = state.inventory.find((i) => i.id === itemId)
         if (!item) return { error: 'Item not found.' }
@@ -1055,12 +1055,16 @@ export const useStore = create(
         }
 
         const typedSerial = String(serial || '').trim()
+        const typedPlacement = String(placement || '').trim()
         const units = codes.map((code, i) => ({
           id: usingSupabase ? `tmp-${code}` : `u-${code}`,
           barcode: code,
           serial: i === 0 && typedSerial ? typedSerial : serialFor(`${itemId}-${code}`),
           status: 'available',
           location: 'Available',
+          // Where the copy lives. Applies to the whole batch: units received
+          // together go on the same shelf. Empty = inherit the item's placement.
+          placement: typedPlacement || null,
           ownership: 'owned',
           repairs: [],
         }))
@@ -1095,11 +1099,14 @@ export const useStore = create(
         return { ok: true, count: units.length }
       },
 
-      // Correct one unit's barcode / serial.
-      updateUnit: async (itemId, unitId, { barcode, serial } = {}) => {
+      // Correct one unit's barcode / serial / storage location.
+      updateUnit: async (itemId, unitId, { barcode, serial, placement } = {}) => {
         const state = get()
         const code = String(barcode ?? '').trim()
         const ser = String(serial ?? '').trim()
+        // Empty is meaningful here: it clears the override so the unit inherits
+        // the item's placement again.
+        const place = String(placement ?? '').trim()
         if (!code) return { error: 'Barcode cannot be empty.' }
         if (!ser) return { error: 'Serial cannot be empty.' }
         const clash = state.inventory.some((it) =>
@@ -1117,14 +1124,18 @@ export const useStore = create(
             entityId: itemId,
             unitId,
             data: {
-              from: { barcode: was?.barcode ?? null, serial: was?.serial ?? null },
-              to: { barcode: code, serial: ser },
+              from: {
+                barcode: was?.barcode ?? null,
+                serial: was?.serial ?? null,
+                placement: was?.placement ?? null,
+              },
+              to: { barcode: code, serial: ser, placement: place || null },
             },
           })
 
         if (usingSupabase) {
           try {
-            await sbUpdateUnit(unitId, { barcode: code, serial: ser })
+            await sbUpdateUnit(unitId, { barcode: code, serial: ser, placement: place })
           } catch (e) {
             return { error: e.message }
           }
@@ -1140,7 +1151,9 @@ export const useStore = create(
               : {
                   ...it,
                   units: it.units.map((u) =>
-                    u.id === unitId ? { ...u, barcode: code, serial: ser } : u,
+                    u.id === unitId
+                      ? { ...u, barcode: code, serial: ser, placement: place || null }
+                      : u,
                   ),
                 },
           ),
