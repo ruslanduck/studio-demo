@@ -10,8 +10,7 @@ const MAX_QTY = 500
 
 const KIND_HELP = {
   barcoded: 'Each unit tracked by barcode & serial.',
-  non_barcoded: 'Counted by quantity only (e.g. 50 J-hooks).',
-  consumable: 'Expendable stock, drawn down over time.',
+  non_barcoded: 'Counted by quantity only (e.g. 50 J-hooks, gaffer tape).',
 }
 
 const BLANK = {

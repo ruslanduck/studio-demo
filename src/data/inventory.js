@@ -15,14 +15,21 @@ export const CATEGORIES = [
 ]
 
 // Item types (2.1). The type drives the detail card + how the item is counted.
+// There used to be a third type, `consumable`; it was dropped on request —
+// expendable stock is just non-barcoded stock that gets drawn down, which the
+// "Went out" side of the stock action already covers.
 export const ITEM_KINDS = [
   { value: 'barcoded', label: 'Barcoded' },
   { value: 'non_barcoded', label: 'Non-barcoded' },
-  { value: 'consumable', label: 'Consumable' },
 ]
 
 export function kindLabel(kind) {
-  return ITEM_KINDS.find((k) => k.value === kind)?.label ?? 'Barcoded'
+  const known = ITEM_KINDS.find((k) => k.value === kind)?.label
+  if (known) return known
+  // A row from before the `consumable` type was dropped (or any unknown value)
+  // is quantity-counted, not unit-tracked — labelling it "Barcoded" would be a
+  // lie, and `itemCount` already treats everything non-barcoded by quantity.
+  return kind === 'barcoded' ? 'Barcoded' : 'Non-barcoded'
 }
 
 // On-hand count: barcoded items count their tracked units; the rest use qty.
@@ -140,21 +147,21 @@ const CATALOG = [
   // --- Non-barcoded (counted by quantity, no per-unit tracking) ---
   ['j-hook-2', 'J-Hook 2"', 'Grip', 50, 'non_barcoded'],
   ['safety-cable', 'Safety Cable', 'Grip', 40, 'non_barcoded'],
-
-  // --- Consumables (expendable) ---
-  ['gaff-tape', 'Gaffer Tape 2" Black', 'Grip', 24, 'consumable'],
-  ['aa-batteries', 'AA Batteries', 'Electric/Lighting', 200, 'consumable'],
+  // Expendable stock. Same type as the rest now — it's just counted and drawn
+  // down; what makes it different is that it isn't rented by the day (below).
+  ['gaff-tape', 'Gaffer Tape 2" Black', 'Grip', 24, 'non_barcoded'],
+  ['aa-batteries', 'AA Batteries', 'Electric/Lighting', 200, 'non_barcoded'],
 ]
 
 // Build the seed inventory. Barcoded items get sequential barcodes (with a few
-// sub-rentals sprinkled in); non-barcoded / consumable items store a quantity
-// and have no unit rows.
+// sub-rentals sprinkled in); non-barcoded items store a quantity and have no
+// unit rows.
 let seedBarcode = 703
 // Rental day rates (epic #5, 5.4) — what the estimate multiplies by quantity and
 // billable days. Real per-item rates where the number matters (camera, lighting,
 // computers); everything else falls back to its category's typical rate, so the
-// catalogue can grow without touching this table. Consumables are sold, not
-// rented, so they carry no day rate.
+// catalogue can grow without touching this table. Stock that's used up rather
+// than rented carries no day rate (see NOT_RENTED_BY_THE_DAY).
 const DAY_RATE_BY_CATEGORY = {
   Grip: 12,
   'Electric/Lighting': 45,
@@ -202,9 +209,15 @@ const DAY_RATE_OVERRIDES = {
   'folding-table-6': 16,
 }
 
+// Stock that is used up rather than rented: it goes on the pull sheet and on the
+// estimate as a line, but carries no day rate, so `buildEstimate` lists it and
+// leaves it out of the total (and says so). This used to be keyed on the
+// `consumable` item type; the type is gone, the fact isn't.
+const NOT_RENTED_BY_THE_DAY = new Set(['gaff-tape', 'aa-batteries'])
+
 // Day rate for a seed item; null when the item isn't rented out by the day.
-export function dayRateFor({ id, category, kind }) {
-  if (kind === 'consumable') return null
+export function dayRateFor({ id, category }) {
+  if (NOT_RENTED_BY_THE_DAY.has(id)) return null
   return DAY_RATE_OVERRIDES[id] ?? DAY_RATE_BY_CATEGORY[category] ?? 20
 }
 

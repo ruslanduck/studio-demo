@@ -160,7 +160,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   // How many requested pieces have nothing free behind them. The resolver only
   // ever picks free units, so these would silently NOT be reserved — which is
   // exactly why the number has to be on screen.
-  // Only barcoded stock is unit-tracked; consumables aren't reserved at all.
+  // Only barcoded stock is unit-tracked; quantity-counted stock isn't reserved at all.
   const shortage = useMemo(() => {
     let short = 0
     for (const [itemId, qty] of Object.entries(selected)) {

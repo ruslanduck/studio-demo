@@ -613,7 +613,7 @@ function itemFieldColumns(f = {}) {
 export async function addInventoryItem({ name, category, quantity, kind = 'barcoded', ...fields }) {
   const attrs = itemFieldColumns(fields)
 
-  // Non-barcoded / consumable items store a quantity and have no unit rows.
+  // Non-barcoded items store a quantity and have no unit rows.
   if (kind !== 'barcoded') {
     const { data: item, error } = await supabase
       .from('inventory_items')
@@ -648,7 +648,7 @@ export async function addInventoryItem({ name, category, quantity, kind = 'barco
 }
 
 // Update an item's fields. kind is immutable; quantity only applies to
-// non-barcoded / consumable items.
+// non-barcoded items.
 export async function updateInventoryItem(itemId, { name, category, kind, quantity, ...fields }) {
   const patch = itemFieldColumns(fields)
   if (name != null) patch.name = name.trim()

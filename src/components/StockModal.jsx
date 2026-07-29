@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Minus, AlertTriangle, Info } from 'lucide-react'
 import Modal from './Modal'
 
-// Move stock for a non-barcoded / consumable item, which has no unit rows to
+// Move stock for a non-barcoded item, which has no unit rows to
 // add — only a count. The point is that you say what ARRIVED or WENT OUT and
 // the system does the arithmetic: overwriting the number by hand loses the
 // event, and the item card's history had nothing to show.

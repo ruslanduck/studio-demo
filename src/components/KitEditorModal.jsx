@@ -23,7 +23,7 @@ import Modal from './Modal'
 //   GENERIC → the item only; the concrete unit is scanned when the kit is pulled.
 //
 // Only barcoded items can fill slots: FIXED needs a unit to pin and GENERIC needs
-// units to scan. Non-barcoded/consumables are counted by quantity and belong in a
+// units to scan. Non-barcoded stock is counted by quantity and belongs in a
 // scenario list instead.
 const blank = { name: '', category: '', notes: '', slots: [] }
 

@@ -70,7 +70,7 @@ function resolveKit(kit, inventory, ctx) {
  * @returns { selected, stagedUnits, applied, warnings, notes }
  *   applied  — { kits, units, lines } summary counts
  *   warnings — entries that could not be fully satisfied
- *   notes    — non-unit-tracked lines to pull by hand (consumables etc.)
+ *   notes    — non-unit-tracked lines to pull by hand (tape, batteries…)
  */
 export function applyScenarioList({
   list,
@@ -111,7 +111,7 @@ export function applyScenarioList({
       warnings.push(`${entry.itemName || 'Item'} — no longer in inventory`)
       continue
     }
-    // Non-barcoded / consumable stock has no unit rows to reserve; surface it
+    // Non-barcoded stock has no unit rows to reserve; surface it
     // as a pull note so the list stays complete without faking a reservation.
     if (item.kind && item.kind !== 'barcoded') {
       notes.push(`${wanted}× ${item.name} — not unit-tracked, take from stock`)

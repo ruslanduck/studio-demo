@@ -21,7 +21,7 @@ export const EVENT = {
   ITEM_CREATED: 'item.created',
   ITEM_UPDATED: 'item.updated',
   ITEM_DELETED: 'item.deleted',
-  // Non-barcoded / consumable stock moves by QUANTITY, not by unit rows, so a
+  // Non-barcoded stock moves by QUANTITY, not by unit rows, so a
   // delta is the whole story: who put 20 more J-hooks on the shelf, and when.
   STOCK_ADJUSTED: 'item.stock_adjusted',
   UNIT_ADDED: 'unit.added',

@@ -2,7 +2,7 @@
 //
 // Generates a year of deterministic usage events per item so the work-history
 // view and its aggregate counters look real from the first load. Barcoded gear
-// is used 1–2 at a time; non-barcoded / consumables are drawn down in bulk
+// is used 1–2 at a time; non-barcoded stock is drawn down in bulk
 // (that's what powers "N J-hooks used this year").
 
 // (jobTitle, studioId) pool — believable studio jobs the gear gets used on.
@@ -29,7 +29,7 @@ const USAGE_PROFILES = [
   // Non-barcoded — high volume
   ['j-hook-2', 15, [4, 14]],
   ['safety-cable', 12, [3, 10]],
-  // Consumables — drawn down every job
+  // Expendable stock — drawn down every job
   ['gaff-tape', 22, [1, 4]],
   ['aa-batteries', 24, [4, 16]],
   // Barcoded — a representative selection, 1–4 units per job

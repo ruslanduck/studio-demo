@@ -19,7 +19,7 @@ import Modal from './Modal'
 //
 // Unlike a kit slot, a list line doesn't name a unit: applying the list resolves
 // lines to whatever is available at the time (see lib/scenarios.js). So any item
-// kind is allowed here, including non-barcoded and consumables ("take from
+// kind is allowed here, including non-barcoded stock ("take from
 // stock"). Kit lines are always quantity 1 — a kit is staged one at a time.
 const blank = { name: '', category: '', notes: '', entries: [] }
 

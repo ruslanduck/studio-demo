@@ -5,7 +5,7 @@
 // on-screen estimate and the PDF, and both can be tested in Node.
 //
 // Money model: an item has a `dayRate`; the estimate charges
-// quantity × dayRate × billable days. Items with no rate (consumables) are listed
+// quantity × dayRate × billable days. Items with no rate (stock that is used up) are listed
 // but contribute 0 and are counted so the UI can say so out loud rather than
 // quietly understating the total.
 

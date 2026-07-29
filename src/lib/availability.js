@@ -34,7 +34,7 @@ export function freeUnitsOf(item, ctx = {}) {
 }
 
 // How many of `item` can still be taken. Barcoded items count real free units;
-// non-barcoded and consumables are counted by quantity on hand, minus whatever
+// non-barcoded stock is counted by quantity on hand, minus whatever
 // the caller has already put on the list (`usedQty`).
 export function availableCount(item, ctx = {}) {
   if (!item) return 0

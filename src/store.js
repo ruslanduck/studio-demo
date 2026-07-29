@@ -1410,7 +1410,7 @@ export const useStore = create(
         return id
       },
 
-      // Move non-barcoded / consumable stock by a DELTA — "20 more arrived",
+      // Move non-barcoded stock by a DELTA — "20 more arrived",
       // "5 went out" — instead of overwriting the count in the item editor.
       // Barcoded items have unit rows, so they use addUnits/deleteUnit instead.
       adjustStock: async (itemId, { delta } = {}) => {

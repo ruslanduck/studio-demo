@@ -1210,7 +1210,6 @@ function ItemDetailsGrid({ item }) {
 }
 
 function NonBarcodedBody({ item, onShowWorkHistory }) {
-  const consumable = item.kind === 'consumable'
   const usage = item.usage || []
   const recent = usage.slice(0, 6)
   return (
@@ -1221,9 +1220,8 @@ function NonBarcodedBody({ item, onShowWorkHistory }) {
           <div className="mt-1 text-xs uppercase tracking-wide text-slate-400">on hand</div>
         </div>
         <p className="max-w-xs text-sm text-slate-500">
-          {consumable
-            ? 'Consumable — expendable stock drawn down as it’s used. Usage is tracked by quantity across jobs.'
-            : 'Non-barcoded — counted by quantity, no per-unit tracking; usage is aggregated across jobs.'}
+          Non-barcoded — counted by quantity, no per-unit tracking. Stock in and out is recorded with
+          who and when; usage is aggregated across jobs.
         </p>
       </div>
 

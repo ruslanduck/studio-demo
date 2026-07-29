@@ -517,6 +517,29 @@
 > 50 → 60", −10 back to 50, an over-take of 100 refused, and an Edit-item correction logged as
 > "edited the item · quantity 52 → 50" appearing instantly. Test events then deleted with service_role and
 > J-Hook 2" left at its seeded 50 with an empty feed — including the phantom event from the pre-fix no-op.
+> **REMOVED — the `consumable` item type.** Requested: "consumables больше не нужны вообще, нужно убрать
+> такой тип товаров". 2.1 shipped three types, but expendable stock behaves exactly like non-barcoded stock
+> (counted by quantity, no unit rows) and the only difference that mattered — it isn't rented by the day — is
+> carried by `day_rate is null`, not by the type. So: `ITEM_KINDS` is down to Barcoded / Non-barcoded (the type
+> toggle and the Inventory type filter both render from it, so they shrank for free), `NonBarcodedBody` lost its
+> consumable branch, and `dayRateFor` keys on a new `NOT_RENTED_BY_THE_DAY` id set (gaff-tape, aa-batteries)
+> instead of the kind — so the estimate still lists them and still leaves them out of the total.
+> `20260807120000_drop_consumable_kind.sql` CONVERTS the two rows to `non_barcoded` (they're real stock:
+> referenced by scenario lists, 46 usage rows between them) and then tightens the check constraint to
+> `('barcoded','non_barcoded')`. The old constraint was created by an inline `check (...)` on `add column`, so
+> the migration drops whatever check on the table still mentions 'consumable' via a `pg_constraint` lookup
+> rather than guessing the auto-generated name. `kindLabel` now falls back to "Non-barcoded" for an unknown
+> kind (it used to say "Barcoded", which would mislabel a legacy row on an un-migrated DB — `itemCount` already
+> counted it by quantity).
+> ⚠️ The push produced NO output for ~10 minutes and looked like a network problem; it wasn't. Re-running with
+> `--debug` showed `40P01 deadlock detected` — my own earlier hung `db push` attempts were still holding
+> `AccessExclusiveLock` on `inventory_items` and deadlocking against each other. Fix: TaskStop every stale
+> push, confirm no `supabase` process remains, then run ONE push with `--yes`. Do not fire a second push while
+> the first is unfinished, and pipe the log to a FILE (`| tail` hides everything until the process exits).
+> Verified on prod behaviourally rather than by trusting "Remote database is up to date": writing
+> `kind='consumable'` through PostgREST is now refused with `23514`. Gaffer Tape reads "Non-barcoded · 24 on
+> hand" with an Add stock button and its usage history (58 used / 22 jobs) intact, and the "Loft e-commerce"
+> scenario list still resolves its tape line as "2× · 24 on hand". 0 console errors.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
