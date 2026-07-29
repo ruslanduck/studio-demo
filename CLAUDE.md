@@ -490,6 +490,33 @@
 > Verified on prod: 3 rows → previews 1020/1021/1022; typing 1021 in row 1 re-previewed the others as
 > 1020/1022; a deliberate duplicate was refused with nothing written; then 2 copies added — #1021 with the
 > hand-typed serial and #1020 with a generated one — and both written off again (317 units, as found).
+> **FEATURE — non-barcoded / consumable stock moves by a DELTA, and item-level changes are finally logged.**
+> Reported: "non-barcoded инвентарь не могу добавить, только обновить количество. При этом в логах не
+> учитывается." Both true. (1) A non-barcoded item has no unit rows, so the card had NO primary action —
+> adding stock meant opening "Edit item" and overwriting the count. Now the primary button is **+ Add stock**
+> (barcoded items keep "+ Add unit"), opening `StockModal`: a **Received / Went out** toggle, a count, and a
+> live "On hand 50 → 60" preview. Taking out more than you have is blocked before submit (preview goes red,
+> button disabled) — stock can't go negative. Store `adjustStock(itemId, { delta })` refuses barcoded items
+> (they add/write off units instead) and logs `item.stock_adjusted` with `{delta, from, to}`.
+> (2) The `item.created` / `item.updated` / `item.deleted` vocabulary existed in `lib/activity.js` and
+> **nothing ever emitted it** — so an item card's Activity read "No changes recorded" no matter what you did,
+> and a corrected count left no trace. `addInventoryItem` / `updateInventoryItem` / `deleteInventoryItem` now
+> log, with `updateInventoryItem` computing a real diff (field labels + `quantity 50 → 52`) so the feed says
+> what moved; a save that changes nothing logs nothing.
+> ⚠️ TWO latent bugs surfaced while verifying, both fixed here:
+> • `repository.updateInventoryItem` only wrote `quantity` when `kind` was ALSO passed, so a quantity-only
+> patch was an empty `.update({})` — a **silent no-op** that still resolved, so the first stock change
+> "succeeded" without changing anything (and logged an event saying it had). Now `quantity != null &&
+> kind !== 'barcoded'` writes it, and an empty patch returns early instead of hitting the DB.
+> • `logActivity` bumped `activityVersion` **before** the insert resolved, so an open card refetched while
+> the row was still in flight and came back without it — with nothing to bump again. In supabase mode the
+> bump now happens in `.then()` after the row lands (callers stay fire-and-forget). This affected EVERY
+> activity feed, not just items.
+> Frontend-only, NO migration (`inventory_items.quantity` and `events` already exist). 6 Node assertions on
+> the new `describeEvent` cases. Verified on prod: +10 → 60 on hand with "Ann Taylor added stock · +10 ·
+> 50 → 60", −10 back to 50, an over-take of 100 refused, and an Edit-item correction logged as
+> "edited the item · quantity 52 → 50" appearing instantly. Test events then deleted with service_role and
+> J-Hook 2" left at its seeded 50 with an empty feed — including the phantom event from the pre-fix no-op.
 > Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`

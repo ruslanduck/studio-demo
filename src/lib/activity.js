@@ -21,6 +21,9 @@ export const EVENT = {
   ITEM_CREATED: 'item.created',
   ITEM_UPDATED: 'item.updated',
   ITEM_DELETED: 'item.deleted',
+  // Non-barcoded / consumable stock moves by QUANTITY, not by unit rows, so a
+  // delta is the whole story: who put 20 more J-hooks on the shelf, and when.
+  STOCK_ADJUSTED: 'item.stock_adjusted',
   UNIT_ADDED: 'unit.added',
   UNIT_UPDATED: 'unit.updated',
   UNIT_WRITTEN_OFF: 'unit.written_off',
@@ -152,6 +155,15 @@ export function describeEvent(ev) {
       }
     case EVENT.ITEM_DELETED:
       return { icon: 'trash', title: 'Wrote off the item', detail: d.name ?? null }
+    case EVENT.STOCK_ADJUSTED: {
+      const delta = Number(d.delta) || 0
+      const move = `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`
+      return {
+        icon: delta > 0 ? 'plus' : 'boxes',
+        title: delta > 0 ? 'Added stock' : 'Took stock out',
+        detail: `${move} · ${d.from ?? '—'} → ${d.to ?? '—'} on hand`,
+      }
+    }
     case EVENT.UNIT_ADDED:
       return {
         icon: 'plus',

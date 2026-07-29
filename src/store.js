@@ -711,14 +711,20 @@ export const useStore = create(
       logActivity: ({ type, entityType, entityId, unitId = null, setId = null, data = {} } = {}) => {
         if (!type || !entityType || !entityId) return
         const state = get()
-        set({ activityVersion: state.activityVersion + 1 })
         if (usingSupabase) {
+          // Bump the refresh counter AFTER the row lands. Bumping first makes an
+          // open card refetch while the insert is still in flight, so the feed
+          // comes back without the event that just happened (and nothing bumps
+          // again). Callers stay fire-and-forget.
           sbLogEvent(
             { eventType: type, entityType, entityId, unitId, setId, data },
             state.session?.user?.id ?? null,
-          ).catch(() => {})
+          )
+            .then(() => set({ activityVersion: get().activityVersion + 1 }))
+            .catch(() => {})
           return
         }
+        set({ activityVersion: state.activityVersion + 1 })
         // Local demo: whoever is at the machine. There's no auth in this mode.
         const entry = {
           id: `act-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4)}`,
@@ -1358,8 +1364,16 @@ export const useStore = create(
       // Barcodes start past every existing one so ids never collide. Returns
       // the new item's id so the UI can select it.
       addInventoryItem: async ({ name, category, quantity, kind = 'barcoded', ...fields }) => {
+        const logCreate = (itemId) =>
+          get().logActivity({
+            type: EVENT.ITEM_CREATED,
+            entityType: 'item',
+            entityId: itemId,
+            data: { name, category, kind, quantity },
+          })
         if (usingSupabase) {
           const id = await sbAddInventoryItem({ name, category, quantity, kind, ...fields })
+          logCreate(id)
           await get().hydrate({ quiet: true })
           return id
         }
@@ -1392,16 +1406,94 @@ export const useStore = create(
             ? { ...base_, quantity: 0, units: createUnits(id, quantity, maxBarcode + 1) }
             : { ...base_, quantity, units: [] }
         set({ inventory: [item, ...state.inventory] })
+        logCreate(id)
         return id
+      },
+
+      // Move non-barcoded / consumable stock by a DELTA — "20 more arrived",
+      // "5 went out" — instead of overwriting the count in the item editor.
+      // Barcoded items have unit rows, so they use addUnits/deleteUnit instead.
+      adjustStock: async (itemId, { delta } = {}) => {
+        const item = get().inventory.find((i) => i.id === itemId)
+        if (!item) return { error: 'Item not found.' }
+        if (item.kind === 'barcoded')
+          return { error: 'This item is tracked per unit — add or write off units instead.' }
+        const n = Math.trunc(Number(delta) || 0)
+        if (!n) return { error: 'Enter how many.' }
+
+        const from = item.quantity ?? 0
+        if (n < 0 && from + n < 0)
+          return { error: `Only ${from} on hand — can't take ${Math.abs(n)} out.` }
+        const to = from + n
+
+        if (usingSupabase) {
+          try {
+            await sbUpdateInventoryItem(itemId, { kind: item.kind, quantity: to })
+          } catch (e) {
+            return { error: e.message }
+          }
+        } else {
+          set({
+            inventory: get().inventory.map((i) => (i.id === itemId ? { ...i, quantity: to } : i)),
+          })
+        }
+        get().logActivity({
+          type: EVENT.STOCK_ADJUSTED,
+          entityType: 'item',
+          entityId: itemId,
+          data: { delta: n, from, to, itemName: item.name },
+        })
+        if (usingSupabase) await get().hydrate({ quiet: true })
+        return { ok: true, from, to }
       },
 
       // Edit an item's fields (kind immutable; quantity only for non-barcoded).
       updateInventoryItem: async (id, changes) => {
+        // What actually moved — the item card's feed said nothing about item
+        // edits before, so a corrected count left no trace at all.
+        const before = get().inventory.find((i) => i.id === id)
+        const LABELS = {
+          name: 'name',
+          category: 'category',
+          brand: 'brand',
+          assetType: 'asset type',
+          placement: 'storage location',
+          subcategory: 'subcategory',
+          purchaseDate: 'purchase date',
+          replacementPrice: 'replacement price',
+          dayRate: 'day rate',
+        }
+        const changed = []
+        if (before) {
+          for (const [key, label] of Object.entries(LABELS)) {
+            if (!(key in changes)) continue
+            const was = before[key] ?? null
+            const now = changes[key] === '' ? null : (changes[key] ?? null)
+            if (String(was ?? '') !== String(now ?? '')) changed.push(label)
+          }
+          if (before.kind !== 'barcoded' && changes.quantity != null) {
+            const was = before.quantity ?? 0
+            if (Number(was) !== Number(changes.quantity))
+              changed.push(`quantity ${was} → ${changes.quantity}`)
+          }
+        }
+        const logEdit = () => {
+          if (!changed.length) return
+          get().logActivity({
+            type: EVENT.ITEM_UPDATED,
+            entityType: 'item',
+            entityId: id,
+            data: { changed, name: before?.name ?? null },
+          })
+        }
+
         if (usingSupabase) {
           await sbUpdateInventoryItem(id, changes)
+          logEdit()
           await get().hydrate({ quiet: true })
           return
         }
+        logEdit()
         const state = get()
         const { name, category, quantity, kind, ...fields } = changes
         const inventory = state.inventory.map((item) => {
@@ -1427,14 +1519,24 @@ export const useStore = create(
 
       // Delete an item (write-off). Frees its units from any bookings.
       deleteInventoryItem: async (id) => {
+        const doomed = get().inventory.find((i) => i.id === id)
+        const logDelete = () =>
+          get().logActivity({
+            type: EVENT.ITEM_DELETED,
+            entityType: 'item',
+            entityId: id,
+            data: { name: doomed?.name ?? null },
+          })
         if (usingSupabase) {
           await sbDeleteInventoryItem(id)
+          logDelete()
           await get().hydrate({ quiet: true })
           return
         }
         const state = get()
         const item = state.inventory.find((i) => i.id === id)
         const unitIds = new Set((item?.units || []).map((u) => u.id))
+        logDelete()
         set({
           inventory: state.inventory.filter((i) => i.id !== id),
           bookings: state.bookings.map((b) => ({

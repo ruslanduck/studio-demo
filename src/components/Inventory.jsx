@@ -12,6 +12,7 @@ import WorkHistoryModal, { UsageStats } from './WorkHistoryModal'
 import KitEditorModal from './KitEditorModal'
 import ScenarioEditorModal from './ScenarioEditorModal'
 import UnitEditorModal from './UnitEditorModal'
+import StockModal from './StockModal'
 import ActivityList from './ActivityList'
 import { useActivity } from '../lib/useActivity'
 
@@ -172,6 +173,7 @@ export default function Inventory() {
   const returnFromRepair = useStore((s) => s.returnFromRepair)
   const logUsage = useStore((s) => s.logUsage)
   const addUnits = useStore((s) => s.addUnits)
+  const adjustStock = useStore((s) => s.adjustStock)
   const updateUnit = useStore((s) => s.updateUnit)
   const deleteUnit = useStore((s) => s.deleteUnit)
   const nextBarcode = useStore((s) => s.nextBarcode)
@@ -209,6 +211,7 @@ export default function Inventory() {
   const [workHistoryOpen, setWorkHistoryOpen] = useState(false)
   // Per-unit add/edit/delete (the asset register under an item).
   const [unitEditor, setUnitEditor] = useState({ open: false, unit: null })
+  const [stockOpen, setStockOpen] = useState(false)
   const [unitError, setUnitError] = useState(null)
   // On phone/tablet-portrait the list and detail are separate screens.
   const [showDetailMobile, setShowDetailMobile] = useState(false)
@@ -738,6 +741,7 @@ export default function Inventory() {
                   setUnitError(null)
                   setUnitEditor({ open: true, unit: null })
                 }}
+                onAddStock={() => setStockOpen(true)}
                 onEditUnit={(unit) => {
                   setUnitError(null)
                   setUnitEditor({ open: true, unit })
@@ -815,6 +819,13 @@ export default function Inventory() {
         onSave={(payload) => updateUnit(selected.id, unitEditor.unit.id, payload)}
       />
 
+      <StockModal
+        open={stockOpen}
+        item={selected}
+        onClose={() => setStockOpen(false)}
+        onSubmit={(payload) => adjustStock(selected.id, payload)}
+      />
+
       <UnitHistoryModal
         open={!!historyUnit}
         unit={historyUnit}
@@ -855,7 +866,7 @@ export default function Inventory() {
   )
 }
 
-function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, vendors, onSetVendor, onShowHistory, onShowRepair, onShowWorkHistory, canWriteOff, unitError, onDismissUnitError, onAddUnit, onEditUnit, onDeleteUnit }) {
+function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, vendors, onSetVendor, onShowHistory, onShowRepair, onShowWorkHistory, canWriteOff, unitError, onDismissUnitError, onAddUnit, onAddStock, onEditUnit, onDeleteUnit }) {
   const isBarcoded = item.kind === 'barcoded'
   // Deleting a physical unit is a write-off — confirm in place, per row.
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
@@ -914,15 +925,19 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
           {/* Add a physical copy of THIS item — the gap people hit when looking
               for "add a unit with its own serial" and only finding the
               item-level "Add inventory". */}
-          {isBarcoded && canEdit && (
+          {canEdit && (
             <button
               type="button"
-              onClick={onAddUnit}
-              title="Register another physical copy of this item"
+              onClick={isBarcoded ? onAddUnit : onAddStock}
+              title={
+                isBarcoded
+                  ? 'Register another physical copy of this item'
+                  : 'Stock received or gone out — logged with who and when'
+              }
               className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
             >
               <Plus size={14} />
-              Add unit
+              {isBarcoded ? 'Add unit' : 'Add stock'}
             </button>
           )}
           <button

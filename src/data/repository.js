@@ -653,7 +653,11 @@ export async function updateInventoryItem(itemId, { name, category, kind, quanti
   const patch = itemFieldColumns(fields)
   if (name != null) patch.name = name.trim()
   if (category != null) patch.category = category
-  if (kind && kind !== 'barcoded' && quantity != null) patch.quantity = quantity
+  // Barcoded items count their unit rows, so their `quantity` column stays 0.
+  // `kind` is optional: the stock actions know what they're updating and pass
+  // only the quantity — requiring kind here made those writes silent no-ops.
+  if (quantity != null && kind !== 'barcoded') patch.quantity = quantity
+  if (!Object.keys(patch).length) return
   const { error } = await supabase.from('inventory_items').update(patch).eq('id', itemId)
   if (error) throw error
 }
