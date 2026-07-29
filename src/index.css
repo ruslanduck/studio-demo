@@ -1,1 +1,23 @@
 @import "tailwindcss";
+
+@layer base {
+  /* Tailwind's reset leaves <button> with the default arrow, so nothing in the
+     app looked clickable unless a component happened to add `cursor-pointer`.
+     Everything interactive here is a button, a role=button (calendar chips,
+     table rows) or a select — one rule covers them all instead of sprinkling a
+     class across ~50 components. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  select:not(:disabled),
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+
+  /* And say plainly when something can't be clicked. */
+  button:disabled,
+  select:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+}
