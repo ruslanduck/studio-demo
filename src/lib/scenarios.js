@@ -11,12 +11,15 @@
 // Anything that can't be satisfied is reported in `warnings` rather than
 // silently dropped — the crew sees exactly what still has to be sourced.
 
-import { freeUnitsOf } from './availability'
+import { freeUnitsOf, isUnitFree } from './availability'
 
 // Units of `item` this booking may take. Delegates to the shared availability
-// rule (5.6): free (or already its own) and not yet claimed by a staged kit.
-function takeableUnits(item, { bookingUnits, claimed }) {
-  return freeUnitsOf(item, { claimed, alsoFree: bookingUnits })
+// rule (5.6): free for the requested DATES (or already its own) and not yet
+// claimed by a staged kit. `dateWindow` is named explicitly — a local called
+// `window` would silently resolve to the global object when the parameter is
+// missing, which reads as "no window" instead of failing.
+function takeableUnits(item, { bookingUnits, claimed, dateWindow }) {
+  return freeUnitsOf(item, { claimed, alsoFree: bookingUnits, window: dateWindow })
 }
 
 // Resolve one kit's slots to concrete units, mirroring the staging window's
@@ -45,8 +48,20 @@ function resolveKit(kit, inventory, ctx) {
       const pinned = (item?.units || []).find((u) => u.id === slot.fixedUnitId)
       if (!pinned) unresolved.push(`${name} — pinned unit missing`)
       else if (ctx.claimed.has(pinned.id)) unresolved.push(`${name} — pinned unit already in this booking`)
-      else if (pinned.status !== 'available' && !ctx.bookingUnits.has(pinned.id))
-        unresolved.push(`${name} — pinned unit #${pinned.barcode} is ${pinned.status === 'in_repair' ? 'in repair' : 'checked out'}`)
+      // Judged for the requested dates, like every other availability question:
+      // the pinned camera may be out today and free on the day we're pulling.
+      else if (
+        !isUnitFree(pinned, {
+          claimed: ctx.claimed,
+          alsoFree: ctx.bookingUnits,
+          window: ctx.dateWindow,
+        })
+      )
+        unresolved.push(
+          `${name} — pinned unit #${pinned.barcode} is ${
+            pinned.status === 'in_repair' ? 'in repair' : 'booked for those dates'
+          }`,
+        )
       else push(pinned)
       continue
     }
@@ -67,6 +82,8 @@ function resolveKit(kit, inventory, ctx) {
  * @param selected     current a-la-carte counts, itemId -> qty
  * @param stagedUnits  units already committed by staged kits
  * @param bookingUnits Set of unit ids this booking already holds (edit mode)
+ * @param dateWindow   { from, to } the days being pulled for; gear committed to
+ *                     other days stays available (omit for "right now")
  * @returns { selected, stagedUnits, applied, warnings, notes }
  *   applied  — { kits, units, lines } summary counts
  *   warnings — entries that could not be fully satisfied
@@ -79,9 +96,10 @@ export function applyScenarioList({
   selected = {},
   stagedUnits = [],
   bookingUnits = new Set(),
+  dateWindow = null,
 }) {
   const claimed = new Set(stagedUnits.map((u) => u.unitId))
-  const ctx = { bookingUnits, claimed }
+  const ctx = { bookingUnits, claimed, dateWindow }
   const nextSelected = { ...selected }
   const nextStaged = [...stagedUnits]
   const warnings = []

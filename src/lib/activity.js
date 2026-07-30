@@ -12,6 +12,8 @@ export const EVENT = {
   ORDER_UPDATED: 'order.updated',
   ORDER_CONFIRMED: 'order.confirmed',
   ORDER_HELD: 'order.held',
+  ORDER_CLOSED: 'order.closed',
+  ORDER_REOPENED: 'order.reopened',
   ORDER_DELETED: 'order.deleted',
   EQ_CHANGED: 'order.equipment_changed',
   ADDON_CREATED: 'addon.created',
@@ -144,6 +146,24 @@ export function describeEvent(ev) {
       }
     case EVENT.ORDER_HELD:
       return { icon: 'undo', title: 'Moved back to hold', detail: 'Reservations released' }
+    case EVENT.ORDER_CLOSED:
+      return {
+        icon: 'check',
+        title: 'Closed the order',
+        detail:
+          d.released != null
+            ? `${d.released} piece(s) back on the shelf`
+            : 'Gear returned — stock released',
+      }
+    case EVENT.ORDER_REOPENED:
+      return {
+        icon: 'undo',
+        title: 'Re-opened the order',
+        detail:
+          d.reserved != null
+            ? `${d.reserved} piece(s) reserved again${d.short ? ` · ${d.short} short` : ''}`
+            : 'Gear reserved again',
+      }
     case EVENT.ORDER_CREATED:
       return { icon: 'clipboard', title: 'Created the order', detail: d.jobName ?? null }
     case EVENT.ORDER_UPDATED:

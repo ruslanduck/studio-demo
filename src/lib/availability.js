@@ -19,8 +19,23 @@
 
 const asSet = (v) => (v instanceof Set ? v : new Set(v ?? []))
 
-// Is this individual unit takeable right now?
-export function isUnitFree(unit, { claimed, alsoFree } = {}) {
+// Do two inclusive date ranges share a day? A missing end means a single day; a
+// missing start means "no window given", which overlaps nothing on its own.
+export function overlaps(a, b) {
+  if (!a?.from || !b?.from) return false
+  const aTo = a.to || a.from
+  const bTo = b.to || b.from
+  return a.from <= bTo && b.from <= aTo
+}
+
+// Is this individual unit takeable?
+//
+// `window` ({ from, to }) is the dates being asked about — a shoot on the 30th
+// says nothing about the 31st. Gear is committed PER DAY: one camera can be out
+// today and bookable tomorrow, even while today's order is still open, because
+// it comes back at the end of the day. Without a window the answer falls back to
+// "right now", which is what the inventory table means.
+export function isUnitFree(unit, { claimed, alsoFree, window } = {}) {
   if (!unit) return false
   // A written-off (archived) copy is out of the pool everywhere. This one guard
   // covers kits, staging, scenario lists, bookings, the order editor and the
@@ -29,7 +44,15 @@ export function isUnitFree(unit, { claimed, alsoFree } = {}) {
   const claimedSet = asSet(claimed)
   const alsoFreeSet = asSet(alsoFree)
   if (claimedSet.has(unit.id)) return false
-  return unit.status === 'available' || alsoFreeSet.has(unit.id)
+  if (alsoFreeSet.has(unit.id)) return true
+  // An open repair has no dates: the copy is physically away, so it's out
+  // whatever window you ask about.
+  if (unit.status === 'in_repair') return false
+  if (window?.from) {
+    // Free unless something it's already committed to covers one of these days.
+    return !(unit.reservations || []).some((r) => overlaps(r, window))
+  }
+  return unit.status === 'available'
 }
 
 // The units of `item` that can still be taken, in stock order.
@@ -59,6 +82,9 @@ export function isExhausted(item, ctx = {}) {
 // never take the same unit (mutated as units are taken).
 export function reservedUnitsForOrder(order, inventory, claimed = new Set()) {
   if (!order || order.status !== 'confirmed') return []
+  // Gear is held PER DAY: resolving is done against this order's own working
+  // window, so two confirmed orders on different days can hold the same camera.
+  const window = { from: order.startsOn || null, to: order.endsOn || order.startsOn || null }
   const ids = []
   for (const l of order.lines || []) {
     if (l.source === 'sub_rental' || !l.unitId) continue
@@ -70,7 +96,7 @@ export function reservedUnitsForOrder(order, inventory, claimed = new Set()) {
   const qtyLines = (order.lines || []).filter(
     (l) => l.source !== 'sub_rental' && !l.unitId && l.itemId,
   )
-  for (const id of resolveUnitsForQuantities(qtyLines, inventory, { claimed })) {
+  for (const id of resolveUnitsForQuantities(qtyLines, inventory, { claimed, window })) {
     claimed.add(id)
     ids.push(id)
   }

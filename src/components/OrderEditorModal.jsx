@@ -197,8 +197,15 @@ export default function OrderEditorModal({
   )
   const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
 
-  // Shared availability rule (5.6) — the same answer kits and lists get.
-  const freeFor = (item) => availableCount(item, { claimed: stagedIds })
+  // Availability is a question about DATES: gear committed to another day says
+  // nothing about this job. The window is the working dates being typed above,
+  // so the counts change as soon as the dates do.
+  const dateWindow = useMemo(
+    () => ({ from: form.startsOn || null, to: form.endsOn || form.startsOn || null }),
+    [form.startsOn, form.endsOn],
+  )
+  const freeFor = (item) =>
+    availableCount(item, { claimed: stagedIds, window: dateWindow })
 
   const searchResults = useMemo(() => {
     const q = invSearch.trim().toLowerCase()
@@ -263,7 +270,7 @@ export default function OrderEditorModal({
   }
 
   function applyList(list) {
-    const res = applyScenarioList({ list, inventory, kits: liveKits, selected, stagedUnits })
+    const res = applyScenarioList({ list, inventory, kits: liveKits, selected, stagedUnits, dateWindow })
     // Remember WHAT this preset brought in, so those lines can be shown grouped
     // under its name instead of dissolving into the flat list. Only the lines it
     // actually added (or raised) are tagged — an item you had already picked by
@@ -939,6 +946,7 @@ export default function OrderEditorModal({
         open={!!staging}
         kit={staging}
         inventory={inventory}
+        dateWindow={dateWindow}
         // Only units already committed by another staged kit are hard-claimed;
         // a-la-carte quantities resolve to units when the order is saved.
         reservedUnitIds={[...stagedIds]}

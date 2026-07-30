@@ -645,7 +645,55 @@
 > block clicks the button of the PREVIOUS render (React hasn't flushed) — I archived A-Clamp 2" instead of the
 > cable. Split row-click and detail-pane interaction into separate tool calls, and verify WHICH record a modal
 > is editing before confirming a destructive action.
-> Next in #6: the scanning page (scan-out/in log with who+time, close-order once all EQ returned).
+> **CHANGE — stock is held PER DAY, and closing an order gives it back.** Two reported gaps, both real:
+> availability ignored dates ("камера забронена на сегодня → на завтра я снова могу её забронить, даже если
+> заказ ещё не закрыт"), and there was NO way to close a job, so gear was held forever. Proved before fixing:
+> `occupies()` in `repository.js` only asked "active set, not returned" — 53 of prod's 60 reservations were for
+> OTHER days yet counted as busy today, even though `set_units.reserved_from/reserved_to` were already stored;
+> and `fulfilled` existed only in `orderStatus.js` + seeded rows, with the card toggling Hold ↔ Confirmed only.
+> **Dates.** A unit now carries `reservations: [{setId, setTitle, studioId, from, to}]` — mapped from
+> `set_units` in supabase mode (`getInventory`), derived from the bookings in local mode (`reservationWindows`).
+> `lib/availability.js` gained `overlaps(a,b)` (inclusive, a missing `to` = one day) and `isUnitFree` takes a
+> `window`: with one, a unit is free unless one of ITS reservations covers those days; without one the answer
+> falls back to "right now", which is what the inventory table means. Repair and archived still beat the window
+> (physically away / written off), and `alsoFree` still wins so a record being edited owns its own gear.
+> Threaded through every picker: BookingModal (the shoot's date), OrderEquipmentModal + OrderEditorModal (the
+> order's working window), `lib/scenarios.js`, and KitStagingModal via a `dateWindow` prop — its FIXED-slot
+> conflict check now reads "booked for those dates" instead of "checked out". `reservedUnitsForOrder` resolves
+> against the order's OWN window, and `reservationsFromOrders` replaced the single global `claimed` set with a
+> **claims map (unitId → windows)**: two confirmed orders on different days can hold the same camera, but
+> overlapping ones still can't. Fixed kit pins stay dateless (dedicated to their kit), EXCEPT for units the
+> order's own kit lines name — which also fixes a latent bug where a kit line naming a pinned unit reserved
+> nothing. Editing a confirmed order passes `ownUnits` (units its shoot already holds) as `alsoFree`, or the
+> picker would report its own gear as taken.
+> **Closing.** `CLOSED_STATUS`/`isClosedStatus` in `orderStatus.js`; `fulfilled` is relabelled **Closed**
+> ("Shot and returned — the gear is back on the shelf") and the card carries **Close order** beside Back to
+> hold, plus **Re-open order** on a closed one. Closing does NOT delete the reservations: new repository
+> `markSetReturned(setId)` flips that set's rows to `status='returned'`, which `occupies` already treats as
+> free — so the stock is released while `set_units` stays as the unit's job history (the history dialog reads
+> "Returned"). Local mode mirrors it: a closed order's set keeps its `unitIds` but is flagged `unitsReturned`,
+> and both `reservationMap`/`reservationWindows` skip it. New `EVENT.ORDER_CLOSED`/`ORDER_REOPENED` (5 Node
+> assertions) and the card says what happened ("Closed — 11 piece(s) are back on the shelf and bookable
+> again"). The packing list + add-ons stay available on a closed order: the pull sheet and its sign-offs ARE
+> the record of what went out. NO migration ('returned' was already in the `set_units` check constraint, and
+> child tables kept their UPDATE/DELETE policies).
+> ⚠️ **Fixed a bug this would have introduced:** `setReservationsForSet`'s no-op guard compared unit ids only,
+> so closing an order and re-opening it (same ids) would skip the write and leave every row `returned` — the
+> order would read Confirmed while holding nothing. A returned row is not a holding, so it can never satisfy
+> the guard now.
+> ℹ️ The inventory table still shows the job a unit is committed to even when that job is weeks out (status
+> `checked_out`) — deliberate, it's "where this copy is going". What was missing is WHEN, so the LOCATION cell
+> now appends the dates in grey ("… — Studio 1 · Jul 27", spans as "· Jul 27 – Jul 30").
+> Verified against prod (17 Node assertions on the date logic first): the order form on 2026-07-27 offered
+> **7 free** C-Stands, the same form on 2026-08-10 offered **10**, and a 27→30 Jul span offered **5** — each
+> number matching what the DB's own reservation rows predict. Then CL-26051 (11 pcs, 27 Jul) → **Close order**
+> → 74 `set_units` rows intact with its 11 flipped to `returned`, #0762-0764 read Available, the unit's history
+> still lists the job as "Returned", `order.closed {released:11}` + 11 per-unit `returned` events logged with
+> an actor → **Re-open** → the same 11 barcodes back to `reserved` with the right dates and the order
+> `confirmed`. Prod left exactly as found (74 reserved, CL-26051 confirmed, 35 test events removed),
+> 0 console errors, build clean, lint unchanged.
+> Next in #6: the scanning page (scan-out/in log with who+time — closing an order is now a manual action;
+> auto-closing once every line is signed back in is the remaining piece).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

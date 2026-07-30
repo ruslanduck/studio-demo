@@ -24,6 +24,7 @@ import {
   toggleOwnership as sbToggleOwnership,
   setUnitBarcode as sbSetUnitBarcode,
   setReservationsForSet as sbSetReservationsForSet,
+  markSetReturned as sbMarkSetReturned,
   logEvent as sbLogEvent,
   getEvents as sbGetEvents,
   getEventsForUnits as sbGetEventsForUnits,
@@ -79,7 +80,8 @@ import {
   restoreAddon as sbRestoreAddon,
 } from './data/repository'
 import { supabase } from './lib/supabase'
-import { reservedUnitsForOrder } from './lib/availability'
+import { reservedUnitsForOrder, overlaps } from './lib/availability'
+import { isClosedStatus } from './data/orderStatus'
 import { EVENT, diffOrderLines } from './lib/activity'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
@@ -529,9 +531,34 @@ const BOOKING_COLORS = [
 function reservationMap(bookings) {
   const map = new Map()
   for (const b of bookings) {
-    if (b.status !== 'active') continue
+    if (b.status !== 'active' || b.unitsReturned) continue
     const location = `${b.title} — ${studioLabel(b.studioId)}`
     for (const uid of b.unitIds) if (!map.has(uid)) map.set(uid, location)
+  }
+  return map
+}
+
+// Map each reserved unit id -> every shoot holding it, WITH DATES. Gear is
+// committed per day, so a picker asking about the 31st has to know that the
+// camera's only commitment is on the 30th. Supabase mode reads the same shape
+// off set_units (reserved_from/reserved_to); local bookings are single-day.
+function reservationWindows(bookings) {
+  const map = new Map()
+  for (const b of bookings) {
+    // A closed set's gear is back on the shelf: it blocks no dates.
+    if (b.status !== 'active' || b.unitsReturned) continue
+    const entry = {
+      setId: b.id,
+      setTitle: b.title,
+      studioId: b.studioId,
+      from: b.date,
+      to: b.date,
+    }
+    for (const uid of b.unitIds || []) {
+      const list = map.get(uid)
+      if (list) list.push(entry)
+      else map.set(uid, [entry])
+    }
   }
   return map
 }
@@ -545,24 +572,25 @@ function openRepairOf(unit) {
 // Precedence: an open repair (unbookable) wins over a reservation, which wins
 // over free. Units not reserved by any active booking are freed. Ownership is
 // left untouched.
+//
+// `status`/`location` answer "where is this copy" — they're what the inventory
+// table shows. `reservations` answers "which days is it committed", which is what
+// every picker asks, since the same copy can be out today and free tomorrow.
 function withReservations(inventory, bookings) {
   const map = reservationMap(bookings)
+  const windows = reservationWindows(bookings)
   return inventory.map((item) => ({
     ...item,
     units: item.units.map((u) => {
+      const reservations = windows.get(u.id) || []
       const repair = openRepairOf(u)
       if (repair) {
         const location = `In repair — ${repair.vendor || 'Vendor'}`
-        if (u.status === 'in_repair' && u.location === location) return u
-        return { ...u, status: 'in_repair', location }
+        return { ...u, status: 'in_repair', location, reservations }
       }
       const location = map.get(u.id)
-      if (location) {
-        if (u.status === 'checked_out' && u.location === location) return u
-        return { ...u, status: 'checked_out', location }
-      }
-      if (u.status === 'available' && u.location === 'Available') return u
-      return { ...u, status: 'available', location: 'Available' }
+      if (location) return { ...u, status: 'checked_out', location, reservations }
+      return { ...u, status: 'available', location: 'Available', reservations }
     }),
   }))
 }
@@ -581,33 +609,64 @@ function fixedUnitIdsOf(kits) {
 // units its CONFIRMED order reserves. A Set referenced by no order keeps its own
 // unitIds (a hand-made calendar booking). Resolution runs against a RAW
 // availability view — repairs + fixed kit pins only — NOT the live checked-out
-// projection, since that projection is exactly what we're recomputing; a shared
-// `claimed` set (seeded with the fixed units) stops any unit being promised
-// twice across orders.
+// projection, since that projection is exactly what we're recomputing.
+//
+// Two orders must never take the same unit ON THE SAME DAYS — but on different
+// days they should, since the gear comes back at the end of each shoot. So claims
+// are recorded WITH their window and only the overlapping ones are held against
+// the order being resolved. Fixed kit pins are dateless: they're dedicated to
+// their kit, so they're claimed for every window.
 function reservationsFromOrders(bookings, orders, inventory, fixedUnitIds = []) {
   const rawInventory = inventory.map((item) => ({
     ...item,
     units: (item.units || []).map((u) =>
       (u.repairs || []).some((r) => !r.returnedAt)
-        ? { ...u, status: 'in_repair' }
-        : { ...u, status: 'available', location: 'Available' },
+        ? { ...u, status: 'in_repair', reservations: [] }
+        : { ...u, status: 'available', location: 'Available', reservations: [] },
     ),
   }))
-  const claimed = new Set(fixedUnitIds)
+  const pinned = new Set(fixedUnitIds)
+  // unitId -> windows already taken by an earlier order in this pass.
+  const claims = new Map()
   const bySet = new Map()
   const orderedSets = new Set()
+  // A CLOSED order's gear came back: it holds nothing, but the set keeps the
+  // units it went out with — that list IS the unit's job history.
+  const closedSets = new Set()
+  const confirmed = (orders || []).filter(
+    (o) => !o.archivedAt && o.status === 'confirmed',
+  )
   for (const o of orders || []) {
-    if (o.setId) orderedSets.add(o.setId)
-    // An archived order holds nothing — that's how archiving releases its gear.
-    if (o.archivedAt) continue
-    if (o.status !== 'confirmed') continue
+    if (!o.setId) continue
+    orderedSets.add(o.setId)
+    if (!o.archivedAt && isClosedStatus(o.status)) closedSets.add(o.setId)
+  }
+  for (const o of confirmed) {
+    const window = { from: o.startsOn || null, to: o.endsOn || o.startsOn || null }
+    const namedUnits = new Set((o.lines || []).map((l) => l.unitId).filter(Boolean))
+    const claimed = new Set([...pinned].filter((id) => !namedUnits.has(id)))
+    for (const [unitId, windows] of claims) {
+      // No window on either side means "we can't tell them apart" — hold it, so
+      // a dateless order can't silently share gear.
+      if (windows.some((w) => (!w.from || !window.from ? true : overlaps(w, window))))
+        claimed.add(unitId)
+    }
     const ids = reservedUnitsForOrder(o, rawInventory, claimed)
+    for (const id of ids) {
+      const list = claims.get(id)
+      if (list) list.push(window)
+      else claims.set(id, [window])
+    }
     if (!o.setId) continue
     bySet.set(o.setId, (bySet.get(o.setId) || []).concat(ids))
   }
-  return bookings.map((b) =>
-    orderedSets.has(b.id) ? { ...b, unitIds: bySet.get(b.id) || [] } : b,
-  )
+  return bookings.map((b) => {
+    if (bySet.has(b.id)) return { ...b, unitIds: bySet.get(b.id), unitsReturned: false }
+    // Keep the gear on a closed set, flagged as back — history without a hold.
+    if (closedSets.has(b.id)) return { ...b, unitsReturned: true }
+    if (orderedSets.has(b.id)) return { ...b, unitIds: [], unitsReturned: false }
+    return b
+  })
 }
 
 export const useStore = create(
@@ -2068,18 +2127,33 @@ export const useStore = create(
         if (!order?.setId) return { ok: true, reserved: 0, short: 0 }
         const booking = state.bookings.find((b) => b.id === order.setId)
 
+        // CLOSED: the gear came back. The rows are MARKED returned, not deleted —
+        // they're the unit's job history, and a returned row holds no stock.
+        if (isClosedStatus(order.status)) {
+          const released = (booking?.unitIds || []).length
+          await sbMarkSetReturned(order.setId)
+          return { ok: true, reserved: 0, short: 0, released }
+        }
+        // Hold / draft / canceled: nothing ever went out, so the rows go.
         if (order.status !== 'confirmed') {
           await sbSetReservationsForSet(order.setId, [])
           return { ok: true, reserved: 0, short: 0 }
         }
 
         const heldByThisSet = new Set(booking?.unitIds || [])
+        // A unit is takeable unless it's away for repair or held by another set
+        // ON THESE DAYS — so a camera out on Monday is still bookable for Tuesday.
+        // Its own set's rows are dropped from the picture, or re-confirming an
+        // order would find its own gear taken.
         const projection = state.inventory.map((item) => ({
           ...item,
           units: (item.units || []).map((u) => {
-            if (openRepairOf(u)) return { ...u, status: 'in_repair' }
-            const free = u.status !== 'checked_out' || heldByThisSet.has(u.id)
-            return { ...u, status: free ? 'available' : 'checked_out' }
+            if (openRepairOf(u)) return { ...u, status: 'in_repair', reservations: [] }
+            const reservations = (u.reservations || []).filter(
+              (r) => r.setId !== order.setId,
+            )
+            const free = heldByThisSet.has(u.id) || u.status !== 'checked_out'
+            return { ...u, status: free ? 'available' : 'checked_out', reservations }
           }),
         }))
 
@@ -2188,18 +2262,23 @@ export const useStore = create(
         // Status moves are the interesting ones: confirming is what commits gear.
         const before = get().orders.find((o) => o.id === id)
         const statusMoved = changes.status && before && changes.status !== before.status
+        const reopened = statusMoved && isClosedStatus(before?.status)
+        const statusEvent = () => {
+          if (isClosedStatus(changes.status)) return EVENT.ORDER_CLOSED
+          if (reopened) return EVENT.ORDER_REOPENED
+          if (changes.status === 'confirmed') return EVENT.ORDER_CONFIRMED
+          if (changes.status === 'hold') return EVENT.ORDER_HELD
+          return EVENT.ORDER_UPDATED
+        }
         const logStatus = (res) =>
           get().logActivity({
-            type:
-              changes.status === 'confirmed'
-                ? EVENT.ORDER_CONFIRMED
-                : changes.status === 'hold'
-                  ? EVENT.ORDER_HELD
-                  : EVENT.ORDER_UPDATED,
+            type: statusEvent(),
             entityType: 'order',
             entityId: id,
             data: res
-              ? { reserved: res.reserved ?? 0, short: res.short ?? 0 }
+              ? isClosedStatus(changes.status)
+                ? { released: res.released ?? 0 }
+                : { reserved: res.reserved ?? 0, short: res.short ?? 0 }
               : { changed: Object.keys(changes) },
           })
 
@@ -2218,8 +2297,11 @@ export const useStore = create(
           logStatus(statusMoved ? res : null)
           return { ok: true, ...res }
         }
-        logStatus(null)
         const state = get()
+        // Local mode re-derives reservations in memory, so the count comes from
+        // what the set was holding a moment ago.
+        const held = (state.bookings.find((b) => b.id === before?.setId)?.unitIds || []).length
+        logStatus(statusMoved && isClosedStatus(changes.status) ? { released: held } : null)
         const orders = state.orders
           .map((o) => (o.id === id ? resolveOrder({ ...o, ...changes, id }, state.companies) : o))
           .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))

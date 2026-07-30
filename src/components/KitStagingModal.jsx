@@ -15,7 +15,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import Modal from './Modal'
-import { freeUnitsOf } from '../lib/availability'
+import { freeUnitsOf, isUnitFree } from '../lib/availability'
 
 // Staging window (Build order #3, 3.2 + 3.3 + 3.4). Adding a kit to a set opens
 // this: the kit's slot *definitions* are resolved into slot *fills* for THIS add.
@@ -41,6 +41,9 @@ export default function KitStagingModal({
   kit,
   inventory,
   reservedUnitIds = [],
+  dateWindow = null,
+  // Gear the record being edited already holds — free to re-take here.
+  ownUnitIds = [],
   onMarkBroken,
   onSetBarcode,
   onConfirm,
@@ -81,12 +84,21 @@ export default function KitStagingModal({
 
       const unit = item?.units.find((u) => u.id === slot.fixedUnitId) || null
       if (!unit) return { ...base, state: 'conflict', conflictReason: 'pinned unit missing' }
-      if (unit.status !== 'available' || used.has(unit.id)) {
+      const pinnedFree = isUnitFree(unit, {
+        claimed: used,
+        alsoFree: ownUnitIds,
+        window: dateWindow,
+      })
+      if (!pinnedFree) {
         return {
           ...base,
           barcode: unit.barcode,
           state: 'conflict',
-          conflictReason: unit.status !== 'available' ? 'checked out' : 'already in this booking',
+          conflictReason: used.has(unit.id)
+            ? 'already in this booking'
+            : dateWindow?.from
+              ? 'booked for those dates'
+              : 'checked out',
         }
       }
       used.add(unit.id)
@@ -116,7 +128,7 @@ export default function KitStagingModal({
   const freeUnitsFor = (itemId) =>
     freeUnitsOf(
       inventory.find((i) => i.id === itemId),
-      { claimed: usedIds },
+      { claimed: usedIds, alsoFree: ownUnitIds, window: dateWindow },
     )
 
   // A fill accepts a scanned/manual unit when it still needs one and isn't a
@@ -165,7 +177,12 @@ export default function KitStagingModal({
       return setScanError(`#${code} is already assigned to a slot in this kit.`)
     if (reservedUnitIds.includes(unit.id))
       return setScanError(`#${code} is already reserved elsewhere in this booking.`)
-    if (unit.status !== 'available') return setScanError(`#${code} is checked out — not available.`)
+    if (!isUnitFree(unit, { alsoFree: ownUnitIds, window: dateWindow }))
+      return setScanError(
+        dateWindow?.from
+          ? `#${code} is already booked for these dates.`
+          : `#${code} is checked out — not available.`,
+      )
 
     const candidates = fills.filter((f) => isOpenSlot(f) && f.itemId === item.id)
     if (candidates.length === 0)

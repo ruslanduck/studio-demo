@@ -5,8 +5,9 @@
 // than inside a component because epic #7 pulls the same colour into the studio
 // calendar — one definition, three consumers (list pill, detail pill, calendar).
 //
-// 'fulfilled' / 'draft' / 'canceled' predate this epic (4.5 history rows use
-// them), so they stay renderable even though nothing sets them any more.
+// 'fulfilled' is the CLOSED state: the shoot happened and the gear came back, so
+// the order stops holding stock. 'draft' / 'canceled' predate this epic (4.5
+// history rows use them) and stay renderable even though nothing sets them.
 export const ORDER_STATUS = {
   hold: {
     label: 'Hold',
@@ -24,8 +25,8 @@ export const ORDER_STATUS = {
     calendar: '#10b981',
   },
   fulfilled: {
-    label: 'Fulfilled',
-    meaning: 'Done and returned.',
+    label: 'Closed',
+    meaning: 'Shot and returned — the gear is back on the shelf.',
     pill: 'bg-slate-100 text-slate-600 ring-slate-200',
     dot: 'bg-slate-400',
     calendar: '#64748b',
@@ -46,8 +47,12 @@ export const ORDER_STATUS = {
   },
 }
 
-// The two states the crew actually moves an order between.
+// The two states the crew toggles between while the job is still ahead of them.
 export const ORDER_FLOW = ['hold', 'confirmed']
+
+// Closing an order releases its gear; re-opening it has to ask for it back.
+export const CLOSED_STATUS = 'fulfilled'
+export const isClosedStatus = (status) => status === CLOSED_STATUS
 
 export const orderStatusMeta = (status) => ORDER_STATUS[status] ?? ORDER_STATUS.draft
 

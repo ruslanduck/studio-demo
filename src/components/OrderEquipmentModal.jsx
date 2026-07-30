@@ -95,6 +95,29 @@ export default function OrderEquipmentModal({
 
   const itemsById = useMemo(() => Object.fromEntries(inventory.map((i) => [i.id, i])), [inventory])
   const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
+  // Availability is asked about the ORDER's working dates (see lib/availability).
+  const dateWindow = useMemo(
+    () => ({ from: order?.startsOn || null, to: order?.endsOn || order?.startsOn || null }),
+    [order?.startsOn, order?.endsOn],
+  )
+  // Gear THIS order's shoot already holds counts as free while editing it —
+  // otherwise re-opening a confirmed order would find its own kit taken.
+  const ownUnits = useMemo(() => {
+    if (!order?.setId) return new Set()
+    const ids = new Set()
+    for (const item of inventory)
+      for (const u of item.units || [])
+        if ((u.reservations || []).some((r) => r.setId === order.setId)) ids.add(u.id)
+    return ids
+  }, [inventory, order?.setId])
+
+  // One availability context for the whole modal: what's staged here is taken,
+  // what this shoot already holds is free, and the question is about its dates.
+  const avCtx = useMemo(
+    () => ({ claimed: stagedIds, alsoFree: ownUnits, window: dateWindow }),
+    [stagedIds, ownUnits, dateWindow],
+  )
+
   const vendors = useMemo(
     () => companies.filter((c) => notArchived(c) && (c.kind === 'vendor' || c.kind === 'both')),
     [companies],
@@ -109,7 +132,7 @@ export default function OrderEquipmentModal({
   // Shared availability rule, minus what this order's own in-house lines take.
   // Sub-rental lines are deliberately not subtracted — that gear isn't ours.
   const remainingFor = (item) =>
-    Math.max(0, availableCount(item, { claimed: stagedIds }) - inHouseQty(item?.id))
+    Math.max(0, availableCount(item, avCtx) - inHouseQty(item?.id))
 
   // How much this order's in-house lines exceed what's actually free. Over
   // capacity is ALLOWED (you can't always wait for the gear to come back), but it
@@ -117,7 +140,7 @@ export default function OrderEquipmentModal({
   // what exists, so the difference is simply not held.
   const overFor = (item) =>
     item?.kind === 'barcoded'
-      ? Math.max(0, inHouseQty(item.id) - availableCount(item, { claimed: stagedIds }))
+      ? Math.max(0, inHouseQty(item.id) - availableCount(item, avCtx))
       : 0
 
   const lines = useMemo(
@@ -160,10 +183,10 @@ export default function OrderEquipmentModal({
       ...resolveUnitsForQuantities(
         itemLines.filter((l) => l.source === IN_HOUSE),
         inventory,
-        { claimed: stagedIds },
+        avCtx,
       ),
     ],
-    [stagedUnits, itemLines, inventory, stagedIds],
+    [stagedUnits, itemLines, inventory, avCtx],
   )
 
   const kitGroups = useMemo(() => {
@@ -186,7 +209,15 @@ export default function OrderEquipmentModal({
     const selected = {}
     for (const l of itemLines.filter((x) => x.source === IN_HOUSE))
       selected[l.itemId] = (selected[l.itemId] ?? 0) + l.quantity
-    const res = applyScenarioList({ list, inventory, kits, selected, stagedUnits })
+    const res = applyScenarioList({
+      list,
+      inventory,
+      kits,
+      selected,
+      stagedUnits,
+      bookingUnits: ownUnits,
+      dateWindow,
+    })
     const nextInHouse = Object.entries(res.selected).map(([itemId, quantity]) => ({
       itemId,
       quantity,
@@ -254,7 +285,7 @@ export default function OrderEquipmentModal({
     const line = itemLines[index]
     if (source === IN_HOUSE && !force) {
       const item = itemsById[line.itemId]
-      const free = availableCount(item, { claimed: stagedIds }) - inHouseQty(line.itemId)
+      const free = availableCount(item, avCtx) - inHouseQty(line.itemId)
       if (free < line.quantity) {
         // Same warning, but remember it was a SWITCH: "Add anyway" must move this
         // line in-house, not bolt an extra quantity onto the order.
@@ -269,7 +300,7 @@ export default function OrderEquipmentModal({
   function replaceStaged(unitId) {
     const line = stagedUnits.find((u) => u.unitId === unitId)
     const item = itemsById[line?.itemId]
-    const next = freeUnitsOf(item, { claimed: stagedIds })[0]
+    const next = freeUnitsOf(item, avCtx)[0]
     if (!next) return setError(`No other ${item?.name ?? 'unit'} is free.`)
     setStagedUnits((prev) =>
       prev.map((u) => (u.unitId === unitId ? { ...u, unitId: next.id, barcode: next.barcode } : u)),
@@ -746,6 +777,8 @@ export default function OrderEquipmentModal({
         open={!!staging}
         kit={staging}
         inventory={inventory}
+        dateWindow={dateWindow}
+        ownUnitIds={ownUnits}
         reservedUnitIds={reservedForStaging}
         onConfirm={(units) => {
           setStagedUnits((prev) => [...prev, ...units])

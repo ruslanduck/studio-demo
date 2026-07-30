@@ -64,6 +64,10 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   // Unit ids already assigned by staged kits — excluded from the a-la-carte pool.
   const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
 
+  // Availability is asked about THIS shoot's day — gear out on another day is
+  // back by then (see lib/availability isUnitFree).
+  const dateWindow = useMemo(() => ({ from: form.date || null, to: form.date || null }), [form.date])
+
   // Units already reserved by *this* booking are available to it when editing.
   const bookingUnits = useMemo(
     () => new Set(booking?.unitIds ?? []),
@@ -112,6 +116,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
       selected,
       stagedUnits,
       bookingUnits,
+      dateWindow,
     })
     setSelected(res.selected)
     setStagedUnits(res.stagedUnits)
@@ -124,7 +129,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   // already claimed by a staged kit.
   function availCount(item) {
     // Shared availability rule (5.6) — same answer kits and lists get.
-    return availableCount(item, { claimed: stagedIds, alsoFree: bookingUnits })
+    return availableCount(item, { claimed: stagedIds, alsoFree: bookingUnits, window: dateWindow })
   }
 
   // Adding is NOT capped by what's free. The crew has to be able to put a job on
@@ -166,7 +171,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
     for (const [itemId, qty] of Object.entries(selected)) {
       const item = inventory.find((i) => i.id === itemId)
       if (!item || item.kind !== 'barcoded') continue
-      short += Math.max(0, qty - availableCount(item, { claimed: stagedIds, alsoFree: bookingUnits }))
+      short += Math.max(0, qty - availableCount(item, { claimed: stagedIds, alsoFree: bookingUnits, window: dateWindow }))
     }
     return short
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,7 +203,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
         .filter(([, qty]) => qty > 0)
         .map(([itemId, qty]) => ({ itemId, quantity: qty })),
       inventory,
-      { claimed: stagedIds, alsoFree: bookingUnits },
+      { claimed: stagedIds, alsoFree: bookingUnits, window: dateWindow },
     )
     // Merge in the units committed by staged kits (dedupe).
     for (const u of stagedUnits) if (!ids.includes(u.unitId)) ids.push(u.unitId)
@@ -670,6 +675,8 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
       open={!!staging}
       kit={staging}
       inventory={inventory}
+      dateWindow={dateWindow}
+      ownUnitIds={bookingUnits}
       reservedUnitIds={reservedForStaging}
       onMarkBroken={(itemId, unitId) =>
         sendToRepair(itemId, unitId, { issue: 'Flagged broken during kit staging' })

@@ -19,12 +19,19 @@ import {
   Undo2,
   Truck,
   Briefcase,
+  PackageCheck,
 } from 'lucide-react'
 import { useStore, notArchived } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
-import { ORDER_STATUS, ORDER_FLOW, orderStatusMeta } from '../data/orderStatus'
+import {
+  ORDER_STATUS,
+  ORDER_FLOW,
+  orderStatusMeta,
+  CLOSED_STATUS,
+  isClosedStatus,
+} from '../data/orderStatus'
 import {
   searchOrders,
   poCounts,
@@ -502,7 +509,8 @@ export default function Orders() {
                   const res = await updateOrder(selected.id, { status })
                   // Supabase mode reports what it managed to hold; local mode
                   // re-derives in memory and has nothing to report.
-                  if (res && (res.reserved || res.short)) setReserveNote(res)
+                  if (isClosedStatus(status)) setReserveNote({ closed: true, ...res })
+                  else if (res && (res.reserved || res.short)) setReserveNote(res)
                   else if (status === 'hold') setReserveNote({ reserved: 0, short: 0 })
                 }}
                 onDownloadPdf={() =>
@@ -720,7 +728,7 @@ function OrderDetail({
         {/* 5.5 — the Hold → Confirmed move. Confirming is what opens packing /
             scanning (epic #6); the pill colour is what epic #7 pulls into the
             calendar. */}
-        {canManage && ORDER_FLOW.includes(order.status) && (
+        {canManage && (ORDER_FLOW.includes(order.status) || isClosedStatus(order.status)) && (
           <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
             <div className="flex flex-wrap items-center gap-3">
               <div className="min-w-0 flex-1">
@@ -731,7 +739,16 @@ function OrderDetail({
                   {orderStatusMeta(order.status).meaning}
                 </p>
               </div>
-              {order.status === 'hold' ? (
+              {isClosedStatus(order.status) ? (
+                <button
+                  type="button"
+                  onClick={() => onSetStatus('confirmed')}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700"
+                >
+                  <Undo2 size={15} />
+                  Re-open order
+                </button>
+              ) : order.status === 'hold' ? (
                 <button
                   type="button"
                   onClick={() => onSetStatus('confirmed')}
@@ -741,14 +758,27 @@ function OrderDetail({
                   Confirm order
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => onSetStatus('hold')}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-amber-300 hover:text-amber-700"
-                >
-                  <Undo2 size={15} />
-                  Back to hold
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onSetStatus('hold')}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-amber-300 hover:text-amber-700"
+                  >
+                    <Undo2 size={15} />
+                    Back to hold
+                  </button>
+                  {/* Closing is what frees the stock: the shoot happened and the
+                      gear came back, so it stops being held while the job stays
+                      on every unit's history. */}
+                  <button
+                    type="button"
+                    onClick={() => onSetStatus(CLOSED_STATUS)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                  >
+                    <PackageCheck size={15} />
+                    Close order
+                  </button>
+                </>
               )}
             </div>
             {order.status === 'hold' && estimate.lineCount === 0 && (
@@ -767,11 +797,13 @@ function OrderDetail({
                   reserveNote.short > 0 ? 'text-amber-600' : 'text-emerald-600',
                 ].join(' ')}
               >
-                {reserveNote.short > 0
-                  ? `${reserveNote.reserved} piece(s) reserved · ${reserveNote.short} could not be — nothing free for those lines. Free them from another job, or raise them as a sub-rental.`
-                  : reserveNote.reserved > 0
-                    ? `${reserveNote.reserved} piece(s) reserved for this job.`
-                    : 'Reservations released — nothing is held for this job now.'}
+                {reserveNote.closed
+                  ? `Closed — ${reserveNote.released ?? 0} piece(s) are back on the shelf and bookable again. The job stays on each unit's history.`
+                  : reserveNote.short > 0
+                    ? `${reserveNote.reserved} piece(s) reserved · ${reserveNote.short} could not be — nothing free for those lines. Free them from another job, or raise them as a sub-rental.`
+                    : reserveNote.reserved > 0
+                      ? `${reserveNote.reserved} piece(s) reserved for this job.`
+                      : 'Reservations released — nothing is held for this job now.'}
               </p>
             )}
           </section>
@@ -984,7 +1016,9 @@ function OrderDetail({
           </button>
         </section>
 
-        {/* 6.1 — packing list, generated only once the order is Confirmed */}
+        {/* 6.1 — packing list, generated once the order is Confirmed. A CLOSED
+            order keeps it: the pull sheet and its sign-offs are the record of
+            what went out and came back. */}
         <section className="rounded-xl border border-slate-200 p-4">
           <div className="flex items-center gap-2">
             <Package size={15} className="text-slate-500" />
@@ -992,7 +1026,7 @@ function OrderDetail({
               Packing list
             </h4>
           </div>
-          {order.status === 'confirmed' ? (
+          {order.status === 'confirmed' || isClosedStatus(order.status) ? (
             <>
               <p className="mt-1 text-xs text-slate-500">
                 Two forms of the same pull sheet: print a PDF, or run the digital checklist on the
@@ -1038,7 +1072,7 @@ function OrderDetail({
         </section>
 
         {/* 6.4 — Add-On packing lists (day-of additions, main list untouched) */}
-        {order.status === 'confirmed' && (
+        {(order.status === 'confirmed' || isClosedStatus(order.status)) && (
           <section className="rounded-xl border border-slate-200 p-4">
             <div className="flex items-center gap-2">
               <Package size={15} className="text-slate-500" />

@@ -34,6 +34,22 @@ function Highlight({ text, query }) {
   )
 }
 
+// "· Jul 31" / "· Jul 31 – Aug 2" for the days a unit is committed. Availability
+// is per-day, so a job three weeks out shouldn't read as "gone right now".
+function bookedDates(unit) {
+  const r = (unit.reservations || [])[0]
+  if (!r?.from) return null
+  const label = (iso) => {
+    const [y, m, d] = String(iso).split('-').map(Number)
+    if (!y || !m || !d) return iso
+    return `${MONTHS[m - 1]} ${d}`
+  }
+  const to = r.to && r.to !== r.from ? ` – ${label(r.to)}` : ''
+  return `· ${label(r.from)}${to}`
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 const STATUS_STYLES = {
   available: { chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500', label: 'Available' },
   checked_out: { chip: 'bg-orange-50 text-orange-700', dot: 'bg-orange-500', label: 'Checked out' },
@@ -1046,7 +1062,14 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                     copy is kept, which IS editable via the pencil. */}
                 <td className="whitespace-nowrap px-3 py-2.5">
                   {unit.location !== 'Available' ? (
-                    <span className="text-slate-700">{unit.location}</span>
+                    <span className="text-slate-700">
+                      {unit.location}
+                      {/* WHEN it's committed. Gear is booked per day, so a job
+                          next week doesn't mean the copy is off the shelf now. */}
+                      {bookedDates(unit) && (
+                        <span className="ml-1 text-xs text-slate-400">{bookedDates(unit)}</span>
+                      )}
+                    </span>
                   ) : unit.placement ? (
                     <span title="Storage location — edit with the pencil" className="text-slate-700">
                       {unit.placement}

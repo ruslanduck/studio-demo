@@ -264,7 +264,8 @@ export async function getInventory() {
      brand, asset_type, placement, subcategory, purchase_date, replacement_price, day_rate,
      units (
        id, barcode, serial, ownership, sub_rental_vendor_id, placement, ${ARCHIVE_COLS},
-       set_units ( status, set:sets ( title, studio_id, status ) )
+       set_units ( status, reserved_from, reserved_to,
+                   set:sets ( id, title, date, studio_id, status ) )
      )`
   const withUnitPlacement = stripArchive(withArchive)
   const withVendor = withUnitPlacement.replace('sub_rental_vendor_id, placement,', 'sub_rental_vendor_id,')
@@ -307,6 +308,19 @@ export async function getInventory() {
     units: (item.units || []).map((u) => {
       const repairs = repairsByUnit[u.id] || []
       const openRepair = repairs.find((r) => !r.returnedAt)
+      // Every commitment this copy carries, WITH its dates. Availability is a
+      // question about a date range, not a single flag: one camera can be on
+      // today's shoot and still be free tomorrow (see lib/availability
+      // `isUnitFree` + `overlaps`).
+      const reservations = (u.set_units || []).filter(occupies).map((su) => ({
+        setId: su.set?.id ?? null,
+        setTitle: su.set?.title ?? null,
+        studioId: su.set?.studio_id ?? null,
+        // The order's working window; a set with no window falls back to its own
+        // shoot date, so a legacy row still blocks the right day.
+        from: su.reserved_from ?? su.set?.date ?? null,
+        to: su.reserved_to ?? su.reserved_from ?? su.set?.date ?? null,
+      }))
       const active = (u.set_units || []).find(occupies)
       let status = 'available'
       let location = 'Available'
@@ -324,7 +338,8 @@ export async function getInventory() {
         ownership: u.ownership,
         subRentalVendorId: u.sub_rental_vendor_id ?? null,
         status,
-        location, // derived: where it IS right now (job / repair / available)
+        location, // derived: the job it's committed to (or a repair)
+        reservations, // derived: WHEN it's committed, so other days stay free
         placement: u.placement ?? null, // stored: where it LIVES when it's in
         ...archiveFields(u), // written off, but still here for the history
         repairs,
@@ -1233,14 +1248,37 @@ export async function restoreOrder(id, setId = null, stamp = null) {
 // only at seed time: confirming an order writes these rows, moving it back to
 // hold clears them. Deleting the old rows fires the 'released' event trigger and
 // inserting fires 'reserved', so the audit log reads as a real release/re-take.
+// Closing a set: the gear came back. The rows are MARKED returned rather than
+// deleted — they are the unit's job history (getUnitHistory reads them), and
+// `occupies` already treats 'returned' as free, so the stock is released.
+export async function markSetReturned(setId) {
+  const { error } = await supabase
+    .from('set_units')
+    .update({ status: 'returned' })
+    .eq('set_id', setId)
+    .neq('status', 'returned')
+  if (error) throw error
+}
+
 export async function setReservationsForSet(setId, unitIds, { from = null, to = null } = {}) {
   const wanted = [...new Set(unitIds || [])]
   // No-op guard. Every delete+insert here fires the set_units trigger, so a
   // re-save that changes nothing would otherwise spray a released+reserved pair
   // per unit into the activity log (and churn the DB for nothing).
-  const { data: current } = await supabase.from('set_units').select('unit_id').eq('set_id', setId)
-  const held = new Set((current || []).map((r) => r.unit_id))
-  if (held.size === wanted.length && wanted.every((id) => held.has(id))) return wanted.length
+  //
+  // A RETURNED row is not a holding, so it can never satisfy the guard: after
+  // closing an order and re-opening it the unit ids are identical, and skipping
+  // the write would leave the gear marked back-on-the-shelf while the order says
+  // it's confirmed.
+  const { data: current } = await supabase
+    .from('set_units')
+    .select('unit_id, status')
+    .eq('set_id', setId)
+  const rowsNow = current || []
+  const held = new Set(rowsNow.map((r) => r.unit_id))
+  const allHolding = rowsNow.every((r) => r.status !== 'returned')
+  if (allHolding && held.size === wanted.length && wanted.every((id) => held.has(id)))
+    return wanted.length
 
   const { error: delErr } = await supabase.from('set_units').delete().eq('set_id', setId)
   if (delErr) throw delErr
