@@ -334,6 +334,9 @@ async function main() {
       starts_on: set?.date ?? orderedAt,
       ends_on: set?.date ?? orderedAt,
       po_number: o.po ?? null,
+      // Demo content: the crew types the Set by hand, and their job names end in
+      // that designation (…_OMSet1), so the seed reuses it.
+      set_label: String(o.setTitle ?? '').split('_').slice(-1)[0] || null,
       photographer_contact_id: set?.photographer ? contactId[set.photographer] ?? null : null,
     }).select('id').single()
     if (oErr) throw oErr

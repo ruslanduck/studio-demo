@@ -127,6 +127,8 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
     ['PO number', est.order.poNumber || '—'],
     ['Order ref', est.order.number || '—'],
     ['Studio', est.order.studioId ? studioLabel(est.order.studioId) : '—'],
+    // The crew pulling gear needs to know WHICH set of the day it's for.
+    ['Set', est.order.setLabel || '—'],
     [
       'Working dates',
       est.order.startsOn

@@ -20,6 +20,7 @@ import {
   Truck,
   Briefcase,
   PackageCheck,
+  Layers,
 } from 'lucide-react'
 import { useStore, notArchived } from '../store'
 import { useCan } from '../lib/useCan'
@@ -462,6 +463,12 @@ export default function Orders() {
                               .filter(Boolean)
                               .join(' · ')}
                           </span>
+                          {/* Which set of that job — several share a studio and day. */}
+                          {o.setLabel && (
+                            <span className="shrink-0 rounded bg-slate-100 px-1.5 text-[10px] font-medium text-slate-500">
+                              <Highlight text={o.setLabel} query={query} />
+                            </span>
+                          )}
                           {o.poNumber && sharedPo[o.poNumber] > 1 && (
                             <span
                               title={`${sharedPo[o.poNumber]} orders share ${o.poNumber} — same job`}
@@ -818,6 +825,9 @@ function OrderDetail({
           </Row>
           <Row icon={Building2} label="Studio">
             {order.studioId ? studioLabel(order.studioId) : '—'}
+          </Row>
+          <Row icon={Layers} label="Set">
+            {order.setLabel || <span className="text-slate-400">not named</span>}
           </Row>
           <Row icon={Camera} label="Photographer">
             {order.photographer ? (

@@ -95,6 +95,7 @@ export function buildEstimate(order, { inventory = [], kits = [], booking = null
       id: order?.id ?? null,
       jobName: order?.jobName ?? order?.setTitle ?? 'Untitled job',
       poNumber: order?.poNumber ?? null,
+      setLabel: order?.setLabel ?? null,
       number: order?.number ?? null,
       status: order?.status ?? 'hold',
       studioId: order?.studioId ?? null,

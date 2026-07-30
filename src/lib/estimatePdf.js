@@ -128,6 +128,7 @@ export function buildEstimatePdf(estimateOrOrder, context) {
     ['PO number', est.order.poNumber || '—'],
     ['Order ref', est.order.number || '—'],
     ['Studio', est.order.studioId ? studioLabel(est.order.studioId) : '—'],
+    ['Set', est.order.setLabel || '—'],
     [
       'Working dates',
       est.order.startsOn

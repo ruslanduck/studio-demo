@@ -61,6 +61,13 @@ export default function StudioCalendar() {
   const inventory = useStore((s) => s.inventory)
   const kits = useStore((s) => s.kits)
   const scenarios = useStore((s) => s.scenarios)
+  // Only for the chips' Set label — the shoots themselves come from `bookings`.
+  const orders = useStore((s) => s.orders)
+  // The order form's sub-rental lines need the vendor list. Missing this read is
+  // what white-screened the whole calendar view: the JSX below passed
+  // `companies={companies}` while nothing declared it, and neither `npm run
+  // build` nor the linter catches an undefined identifier inside JSX.
+  const companies = useStore((s) => s.companies)
   const setOrderLines = useStore((s) => s.setOrderLines)
   const openOrder = useStore((s) => s.openOrder)
   const peek = useStore((s) => s.peek)
@@ -75,8 +82,11 @@ export default function StudioCalendar() {
 
   const refDate = useMemo(() => parseISO(selectedDate), [selectedDate])
 
-  // All active bookings grouped by ISO date, sorted by time then studio.
+  // All active bookings grouped by ISO date, sorted by time then studio. Each
+  // chip also carries its order's hand-typed Set designation — with several
+  // shoots in one studio on one day, that's what tells them apart at a glance.
   const byDay = useMemo(() => {
+    const setLabelOf = new Map(orders.map((o) => [o.id, o.setLabel]))
     const map = new Map()
     for (const b of bookings) {
       if (b.status !== 'active') continue
@@ -84,7 +94,7 @@ export default function StudioCalendar() {
       // someone restores it (archiving its order takes it down with it).
       if (b.archivedAt) continue
       if (!map.has(b.date)) map.set(b.date, [])
-      map.get(b.date).push(b)
+      map.get(b.date).push({ ...b, setLabel: setLabelOf.get(b.orderId) || null })
     }
     for (const list of map.values()) {
       list.sort(
@@ -94,7 +104,7 @@ export default function StudioCalendar() {
       )
     }
     return map
-  }, [bookings])
+  }, [bookings, orders])
 
   const goToday = () => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))
   const goPrev = () =>
@@ -370,14 +380,17 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
                 // Job names follow the studio's convention
                 // (20260716_AT_MAIN_SepMM_Missy_OMSet1), which never fits a day
                 // cell — the full name is on hover.
-                title={`${b.title} · ${b.startTime}–${b.endTime}`}
+                title={[b.title, b.setLabel && `Set ${b.setLabel}`, `${b.startTime}–${b.endTime}`]
+                  .filter(Boolean)
+                  .join(' · ')}
                 className="cursor-pointer rounded-md px-1.5 py-1 shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
               >
                 <div className="truncate text-xs font-semibold leading-tight">
                   {b.title}
                 </div>
-                <div className="text-[10px] font-medium opacity-80">
+                <div className="truncate text-[10px] font-medium opacity-80">
                   {b.startTime}–{b.endTime}
+                  {b.setLabel && ` · ${b.setLabel}`}
                 </div>
               </div>
             ))}
@@ -491,7 +504,9 @@ function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek }) {
               onOpenEdit(b)
             }}
             style={chipStyle(studioColor(b.studioId))}
-            title={`${studioLabel(b.studioId)} · ${b.title}`}
+            title={[studioLabel(b.studioId), b.title, b.setLabel && `Set ${b.setLabel}`]
+              .filter(Boolean)
+              .join(' · ')}
             className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-[10px] leading-tight shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
           >
             <span className="font-bold">{b.studioId}</span>

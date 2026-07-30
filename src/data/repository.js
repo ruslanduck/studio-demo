@@ -1139,13 +1139,18 @@ export async function getOrders() {
   // Archived orders are still fetched — the list hides them, but a link, a PDF
   // or the archive screen must find them. Its own layer, like eq_updated_*.
   const withArchive = `${full}, ${ARCHIVE_COLS}`
+  // The hand-typed set designation gets its own layer too, so a database that
+  // hasn't run 20260809120000 keeps everything else instead of falling all the
+  // way back to the stub shape.
+  const withSetLabel = `${withArchive}, set_label`
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
      order_lines ( quantity, item:inventory_items ( id, name ) ),
      sets ( id, title, date )`
   const withoutKind = withKind.replace('kind, ', '')
 
-  let { data, error } = await supabase.from('orders').select(withArchive).order('ordered_at')
+  let { data, error } = await supabase.from('orders').select(withSetLabel).order('ordered_at')
+  if (error) ({ data, error } = await supabase.from('orders').select(withArchive).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(full).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(fullNoEq).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withKind).order('ordered_at'))
@@ -1170,6 +1175,7 @@ export async function getOrders() {
     startsOn: o.starts_on ?? null,
     endsOn: o.ends_on ?? null,
     poNumber: o.po_number ?? null,
+    setLabel: o.set_label ?? null,
     photographerId: o.photographer?.id ?? null,
     photographer: o.photographer?.full_name ?? null,
     createdBy: o.creator?.full_name ?? null,
@@ -1194,6 +1200,7 @@ function orderColumns(o) {
   if (o.endsOn !== undefined) row.ends_on = o.endsOn || null
   if (o.photographerId !== undefined) row.photographer_contact_id = o.photographerId || null
   if (o.poNumber !== undefined) row.po_number = o.poNumber?.trim() || null
+  if (o.setLabel !== undefined) row.set_label = o.setLabel?.trim() || null
   if (o.status !== undefined) row.status = o.status
   if (o.kind !== undefined) row.kind = o.kind
   if (o.companyId !== undefined) row.company_id = o.companyId || null

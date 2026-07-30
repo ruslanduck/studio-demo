@@ -31,6 +31,9 @@ function haystack(order) {
     order.poNumber,
     order.jobName,
     order.setTitle,
+    // The hand-typed set designation ("OMSet1") — searchable on its own, which is
+    // the point of pulling it out of the job name.
+    order.setLabel,
     order.photographer,
     order.number,
     order.startsOn,

@@ -283,6 +283,7 @@ function OrderPeek({ id }) {
               : `${order.startsOn} → ${order.endsOn}`}
           </Field>
           <Field label="Studio">{order.studioId ? studioLabel(order.studioId) : '—'}</Field>
+          <Field label="Set">{order.setLabel || '—'}</Field>
           <Field label="Photographer">
             {order.photographer ? (
               photographer ? (

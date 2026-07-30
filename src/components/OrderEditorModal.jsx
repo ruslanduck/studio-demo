@@ -36,6 +36,7 @@ import { applyScenarioList } from '../lib/scenarios'
 // outline said "generate automatic PO"; the last call overrode that.
 const blank = {
   jobName: '',
+  setLabel: '',
   studioId: '1',
   startsOn: '',
   endsOn: '',
@@ -161,6 +162,7 @@ export default function OrderEditorModal({
       order
         ? {
             jobName: order.jobName ?? '',
+            setLabel: order.setLabel ?? '',
             studioId: order.studioId ?? '1',
             startsOn: order.startsOn ?? '',
             endsOn: order.endsOn ?? order.startsOn ?? '',
@@ -409,7 +411,12 @@ export default function OrderEditorModal({
       )
 
     setBusy(true)
-    const payload = { ...form, jobName: form.jobName.trim(), endsOn: form.endsOn || form.startsOn }
+    const payload = {
+      ...form,
+      jobName: form.jobName.trim(),
+      setLabel: form.setLabel.trim(),
+      endsOn: form.endsOn || form.startsOn,
+    }
     // The gear chosen above goes in with the order, in one action.
     const res = isEdit
       ? await onSave(order.id, payload)
@@ -438,16 +445,31 @@ export default function OrderEditorModal({
             </div>
           )}
 
-          <div>
-            <label className={label}>Job name — what are we shooting?</label>
-            <input
-              autoFocus
-              type="text"
-              value={form.jobName}
-              onChange={(e) => set({ jobName: e.target.value })}
-              placeholder="e.g. Loft e-commerce on figure"
-              className={field}
-            />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <label className={label}>Job name — what are we shooting?</label>
+              <input
+                autoFocus
+                type="text"
+                value={form.jobName}
+                onChange={(e) => set({ jobName: e.target.value })}
+                placeholder="e.g. Loft e-commerce on figure"
+                className={field}
+              />
+            </div>
+            {/* The crew's own designation for the set — typed, never generated,
+                like the PO. A studio runs several sets a day and this is what
+                tells them apart on the calendar and on the pull sheet. */}
+            <div>
+              <label className={label}>Set</label>
+              <input
+                type="text"
+                value={form.setLabel}
+                onChange={(e) => set({ setLabel: e.target.value })}
+                placeholder="e.g. OMSet1"
+                className={field}
+              />
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

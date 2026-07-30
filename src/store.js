@@ -278,6 +278,10 @@ function buildSeedData() {
       id: `order-${i}`,
       number: o.number,
       poNumber: o.po ?? null,
+      // DEMO CONTENT ONLY. The field is hand-typed by the crew; the studio's job
+      // names happen to end in their set designation (…_OMSet1), so the seed
+      // takes it from there instead of repeating it in every seed row.
+      setLabel: setLabelFromJobName(o.setTitle),
       status: o.status,
       kind: o.kind,
       orderedAt,
@@ -341,6 +345,14 @@ function buildSeedData() {
     companyTypes,
     orders,
   }
+}
+
+// The trailing segment of a job name in the studio's convention
+// (20260716_AT_MAIN_SepMM_Missy_OMSet1 → OMSet1). Seed use only: a real order's
+// Set is whatever the crew typed into the field.
+function setLabelFromJobName(title) {
+  const parts = String(title || '').split('_')
+  return parts.length > 1 ? parts[parts.length - 1] : null
 }
 
 function slugify(name) {
@@ -444,6 +456,7 @@ function resolveOrder(o, companies) {
     id: o.id,
     number: trimmed(o.number),
     poNumber: trimmed(o.poNumber),
+    setLabel: trimmed(o.setLabel),
     status: o.status || 'hold',
     kind: o.kind || 'client',
     orderedAt: startsOn,
