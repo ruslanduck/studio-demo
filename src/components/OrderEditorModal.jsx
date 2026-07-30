@@ -344,17 +344,93 @@ export default function OrderEditorModal({
                 </select>
               )}
 
+              {/* --- the ways to ADD stay at the top: preset, kit, search ---
+                  Everything you've added stacks up underneath, so the controls
+                  never move as the list grows. */}
+              {liveKits.length > 0 && (
+                <div className="relative mb-2">
+                  <Layers
+                    size={15}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-violet-500"
+                  />
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const kit = liveKits.find((k) => k.id === e.target.value)
+                      if (kit) setStaging(kit)
+                      e.target.value = ''
+                    }}
+                    className={[field, 'bg-white pl-9'].join(' ')}
+                  >
+                    <option value="">Add a kit…</option>
+                    {liveKits.map((k) => (
+                      <option key={k.id} value={k.id}>
+                        {k.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="relative">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  type="text"
+                  value={invSearch}
+                  onChange={(e) => setInvSearch(e.target.value)}
+                  placeholder="Search inventory to add…"
+                  className={[field, 'bg-white pl-9'].join(' ')}
+                />
+                {searchResults.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {searchResults.map((item) => {
+                      const freeNow = freeFor(item)
+                      const none = (selected[item.id] ?? 0) >= freeNow
+                      return (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              addItem(item.id)
+                              setInvSearch('')
+                            }}
+                            title={
+                              none ? 'Nothing free — adds it anyway, the shortfall is flagged' : undefined
+                            }
+                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                          >
+                            <span className="min-w-0 truncate text-slate-700">{item.name}</span>
+                            <span
+                              className={[
+                                'shrink-0 text-xs',
+                                none ? 'font-medium text-amber-600' : 'text-slate-400',
+                              ].join(' ')}
+                            >
+                              {freeNow} free{none ? ' · add anyway' : ''}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+
               {applied && (
-                <p className="mb-2 text-[11px] text-slate-500">
+                <p className="mt-2 text-[11px] text-slate-500">
                   Applied <span className="font-medium text-slate-700">{applied.name}</span>
                   {applied.warnings?.length ? ` · ${applied.warnings.length} line(s) short` : ''}
                   {applied.notes?.length ? ` · ${applied.notes.length} to take from stock` : ''}
                 </p>
               )}
 
+              {/* --- what's on the order, newest additions at the bottom --- */}
               {/* Staged kits, grouped */}
               {stagedUnits.length > 0 && (
-                <ul className="mb-2 space-y-1">
+                <ul className="mt-2 space-y-1">
                   {[...new Set(stagedUnits.map((u) => u.kitName))].map((kitName) => (
                     <li
                       key={kitName}
@@ -433,78 +509,6 @@ export default function OrderEditorModal({
                     )
                   })}
                 </ul>
-              )}
-
-              <div className="relative">
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  type="text"
-                  value={invSearch}
-                  onChange={(e) => setInvSearch(e.target.value)}
-                  placeholder="Search inventory to add…"
-                  className={[field, 'bg-white pl-9'].join(' ')}
-                />
-                {searchResults.length > 0 && (
-                  <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                    {searchResults.map((item) => {
-                      const freeNow = freeFor(item)
-                      const none = (selected[item.id] ?? 0) >= freeNow
-                      return (
-                        <li key={item.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              addItem(item.id)
-                              setInvSearch('')
-                            }}
-                            title={
-                              none ? 'Nothing free — adds it anyway, the shortfall is flagged' : undefined
-                            }
-                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
-                          >
-                            <span className="min-w-0 truncate text-slate-700">{item.name}</span>
-                            <span
-                              className={[
-                                'shrink-0 text-xs',
-                                none ? 'font-medium text-amber-600' : 'text-slate-400',
-                              ].join(' ')}
-                            >
-                              {freeNow} free{none ? ' · add anyway' : ''}
-                            </span>
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </div>
-
-              {liveKits.length > 0 && (
-                <div className="relative mt-2">
-                  <Layers
-                    size={15}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-violet-500"
-                  />
-                  <select
-                    value=""
-                    onChange={(e) => {
-                      const kit = liveKits.find((k) => k.id === e.target.value)
-                      if (kit) setStaging(kit)
-                      e.target.value = ''
-                    }}
-                    className={[field, 'bg-white pl-9'].join(' ')}
-                  >
-                    <option value="">Add a kit…</option>
-                    {liveKits.map((k) => (
-                      <option key={k.id} value={k.id}>
-                        {k.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               )}
 
               <p className="mt-2 text-[11px] text-slate-400">
