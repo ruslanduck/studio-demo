@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ClipboardCheck,
+  ClipboardList,
   Check,
   AlertTriangle,
   Info,
@@ -42,6 +43,73 @@ const blank = {
   status: 'hold',
 }
 
+// One staged kit, as a row. Rendered both inside a preset's frame and on its own,
+// so it lives here rather than being written twice.
+function KitRow({ kitName, units, onRemove }) {
+  return (
+    <li className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-violet-200">
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <Layers size={13} className="shrink-0 text-violet-500" />
+        <span className="truncate font-medium text-slate-700">{kitName}</span>
+        <span className="shrink-0 text-slate-400">
+          {units.filter((u) => u.kitName === kitName).length} unit(s)
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        title="Remove this kit"
+        className="shrink-0 rounded p-0.5 text-slate-400 hover:text-rose-500"
+      >
+        <X size={13} />
+      </button>
+    </li>
+  )
+}
+
+// One a-la-carte line: quantity steppers and what's actually free behind it.
+// Over-capacity is shown, never refused (same rule as the booking modal).
+function ItemLine({ item, itemId, qty, free, onLess, onMore, onRemove }) {
+  const over = item?.kind === 'barcoded' ? Math.max(0, qty - free) : 0
+  return (
+    <li className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-slate-200">
+      <span className="min-w-0 flex-1 truncate text-slate-700">{item?.name ?? itemId}</span>
+      <span className="inline-flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onLess}
+          className="grid h-5 w-5 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-slate-100"
+        >
+          <Minus size={11} />
+        </button>
+        <span className="w-5 text-center font-medium text-slate-800">{qty}</span>
+        <button
+          type="button"
+          onClick={onMore}
+          className="grid h-5 w-5 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-slate-100"
+        >
+          <Plus size={11} />
+        </button>
+      </span>
+      <span
+        className={[
+          'w-24 shrink-0 text-right',
+          over > 0 ? 'font-medium text-amber-700' : 'text-slate-400',
+        ].join(' ')}
+      >
+        {over > 0 ? `/${free} free · ${over} short` : `/${free} free`}
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="shrink-0 rounded p-0.5 text-slate-400 hover:text-rose-500"
+      >
+        <X size={13} />
+      </button>
+    </li>
+  )
+}
+
 export default function OrderEditorModal({
   open,
   order,
@@ -76,6 +144,9 @@ export default function OrderEditorModal({
   const [staging, setStaging] = useState(null) // kit being staged, or null
   const [invSearch, setInvSearch] = useState('')
   const [applied, setApplied] = useState(null) // last scenario list applied
+  // itemId -> scenario list name, for the lines a preset brought in. Provenance
+  // only: the quantities live in `selected` like any other line.
+  const [presetOf, setPresetOf] = useState({})
 
   useEffect(() => {
     if (!open) return
@@ -101,6 +172,7 @@ export default function OrderEditorModal({
     setStaging(null)
     setInvSearch('')
     setApplied(null)
+    setPresetOf({})
   }, [open, order, prefill])
 
   const itemsById = useMemo(
@@ -132,11 +204,34 @@ export default function OrderEditorModal({
       }
       return { ...s, [itemId]: qty }
     })
+  // Dropping a line also forgets which preset it came from, so the group
+  // heading disappears once its last line is gone.
+  const removeItem = (itemId) => {
+    setQty(itemId, 0)
+    setPresetOf((p) => {
+      const { [itemId]: _drop, ...rest } = p
+      return rest
+    })
+  }
 
   function applyList(list) {
     const res = applyScenarioList({ list, inventory, kits: liveKits, selected, stagedUnits })
+    // Remember WHAT this preset brought in, so those lines can be shown grouped
+    // under its name instead of dissolving into the flat list. Only the lines it
+    // actually added (or raised) are tagged — an item you had already picked by
+    // hand keeps its own place.
+    const addedItems = Object.entries(res.selected)
+      .filter(([id, qty]) => qty > (selected[id] ?? 0))
+      .map(([id]) => id)
+    setPresetOf((p) => ({
+      ...p,
+      ...Object.fromEntries(addedItems.map((id) => [id, list.name])),
+    }))
+    const had = new Set(stagedUnits.map((u) => u.unitId))
     setSelected(res.selected)
-    setStagedUnits(res.stagedUnits)
+    setStagedUnits(
+      res.stagedUnits.map((u) => (had.has(u.unitId) ? u : { ...u, listName: list.name })),
+    )
     setApplied({ name: list.name, ...res })
   }
 
@@ -181,6 +276,48 @@ export default function OrderEditorModal({
     ],
     [selected, stagedUnits, itemsById],
   )
+
+  // What's on the order, grouped by where it came from: one group per applied
+  // scenario list (framed and labelled with the list's name), then whatever was
+  // picked by hand. Kits carry `listName` when a preset staged them.
+  const grouped = useMemo(() => {
+    const kitNamesOf = (units) => [...new Set(units.map((u) => u.kitName))]
+    const names = [
+      ...new Set([
+        ...Object.values(presetOf),
+        ...stagedUnits.map((u) => u.listName).filter(Boolean),
+      ]),
+    ]
+    const presets = names
+      .map((name) => ({
+        name,
+        kits: kitNamesOf(stagedUnits.filter((u) => u.listName === name)),
+        items: Object.keys(selected).filter((id) => presetOf[id] === name && selected[id] > 0),
+      }))
+      .filter((g) => g.kits.length || g.items.length)
+    return {
+      presets,
+      looseKits: kitNamesOf(stagedUnits.filter((u) => !u.listName)),
+      looseItems: Object.keys(selected).filter((id) => !presetOf[id] && selected[id] > 0),
+    }
+  }, [selected, stagedUnits, presetOf])
+
+  // Drop a whole preset group in one go — it went on as a unit, it comes off as one.
+  function removePreset(name) {
+    setStagedUnits((prev) => prev.filter((u) => u.listName !== name))
+    const ids = Object.keys(presetOf).filter((id) => presetOf[id] === name)
+    setSelected((s) => {
+      const next = { ...s }
+      for (const id of ids) delete next[id]
+      return next
+    })
+    setPresetOf((p) => {
+      const next = { ...p }
+      for (const id of ids) delete next[id]
+      return next
+    })
+    setApplied((a) => (a?.name === name ? null : a))
+  }
 
   const set = (changes) => setForm((f) => ({ ...f, ...changes }))
 
@@ -419,95 +556,93 @@ export default function OrderEditorModal({
                 )}
               </div>
 
-              {applied && (
-                <p className="mt-2 text-[11px] text-slate-500">
-                  Applied <span className="font-medium text-slate-700">{applied.name}</span>
-                  {applied.warnings?.length ? ` · ${applied.warnings.length} line(s) short` : ''}
-                  {applied.notes?.length ? ` · ${applied.notes.length} to take from stock` : ''}
-                </p>
-              )}
-
-              {/* --- what's on the order, newest additions at the bottom --- */}
-              {/* Staged kits, grouped */}
-              {stagedUnits.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {[...new Set(stagedUnits.map((u) => u.kitName))].map((kitName) => (
-                    <li
-                      key={kitName}
-                      className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-violet-200"
-                    >
-                      <span className="inline-flex min-w-0 items-center gap-1.5">
-                        <Layers size={13} className="shrink-0 text-violet-500" />
-                        <span className="truncate font-medium text-slate-700">{kitName}</span>
-                        <span className="shrink-0 text-slate-400">
-                          {stagedUnits.filter((u) => u.kitName === kitName).length} unit(s)
-                        </span>
+              {/* --- what's on the order, newest additions at the bottom ---
+                  Anything a preset brought in stays framed under that list's
+                  name, so it's obvious which lines came as a set. */}
+              {grouped.presets.map((group) => (
+                <div
+                  key={group.name}
+                  className="mt-2 rounded-lg border border-violet-300 bg-violet-50/50 p-2"
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="inline-flex min-w-0 items-center gap-1.5 text-[11px]">
+                      <ClipboardList size={12} className="shrink-0 text-violet-500" />
+                      <span className="truncate font-semibold uppercase tracking-wide text-violet-700">
+                        {group.name}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() =>
+                      <span className="shrink-0 text-slate-400">preset</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removePreset(group.name)}
+                      title="Remove everything this preset added"
+                      className="shrink-0 rounded p-0.5 text-slate-400 hover:text-rose-500"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                  <ul className="space-y-1">
+                    {group.kits.map((kitName) => (
+                      <KitRow
+                        key={kitName}
+                        kitName={kitName}
+                        units={stagedUnits}
+                        onRemove={() =>
                           setStagedUnits((prev) => prev.filter((u) => u.kitName !== kitName))
                         }
-                        title="Remove this kit"
-                        className="shrink-0 rounded p-0.5 text-slate-400 hover:text-rose-500"
-                      >
-                        <X size={13} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* A-la-carte lines */}
-              {Object.keys(selected).length > 0 && (
-                <ul className="mb-2 space-y-1">
-                  {Object.entries(selected).map(([itemId, qty]) => {
-                    const item = itemsById[itemId]
-                    const freeNow = item ? freeFor(item) : 0
-                    const over = item?.kind === 'barcoded' ? Math.max(0, qty - freeNow) : 0
-                    return (
-                      <li
+                      />
+                    ))}
+                    {group.items.map((itemId) => (
+                      <ItemLine
                         key={itemId}
-                        className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-slate-200"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-slate-700">
-                          {item?.name ?? itemId}
-                        </span>
-                        <span className="inline-flex shrink-0 items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setQty(itemId, qty - 1)}
-                            className="grid h-5 w-5 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-slate-100"
-                          >
-                            <Minus size={11} />
-                          </button>
-                          <span className="w-5 text-center font-medium text-slate-800">{qty}</span>
-                          <button
-                            type="button"
-                            onClick={() => addItem(itemId)}
-                            className="grid h-5 w-5 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-slate-100"
-                          >
-                            <Plus size={11} />
-                          </button>
-                        </span>
-                        <span
-                          className={[
-                            'w-24 shrink-0 text-right',
-                            over > 0 ? 'font-medium text-amber-700' : 'text-slate-400',
-                          ].join(' ')}
-                        >
-                          {over > 0 ? `/${freeNow} free · ${over} short` : `/${freeNow} free`}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setQty(itemId, 0)}
-                          className="shrink-0 rounded p-0.5 text-slate-400 hover:text-rose-500"
-                        >
-                          <X size={13} />
-                        </button>
-                      </li>
-                    )
-                  })}
+                        item={itemsById[itemId]}
+                        itemId={itemId}
+                        qty={selected[itemId]}
+                        free={itemsById[itemId] ? freeFor(itemsById[itemId]) : 0}
+                        onLess={() => setQty(itemId, selected[itemId] - 1)}
+                        onMore={() => addItem(itemId)}
+                        onRemove={() => removeItem(itemId)}
+                      />
+                    ))}
+                  </ul>
+                  {applied?.name === group.name &&
+                    (applied.warnings?.length > 0 || applied.notes?.length > 0) && (
+                      <p className="mt-1.5 text-[11px] text-amber-700">
+                        {applied.warnings?.length ? `${applied.warnings.length} line(s) short` : ''}
+                        {applied.warnings?.length && applied.notes?.length ? ' · ' : ''}
+                        {applied.notes?.length
+                          ? `${applied.notes.length} to take from stock`
+                          : ''}
+                      </p>
+                    )}
+                </div>
+              ))}
+
+              {/* Picked by hand: kits staged directly, then loose lines. */}
+              {(grouped.looseKits.length > 0 || grouped.looseItems.length > 0) && (
+                <ul className="mt-2 space-y-1">
+                  {grouped.looseKits.map((kitName) => (
+                    <KitRow
+                      key={kitName}
+                      kitName={kitName}
+                      units={stagedUnits}
+                      onRemove={() =>
+                        setStagedUnits((prev) => prev.filter((u) => u.kitName !== kitName))
+                      }
+                    />
+                  ))}
+                  {grouped.looseItems.map((itemId) => (
+                    <ItemLine
+                      key={itemId}
+                      item={itemsById[itemId]}
+                      itemId={itemId}
+                      qty={selected[itemId]}
+                      free={itemsById[itemId] ? freeFor(itemsById[itemId]) : 0}
+                      onLess={() => setQty(itemId, selected[itemId] - 1)}
+                      onMore={() => addItem(itemId)}
+                      onRemove={() => removeItem(itemId)}
+                    />
+                  ))}
                 </ul>
               )}
 
