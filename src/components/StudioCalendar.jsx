@@ -225,6 +225,7 @@ export default function StudioCalendar() {
         inventory={inventory}
         kits={kits}
         scenarios={scenarios}
+        companies={companies}
         onClose={() => setOrderEditor({ open: false, prefill: null })}
         onCreate={async (payload, equipment = []) => {
           const res = await createOrder(payload)

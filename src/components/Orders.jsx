@@ -548,6 +548,7 @@ export default function Orders() {
         inventory={inventory}
         kits={kits}
         scenarios={scenarios}
+        companies={liveCompanies}
         onClose={() => setEditor({ open: false, order: null })}
         onCreate={async (payload, equipment = []) => {
           const res = await createOrder(payload)

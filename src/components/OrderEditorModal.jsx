@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ClipboardCheck,
   ClipboardList,
+  Truck,
   Check,
   AlertTriangle,
   Info,
@@ -119,6 +120,7 @@ export default function OrderEditorModal({
   inventory = [],
   kits = [],
   scenarios = [],
+  companies = [],
   onClose,
   onCreate,
   onSave,
@@ -147,6 +149,11 @@ export default function OrderEditorModal({
   // itemId -> scenario list name, for the lines a preset brought in. Provenance
   // only: the quantities live in `selected` like any other line.
   const [presetOf, setPresetOf] = useState({})
+  // Sub-rental lines are SEPARATE positions: gear coming in from a vendor is not
+  // our stock, so it consumes no availability and carries its own vendor.
+  const [subRentals, setSubRentals] = useState([]) // [{ itemId, quantity, vendorId }]
+  // The zero-availability question: { itemId, name, free } while it's on screen.
+  const [blocked, setBlocked] = useState(null)
 
   useEffect(() => {
     if (!open) return
@@ -173,6 +180,8 @@ export default function OrderEditorModal({
     setInvSearch('')
     setApplied(null)
     setPresetOf({})
+    setSubRentals([])
+    setBlocked(null)
   }, [open, order, prefill])
 
   const itemsById = useMemo(
@@ -181,6 +190,11 @@ export default function OrderEditorModal({
   )
   const liveKits = useMemo(() => kits.filter(notArchived), [kits])
   const liveScenarios = useMemo(() => scenarios.filter(notArchived), [scenarios])
+  // Only companies we actually rent from can be a sub-rental vendor (4.5).
+  const vendors = useMemo(
+    () => companies.filter((c) => notArchived(c) && (c.kind === 'vendor' || c.kind === 'both')),
+    [companies],
+  )
   const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
 
   // Shared availability rule (5.6) — the same answer kits and lists get.
@@ -195,7 +209,41 @@ export default function OrderEditorModal({
   // Adding is never capped by what's free: the crew has to be able to write the
   // job down before the gear is back. The shortfall is shown instead (same rule
   // as the booking modal and the full picker).
-  const addItem = (itemId) => setSelected((s) => ({ ...s, [itemId]: (s[itemId] ?? 0) + 1 }))
+  // Adding one more IN-HOUSE piece. When nothing free is left behind it, the
+  // question is asked instead of silently going over: raise it as a sub-rental,
+  // take it over capacity anyway, or pick something else. `force` is the
+  // "anyway" answer — over capacity is allowed, it just has to be visible.
+  const addItem = (itemId, { force = false } = {}) => {
+    const item = itemsById[itemId]
+    if (!force && item?.kind === 'barcoded') {
+      const free = freeFor(item)
+      if ((selected[itemId] ?? 0) + 1 > free) {
+        setBlocked({ itemId, name: item.name, free })
+        return
+      }
+    }
+    setBlocked(null)
+    setSelected((s) => ({ ...s, [itemId]: (s[itemId] ?? 0) + 1 }))
+  }
+
+  // "Add as sub-rental" — a separate line, vendor chosen on it, reserving none
+  // of our stock. Adding the same item again bumps that line's quantity.
+  const addSubRental = (itemId) => {
+    setBlocked(null)
+    setSubRentals((prev) => {
+      const at = prev.findIndex((l) => l.itemId === itemId)
+      if (at === -1) return [...prev, { itemId, quantity: 1, vendorId: null }]
+      return prev.map((l, i) => (i === at ? { ...l, quantity: l.quantity + 1 } : l))
+    })
+  }
+  const setSubQty = (itemId, qty) =>
+    setSubRentals((prev) =>
+      qty <= 0
+        ? prev.filter((l) => l.itemId !== itemId)
+        : prev.map((l) => (l.itemId === itemId ? { ...l, quantity: qty } : l)),
+    )
+  const setSubVendor = (itemId, vendorId) =>
+    setSubRentals((prev) => prev.map((l) => (l.itemId === itemId ? { ...l, vendorId } : l)))
   const setQty = (itemId, qty) =>
     setSelected((s) => {
       if (qty <= 0) {
@@ -235,7 +283,10 @@ export default function OrderEditorModal({
     setApplied({ name: list.name, ...res })
   }
 
-  const pieces = Object.values(selected).reduce((n, q) => n + q, 0) + stagedUnits.length
+  const pieces =
+    Object.values(selected).reduce((n, q) => n + q, 0) +
+    stagedUnits.length +
+    subRentals.reduce((n, l) => n + l.quantity, 0)
 
   const shortfall = useMemo(() => {
     let short = 0
@@ -273,8 +324,18 @@ export default function OrderEditorModal({
           vendorId: null,
           dayRate: itemsById[itemId]?.dayRate ?? null,
         })),
+      // Vendor gear: its own lines, so the pull sheet and the estimate show who
+      // it came from and it never counts against our stock.
+      ...subRentals.map((l) => ({
+        itemId: l.itemId,
+        itemName: itemsById[l.itemId]?.name ?? null,
+        quantity: l.quantity,
+        source: 'sub_rental',
+        vendorId: l.vendorId,
+        dayRate: itemsById[l.itemId]?.dayRate ?? null,
+      })),
     ],
-    [selected, stagedUnits, itemsById],
+    [selected, stagedUnits, subRentals, itemsById],
   )
 
   // What's on the order, grouped by where it came from: one group per applied
@@ -332,6 +393,13 @@ export default function OrderEditorModal({
     if (!form.jobName.trim()) return setError('Give the job a name — what are we shooting?')
     if (!form.startsOn) return setError('Pick the first working date.')
     if (endInvalid) return setError('The last working date is before the first one.')
+    // A sub-rental line without a vendor is legal in the DB (a half-picked row
+    // shouldn't be an error) but useless on a pull sheet, so it's blocked here.
+    const noVendor = subRentals.find((l) => !l.vendorId)
+    if (noVendor)
+      return setError(
+        `Pick the vendor for the sub-rented ${itemsById[noVendor.itemId]?.name ?? 'item'}.`,
+      )
 
     setBusy(true)
     const payload = { ...form, jobName: form.jobName.trim(), endsOn: form.endsOn || form.startsOn }
@@ -456,10 +524,55 @@ export default function OrderEditorModal({
                 <span className="text-xs text-slate-500">
                   {pieces === 0 ? 'nothing yet' : `${pieces} piece${pieces === 1 ? '' : 's'}`}
                   {shortfall > 0 && (
-                    <span className="ml-1 font-medium text-amber-700">· {shortfall} short</span>
+                    <span className="ml-1 font-medium text-amber-700">
+                      · {shortfall} over capacity
+                    </span>
+                  )}
+                  {subRentals.length > 0 && (
+                    <span className="ml-1 font-medium text-indigo-600">
+                      · {subRentals.length} sub-rental
+                    </span>
                   )}
                 </span>
               </div>
+
+              {/* Nothing free left behind it — ask instead of going over quietly.
+                  Same three answers as the full picker (5.6). */}
+              {blocked && (
+                <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5">
+                  <p className="flex items-start gap-1.5 text-xs text-amber-900">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                    <span>
+                      <strong>{blocked.name}</strong> has {blocked.free} available for these dates.
+                      Raise it as a sub-rental, or put it on anyway and carry the shortfall.
+                    </span>
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => addSubRental(blocked.itemId)}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-indigo-700"
+                    >
+                      <Truck size={12} />
+                      Add as sub-rental
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => addItem(blocked.itemId, { force: true })}
+                      className="rounded-md border border-amber-400 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 transition hover:bg-amber-100"
+                    >
+                      Add anyway
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBlocked(null)}
+                      className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100"
+                    >
+                      Choose another
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {liveScenarios.length > 0 && (
                 <select
@@ -535,7 +648,9 @@ export default function OrderEditorModal({
                               setInvSearch('')
                             }}
                             title={
-                              none ? 'Nothing free — adds it anyway, the shortfall is flagged' : undefined
+                              none
+                                ? 'Nothing free — you’ll be asked: sub-rental or over capacity'
+                                : undefined
                             }
                             className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
                           >
@@ -546,7 +661,7 @@ export default function OrderEditorModal({
                                 none ? 'font-medium text-amber-600' : 'text-slate-400',
                               ].join(' ')}
                             >
-                              {freeNow} free{none ? ' · add anyway' : ''}
+                              {freeNow} free{none ? ' · ask' : ''}
                             </span>
                           </button>
                         </li>
@@ -646,9 +761,75 @@ export default function OrderEditorModal({
                 </ul>
               )}
 
-              <p className="mt-2 text-[11px] text-slate-400">
-                Sub-rental and vendors are set afterwards under “Edit equipment” on the order.
-              </p>
+              {/* Vendor gear, framed like a preset group: these are separate
+                  positions and each one needs a vendor before saving. */}
+              {subRentals.length > 0 && (
+                <div className="mt-2 rounded-lg border border-indigo-300 bg-indigo-50/50 p-2">
+                  <div className="mb-1.5 inline-flex items-center gap-1.5 text-[11px]">
+                    <Truck size={12} className="shrink-0 text-indigo-500" />
+                    <span className="font-semibold uppercase tracking-wide text-indigo-700">
+                      Sub-rental
+                    </span>
+                    <span className="text-slate-400">brought in from a vendor</span>
+                  </div>
+                  <ul className="space-y-1">
+                    {subRentals.map((line) => (
+                      <li
+                        key={line.itemId}
+                        className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-indigo-200"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-slate-700">
+                          {itemsById[line.itemId]?.name ?? line.itemId}
+                        </span>
+                        <span className="inline-flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSubQty(line.itemId, line.quantity - 1)}
+                            className="grid h-5 w-5 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-slate-100"
+                          >
+                            <Minus size={11} />
+                          </button>
+                          <span className="w-5 text-center font-medium text-slate-800">
+                            {line.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => addSubRental(line.itemId)}
+                            className="grid h-5 w-5 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-slate-100"
+                          >
+                            <Plus size={11} />
+                          </button>
+                        </span>
+                        <select
+                          value={line.vendorId ?? ''}
+                          onChange={(e) => setSubVendor(line.itemId, e.target.value || null)}
+                          title="Which company we rent this from"
+                          className={[
+                            'max-w-[11rem] shrink-0 rounded-md border px-1.5 py-1 text-xs outline-none transition focus:ring-2 focus:ring-violet-100',
+                            line.vendorId
+                              ? 'border-slate-300 text-slate-700'
+                              : 'border-amber-300 text-amber-700',
+                          ].join(' ')}
+                        >
+                          <option value="">pick a vendor…</option>
+                          {vendors.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setSubQty(line.itemId, 0)}
+                          className="shrink-0 rounded p-0.5 text-slate-400 hover:text-rose-500"
+                        >
+                          <X size={13} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
