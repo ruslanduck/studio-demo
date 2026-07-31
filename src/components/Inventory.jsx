@@ -14,6 +14,7 @@ import ScenarioEditorModal from './ScenarioEditorModal'
 import UnitEditorModal from './UnitEditorModal'
 import StockModal from './StockModal'
 import ActivityList from './ActivityList'
+import ItemAvailability from './ItemAvailability'
 import { useActivity } from '../lib/useActivity'
 
 // Render `text` with the first occurrence of `query` (already lowercased) wrapped
@@ -1186,6 +1187,11 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
           </tbody>
         </table>
 
+        {/* Which days this item is already booked, and by whom. Above Activity
+            and below the table: the table is what the crew opens the item for,
+            the calendar is what they check before promising a date. */}
+        <ItemAvailability item={item} />
+
         {/* Who changed what on this item — inside the SAME scroll container as
             the table, so it scrolls with it instead of fighting flex-1. */}
         <ItemActivity item={item} />
@@ -1264,7 +1270,8 @@ function NonBarcodedBody({ item, onShowWorkHistory }) {
         </div>
         <p className="max-w-xs text-sm text-slate-500">
           Non-barcoded — counted by quantity, no per-unit tracking. Stock in and out is recorded with
-          who and when; usage is aggregated across jobs.
+          who and when; usage is aggregated across jobs. There&apos;s no day-by-day availability
+          calendar for counted stock: nothing is reserved copy by copy, so a job takes from the pile.
         </p>
       </div>
 
