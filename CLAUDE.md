@@ -752,6 +752,28 @@
 > the same `getInventory` embed (`set_units → sets`) shaped by hand and fed to the SAME pure function returned
 > 2 / 1 / 5 booked for 27 / 28 / 30 Jul against prod's real rows, and set → order → `eq_updated_by` resolved to
 > real names — the browser session had expired and passwords are not something I type.
+> **POLISH — calendars turn pages instead of blinking.** Every grid swapped in one frame, which reads as a
+> flicker and says nothing about which way you went. `src/lib/useCalendarFlip.js` takes the page's token (a
+> sortable string: `'2026-08'`, `'week:2026-07-27'`) and returns the CSS class for the incoming page — the
+> caller also sets `key={token}` on the same element so React mounts a fresh node and the animation replays.
+> Direction comes from comparing the new token with the previous one in a REF written during render (the
+> "derive from the previous value" case; state here would cost an extra render per turn). Animations live in
+> `index.css` **outside** any `@layer` so they can't be out-cascaded: `cal-flip-fwd`/`cal-flip-back` slide
+> 1.5rem in from the side you're heading towards + fade, 200ms ease-out (fast on purpose — this sits under
+> repeated ‹ › clicks), and `cal-fade` lifts 0.25rem for a same-page refresh. A
+> `@media (prefers-reduced-motion: reduce)` block turns all three off.
+> Applied to ALL FOUR grids: the studio WEEK view, the studio MONTH view (the mode toggle counts as a turn —
+> the key carries `month:`/`week:`), the item AVAILABILITY month plus a fade on its day panel, and the
+> `DateField` popover (used by every date input in the app).
+> Fixed while here: `ItemAvailability`'s `stepMonth` read `monthAnchor` from the render closure, so two clicks
+> in one tick stepped once — now a functional `setMonthAnchor((cur) => …)` (July → September on a double click).
+> Verified in the browser by measuring, not eyeballing: on the frame after a ‹ / › click the grid reports
+> `cal-flip-in-right`/`-in-left` **running** with `opacity: 0` and `matrix(1,0,0,1,24,0)` → settling to opacity
+> 1 / no transform; direction correct in both directions in all four grids (including "Today" jumping backwards
+> from September → `cal-flip-back`); the reduced-motion rule found in `document.styleSheets`; 0 console errors.
+> ⚠️ A screenshot is useless for this — the capture lands after the animation settles. Temporarily forcing
+> `animation-duration: 8s` and reading `getAnimations()[0]` + `getComputedStyle` on the next `requestAnimationFrame`
+> is what actually proves it (and the class read IMMEDIATELY after a click is stale — React hasn't flushed).
 > Next in #6: the scanning page (scan-out/in log with who+time — closing an order is now a manual action;
 > auto-closing once every line is signed back in is the remaining piece).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).

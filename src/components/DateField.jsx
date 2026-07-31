@@ -14,6 +14,7 @@ import {
   isSameDay,
   isSameMonth,
 } from 'date-fns'
+import { useCalendarFlip } from '../lib/useCalendarFlip'
 
 // English, locale-proof date field. The native <input type="date"> renders its
 // format in the browser's locale (e.g. "дд.мм.гггг" on a Russian browser),
@@ -101,6 +102,9 @@ export default function DateField({ value, onChange, className }) {
   const days = []
   for (let d = gridStart; d <= gridEnd; d = addDays(d, 1)) days.push(d)
   const today = new Date()
+  // Same page turn as the other calendars (lib/useCalendarFlip).
+  const monthKey = format(view, 'yyyy-MM')
+  const flip = useCalendarFlip(monthKey)
 
   return (
     <div className="relative" ref={wrapRef}>
@@ -153,7 +157,7 @@ export default function DateField({ value, onChange, className }) {
                 <ChevronRight size={16} />
               </button>
             </div>
-            <div className="grid grid-cols-7 gap-0.5 px-1">
+            <div key={monthKey} className={`grid grid-cols-7 gap-0.5 px-1 ${flip}`}>
               {WEEKDAYS.map((w) => (
                 <div
                   key={w}

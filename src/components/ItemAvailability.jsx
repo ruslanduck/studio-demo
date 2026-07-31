@@ -13,6 +13,7 @@ import {
   isToday,
 } from 'date-fns'
 import { useStore } from '../store'
+import { useCalendarFlip } from '../lib/useCalendarFlip'
 import { studioLabel } from '../data/studios'
 import { availabilityForDays, dayAvailability, bookedDays } from '../lib/itemAvailability'
 
@@ -86,13 +87,16 @@ export default function ItemAvailability({ item }) {
   // An empty month reads as "broken" unless it says where the bookings are.
   const committed = useMemo(() => bookedDays(item), [item])
   const monthIso = monthAnchor.slice(0, 7)
+  // Which way the page just turned, and a soft refresh for the day panel.
+  const flipGrid = useCalendarFlip(monthIso)
+  const flipDay = useCalendarFlip(selected, 'fade')
   const inThisMonth = committed.filter((d) => d.startsWith(monthIso))
   const nextElsewhere = committed.find((d) => d.slice(0, 7) > monthIso)
 
-  const stepMonth = (n) => {
-    const next = format(addMonths(parseISO(monthAnchor), n), 'yyyy-MM-dd')
-    setMonthAnchor(next)
-  }
+  // Functional update on purpose: two quick clicks on › must step twice, not
+  // twice from the same stale anchor.
+  const stepMonth = (n) =>
+    setMonthAnchor((cur) => format(addMonths(parseISO(cur), n), 'yyyy-MM-dd'))
 
   const liveTotal = chosen.total
 
@@ -142,8 +146,10 @@ export default function ItemAvailability({ item }) {
         </div>
       </div>
 
-      {/* Month grid. Each cell answers "how many are left that day". */}
-      <div className="mt-3 grid grid-cols-7 gap-1">
+      {/* Month grid. Each cell answers "how many are left that day". The key is
+          the month, so turning the page remounts the grid and replays the
+          slide (see lib/useCalendarFlip). */}
+      <div key={monthIso} className={`mt-3 grid grid-cols-7 gap-1 ${flipGrid}`}>
         {WEEKDAYS.map((w) => (
           <div key={w} className="pb-0.5 text-center text-[10px] font-semibold uppercase text-slate-400">
             {w}
@@ -220,7 +226,10 @@ export default function ItemAvailability({ item }) {
       )}
 
       {/* The chosen day, in full: the counts, then the copies behind them. */}
-      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+      <div
+        key={selected}
+        className={`mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 ${flipDay}`}
+      >
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span className="text-sm font-semibold text-slate-800">
             {format(parseISO(selected), 'EEEE d MMMM yyyy')}

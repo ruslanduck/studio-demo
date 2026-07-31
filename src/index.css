@@ -21,3 +21,67 @@
     cursor: not-allowed;
   }
 }
+
+/* --- calendar page turns --------------------------------------------------
+   Flipping a month or a week used to swap the whole grid in a single frame,
+   which reads as a flicker rather than a page turn — and says nothing about
+   which way you went. The incoming page now slides in from the side you're
+   heading towards. Driven by `lib/useCalendarFlip`, which picks the direction;
+   the grid also takes `key={token}` so the animation replays on every turn.
+   Short and eased-out on purpose: this sits under repeated ‹ › clicks, where
+   anything slower than ~200ms starts to feel like waiting. */
+@keyframes cal-flip-in-right {
+  from {
+    opacity: 0;
+    transform: translate3d(1.5rem, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cal-flip-in-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-1.5rem, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Picking a different day inside the same page isn't a turn — the panel below
+   just refreshes, so it lifts in place instead of sliding sideways. */
+@keyframes cal-fade-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.25rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cal-flip-fwd {
+  animation: cal-flip-in-right 200ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.cal-flip-back {
+  animation: cal-flip-in-left 200ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.cal-fade {
+  animation: cal-fade-in 160ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Someone who asked the OS for less motion gets the new page, not the slide. */
+@media (prefers-reduced-motion: reduce) {
+  .cal-flip-fwd,
+  .cal-flip-back,
+  .cal-fade {
+    animation: none;
+  }
+}

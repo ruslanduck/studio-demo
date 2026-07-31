@@ -18,6 +18,7 @@ import {
 import { useStore } from '../store'
 import { studioLabel, studioColor } from '../data/studios'
 import { useCan } from '../lib/useCan'
+import { useCalendarFlip } from '../lib/useCalendarFlip'
 import { CAP } from '../lib/permissions'
 import BookingModal from './BookingModal'
 import OrderEditorModal from './OrderEditorModal'
@@ -148,6 +149,14 @@ export default function StudioCalendar() {
       ? format(refDate, 'MMMM yyyy')
       : `${format(weekStart, 'MMM d')} – ${format(addDays(weekStart, 6), 'MMM d, yyyy')}`
 
+  // The page currently on screen: the month for the month view, the week's first
+  // day for the week view. Sortable, so the flip knows forwards from backwards.
+  const pageKey =
+    calendarMode === 'month'
+      ? `month:${format(refDate, 'yyyy-MM')}`
+      : `week:${format(weekStart, 'yyyy-MM-dd')}`
+  const flip = useCalendarFlip(pageKey)
+
   return (
     <div className="flex h-full flex-col gap-4">
       {/* Header / controls */}
@@ -200,8 +209,13 @@ export default function StudioCalendar() {
         </div>
       </div>
 
+      {/* `key` = the page being shown, so ‹ › remount the grid and its slide
+          replays (lib/useCalendarFlip picks the direction). Switching Week ↔
+          Month is a page turn too, hence the mode in the key. */}
       {calendarMode === 'month' ? (
         <MonthView
+          key={pageKey}
+          flip={flip}
           refDate={refDate}
           byDay={byDay}
           onOpenEdit={openEdit}
@@ -209,6 +223,8 @@ export default function StudioCalendar() {
         />
       ) : (
         <WeekView
+          key={pageKey}
+          flip={flip}
           weekStart={weekStart}
           studios={studios}
           byDay={byDay}
@@ -282,7 +298,7 @@ function ModeToggle({ mode, setMode }) {
 
 /* ---------------------------------- Week ---------------------------------- */
 
-function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit }) {
+function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit, flip = '' }) {
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i)
     return {
@@ -297,7 +313,9 @@ function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit }) {
     day.today ? 'bg-amber-50' : day.weekend ? 'bg-rose-50' : ''
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div
+      className={`min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm ${flip}`}
+    >
       <div className="grid min-w-[760px] grid-cols-[56px_repeat(7,minmax(0,1fr))]">
         {/* Header row */}
         <div className="sticky top-0 z-20 border-b border-r border-slate-200 bg-white" />
@@ -410,13 +428,15 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
 
 const MONTH_CHIP_MAX = 3
 
-function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek }) {
+function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek, flip = '' }) {
   const gridStart = startOfWeek(startOfMonth(refDate), { weekStartsOn: 1 })
   const gridEnd = endOfWeek(endOfMonth(refDate), { weekStartsOn: 1 })
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${flip}`}
+    >
       {/* Weekday header */}
       <div className="grid grid-cols-7 border-b border-slate-200">
         {WEEKDAYS.map((d, i) => (
