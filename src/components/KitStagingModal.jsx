@@ -24,7 +24,8 @@ import { freeUnitsOf, isUnitFree } from '../lib/availability'
 //                  unit is taken, the fill is a CONFLICT; "Replace" downgrades the
 //                  slot to generic behaviour (this add only).
 //   GENERIC slot → starts EMPTY and is assigned a concrete unit by scanning a
-//                  barcode (or the manual "use available" fallback).
+//                  barcode, or by picking one from the copies free for these
+//                  dates ("Choose unit").
 //
 // 3.4 adds, when filling slots:
 //   • Replace a filled unit with an explicit reason — "Return to stock" (back to
@@ -36,6 +37,79 @@ import { freeUnitsOf, isUnitFree } from '../lib/availability'
 //
 // A slot with no valid unit (empty or conflict) blocks the final add. Slot
 // add/remove/replace choices never change the kit template.
+
+// The copies that are actually free for the dates in question. Shown instead of
+// silently taking the first one: to the crew #0961 and #0962 are different
+// objects (one lives in the van, one has a scratched hood), and after returning a
+// unit to stock they need to be able to pick a DIFFERENT one — which taking the
+// first free unit made impossible, since the one just released came back first.
+function UnitPickList({ itemName, units, onPick, onCancel, ownUnitIds = [], bare = false }) {
+  // Every unit here is free for the dates being staged, so its own `location`
+  // (the job it is committed to NEXT) would read as "taken" if shown bare. What
+  // helps the puller is the shelf, plus a note when the copy is spoken for on
+  // some other day.
+  // Callers pass `ownUnitIds` as an array (BookingModal) or a Set (the order
+  // editor) — everything else here forwards it to `isUnitFree`, which normalises
+  // it, so this is the one place that has to.
+  const own = ownUnitIds instanceof Set ? ownUnitIds : new Set(ownUnitIds ?? [])
+  const note = (u) => {
+    if (own.has(u.id)) return 'already on this job'
+    const other = (u.reservations || []).length
+    return other > 0 ? `booked on ${other} other day${other === 1 ? '' : 's'}` : null
+  }
+
+  const body =
+    units.length === 0 ? (
+      <p className="px-3 py-3 text-center text-xs text-slate-400">
+        No {itemName} is free for these dates.
+      </p>
+    ) : (
+      <ul className="max-h-44 overflow-auto">
+        {units.map((u) => (
+          <li key={u.id}>
+            <button
+              type="button"
+              onClick={() => onPick(u)}
+              className="flex w-full items-center gap-3 px-3 py-1.5 text-left transition hover:bg-violet-50"
+            >
+              <span className="w-16 shrink-0 font-mono text-xs font-medium text-slate-700">
+                #{u.barcode}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-400">
+                {u.serial || '—'}
+              </span>
+              <span className="max-w-[40%] shrink-0 truncate text-[11px] text-slate-500">
+                {u.placement || 'no shelf set'}
+              </span>
+              {note(u) && (
+                <span className="shrink-0 text-[11px] text-amber-600">· {note(u)}</span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+
+  if (bare) return body
+  return (
+    <div className="border-t border-slate-200 bg-slate-50/70">
+      <div className="flex items-center justify-between px-3 pt-2 text-[11px] text-slate-500">
+        <span>
+          {units.length} free {itemName} — pick the copy
+        </span>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded px-1.5 py-0.5 font-medium text-slate-400 transition hover:bg-slate-200 hover:text-slate-600"
+        >
+          Cancel
+        </button>
+      </div>
+      {body}
+    </div>
+  )
+}
+
 export default function KitStagingModal({
   open,
   kit,
@@ -55,6 +129,12 @@ export default function KitStagingModal({
   const [scanError, setScanError] = useState(null)
   const [picker, setPicker] = useState(null) // ad-hoc "add item": {}
   const [pickerSearch, setPickerSearch] = useState('')
+  // Which copy goes in. NOT auto-picked: several copies of one lens are not
+  // interchangeable to the crew (condition, which case it lives in), and taking
+  // "the first free one" made a replaced unit come straight back.
+  //   { itemId, slotKey } — slotKey null = choosing a copy for an ad-hoc add.
+  const [unitPicker, setUnitPicker] = useState(null)
+  const [scanOk, setScanOk] = useState(null) // last accepted scan, for feedback
   const [replacing, setReplacing] = useState(null) // slot key showing the replace-reason choice
   const [editing, setEditing] = useState(null) // { key, value, error } — inline barcode edit
   const [pendingScan, setPendingScan] = useState(null) // { code, slotKey, itemName } — register offer
@@ -113,6 +193,8 @@ export default function KitStagingModal({
     setReplacing(null)
     setEditing(null)
     setPendingScan(null)
+    setUnitPicker(null)
+    setScanOk(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, kit])
 
@@ -147,7 +229,20 @@ export default function KitStagingModal({
       ),
     )
 
+  // Every barcode in the register, so a paste/scan can be recognised the moment
+  // it lands — see `onChange` on the scan field.
+  const knownBarcodes = useMemo(() => {
+    const s = new Set()
+    for (const it of inventory) for (const u of it.units || []) if (u.barcode) s.add(u.barcode)
+    return s
+  }, [inventory])
+
   // Assign a unit to an open slot by its barcode (the scan path).
+  //
+  // The code identifies ONE copy — barcodes are unique across the whole register
+  // — so we don't need to be told which item is being scanned: the unit's item
+  // decides which slot it fills. That's why the crew can scan the case in any
+  // order and the highlighted slot is only a preference, not a requirement.
   function assignByBarcode(rawCode, targetKey) {
     const code = String(rawCode || '').trim()
     if (!code) return
@@ -186,7 +281,9 @@ export default function KitStagingModal({
 
     const candidates = fills.filter((f) => isOpenSlot(f) && f.itemId === item.id)
     if (candidates.length === 0)
-      return setScanError(`No open slot needs a ${item.name} (#${code}).`)
+      return setScanError(
+        `#${code} is a unit of ${item.name} — no open slot needs that item. Scan a different unit, or add the item below.`,
+      )
     const target = candidates.find((f) => f.key === targetKey) || candidates[0]
 
     fillSlot(target.key, { id: unit.id, barcode: unit.barcode }, 'scan')
@@ -194,6 +291,10 @@ export default function KitStagingModal({
     setScanError(null)
     setScanValue('')
     setActiveKey(null)
+    setUnitPicker(null)
+    // Say what the scan did: a barcode that silently vanishes into the field
+    // looks broken even when it worked.
+    setScanOk({ code, itemName: item.name, label: target.label })
   }
 
   // Register an unknown scanned barcode onto a free unit of the slot's item.
@@ -214,13 +315,23 @@ export default function KitStagingModal({
     setActiveKey(null)
   }
 
-  // Manual fallback: drop in the first free unit of the slot's own item.
-  function useAvailable(key) {
+  // Manual path: show which copies are free for these dates and let the crew
+  // choose. It used to take `freeUnitsFor(itemId)[0]` outright, which meant a
+  // unit you had just returned to stock was handed straight back to you.
+  function openUnitPicker(key) {
     const f = fills.find((x) => x.key === key)
     if (!f) return
-    const unit = freeUnitsFor(f.itemId)[0]
-    if (!unit) return setScanError(`No free ${f.itemName} left in stock.`)
-    fillSlot(key, { id: unit.id, barcode: unit.barcode }, 'manual')
+    setUnitPicker({ itemId: f.itemId, slotKey: key })
+    setReplacing(null)
+    setEditing(null)
+    setScanError(null)
+  }
+
+  function pickUnit(unit) {
+    if (!unitPicker) return
+    if (unitPicker.slotKey) fillSlot(unitPicker.slotKey, unit, 'manual')
+    else addExtraUnit(unitPicker.itemId, unit)
+    setUnitPicker(null)
     setScanError(null)
   }
 
@@ -283,10 +394,15 @@ export default function KitStagingModal({
     if (editing?.key === key) setEditing(null)
   }
 
-  // Ad-hoc extra item (not part of the kit template) — added already-filled.
+  // Ad-hoc extra item (not part of the kit template). Which copy is a choice
+  // here too, so picking the item only opens the unit list.
   function addExtra(itemId) {
-    const unit = freeUnitsFor(itemId)[0]
-    if (!unit) return
+    setUnitPicker({ itemId, slotKey: null })
+    setPicker(null)
+    setPickerSearch('')
+  }
+
+  function addExtraUnit(itemId, unit) {
     const item = inventory.find((i) => i.id === itemId)
     setFills((prev) => [
       ...prev,
@@ -367,8 +483,8 @@ export default function KitStagingModal({
             <div className="min-w-0">
               <div className="truncate font-semibold text-violet-900">{kit.name}</div>
               <div className="text-xs text-violet-700/80">
-                Fixed slots are pinned automatically. Scan a barcode to fill each generic slot.
-                This won’t change the kit itself.
+                Fixed slots are pinned automatically. Fill each generic slot by scanning a barcode
+                or choosing a free copy. This won’t change the kit itself.
               </div>
             </div>
           </div>
@@ -393,9 +509,16 @@ export default function KitStagingModal({
               inputMode="numeric"
               value={scanValue}
               onChange={(e) => {
-                setScanValue(e.target.value)
+                const v = e.target.value
+                setScanValue(v)
                 if (scanError) setScanError(null)
                 if (pendingScan) setPendingScan(null)
+                if (scanOk) setScanOk(null)
+                // A hardware scanner types the code and presses Enter, but
+                // PASTING one (which is how a scan is imitated by hand) sends no
+                // Enter at all — the code just sat in the field doing nothing.
+                // So a value that IS a known barcode is assigned on the spot.
+                if (knownBarcodes.has(v.trim())) assignByBarcode(v, activeKey)
               }}
               onKeyDown={(e) => {
                 // Barcode scanners send the code + Enter; handle it directly so
@@ -408,15 +531,33 @@ export default function KitStagingModal({
               placeholder={
                 activeKey
                   ? `Scan into: ${fills.find((f) => f.key === activeKey)?.itemName ?? 'slot'}…`
-                  : 'Scan or type a barcode, then Enter…'
+                  : 'Scan, paste or type a barcode…'
               }
-              className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+              className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-24 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             />
+            <button
+              type="submit"
+              disabled={!scanValue.trim()}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-2.5 py-1 text-xs font-medium text-violet-600 transition hover:bg-violet-50 disabled:opacity-40"
+            >
+              Assign
+            </button>
           </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            A barcode belongs to one copy only, so the scan fills whichever slot expects that item —
+            the crew can work through the case in any order.
+          </p>
           {scanError && (
             <div className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-rose-600">
               <AlertTriangle size={13} />
               {scanError}
+            </div>
+          )}
+          {scanOk && (
+            <div className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+              <Check size={13} />
+              <span className="font-mono">#{scanOk.code}</span> → {scanOk.itemName}
+              {scanOk.label ? ` · ${scanOk.label}` : ''}
             </div>
           )}
         </form>
@@ -555,13 +696,14 @@ export default function KitStagingModal({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          useAvailable(f.key)
+                          if (unitPicker?.slotKey === f.key) setUnitPicker(null)
+                          else openUnitPicker(f.key)
                         }}
                         disabled={free === 0}
-                        title="Assign the next available unit"
+                        title="Show the copies that are free for these dates and pick one"
                         className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        Use available
+                        Choose unit
                       </button>
                     )}
                     {filled && f.source !== 'fixed' && (
@@ -573,7 +715,7 @@ export default function KitStagingModal({
                             setEditing({ key: f.key, value: f.barcode ?? '', error: null })
                             setReplacing(null)
                           }}
-                          title="Edit this unit's barcode"
+                          title="Correct this copy's barcode in stock (a worn label) — not a way to swap units; use Replace for that"
                           className="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                         >
                           <Pencil size={14} />
@@ -606,6 +748,17 @@ export default function KitStagingModal({
                     </button>
                   </div>
                 </div>
+
+                {/* Which copy — the free units for these dates */}
+                {unitPicker?.slotKey === f.key && (
+                  <UnitPickList
+                    itemName={f.itemName}
+                    units={freeUnitsFor(f.itemId)}
+                    ownUnitIds={ownUnitIds}
+                    onPick={pickUnit}
+                    onCancel={() => setUnitPicker(null)}
+                  />
+                )}
 
                 {/* Replace-with-reason panel */}
                 {replacing === f.key && (
@@ -685,6 +838,23 @@ export default function KitStagingModal({
           <p className="py-6 text-center text-sm text-slate-400">
             No slots left — add an item from stock, or cancel.
           </p>
+        )}
+
+        {/* Ad-hoc add, step two: which copy */}
+        {unitPicker && !unitPicker.slotKey && (
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Add {inventory.find((i) => i.id === unitPicker.itemId)?.name} — pick a copy
+            </div>
+            <UnitPickList
+              bare
+              itemName={inventory.find((i) => i.id === unitPicker.itemId)?.name ?? 'item'}
+              units={freeUnitsFor(unitPicker.itemId)}
+              ownUnitIds={ownUnitIds}
+              onPick={pickUnit}
+              onCancel={() => setUnitPicker(null)}
+            />
+          </div>
         )}
 
         {/* Ad-hoc add */}
