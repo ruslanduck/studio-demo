@@ -11,6 +11,7 @@
 import { jsPDF } from 'jspdf'
 import { buildEstimate } from './estimate.js'
 import { pdfSafe } from './estimatePdf.js'
+import { packingRows } from './packing.js'
 import { studioLabel } from '../data/studios.js'
 import { BRAND_NAME } from './brand.js'
 
@@ -51,6 +52,11 @@ export function packingListFileName(order, opts = {}) {
 // prints an add-on line under the job name — both used for Add-On lists (6.4).
 export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
   const est = orderOrEstimate?.groups ? orderOrEstimate : buildEstimate(orderOrEstimate, context)
+  // The printed sheet and the digital checklist must be the SAME list, or the
+  // crew is ticking two different documents: one row per barcoded copy, counted
+  // rows for everything that has no barcode of ours. `packingRows` is the one
+  // definition (lib/packing.js).
+  const rows = packingRows(est, { inventory: context?.inventory ?? [], booking: context?.booking ?? null })
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   let y = M
 
@@ -164,7 +170,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
   // ---- equipment table ---------------------------------------------------
   y = tableHead(y)
 
-  if (est.groups.length === 0) {
+  if (rows.length === 0) {
     doc.setFont('helvetica', 'italic')
     doc.setFontSize(9)
     setInk(INK.muted)
@@ -172,7 +178,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
     y += 18
   }
 
-  for (const g of est.groups) {
+  for (const g of rows) {
     ensure(34, true)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
@@ -181,7 +187,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
     setInk(INK.muted)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    right(`${g.pieces} pcs`, COL.qtyRight, y)
+    right(`${g.lines.reduce((n, l) => n + (Number(l.quantity) || 1), 0)} pcs`, COL.qtyRight, y)
     y += 15
 
     for (const l of g.lines) {
@@ -196,6 +202,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
       const detail = [
         l.slotLabel,
         l.barcode ? `#${l.barcode}` : null,
+        l.kind === 'bulk' && l.why ? l.why : null,
         l.source === 'sub_rental' ? `sub: ${l.vendorName || 'vendor'}` : null,
       ]
         .filter(Boolean)
@@ -218,7 +225,13 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
   setInk(INK.text)
-  text(`${est.lineCount} lines · ${est.pieces} pieces to pull`, M, y)
+  const rowCount = rows.reduce((n, g) => n + g.lines.length, 0)
+  const byBarcode = rows.reduce((n, g) => n + g.lines.filter((l) => l.kind === 'unit').length, 0)
+  text(
+    `${rowCount} rows · ${est.pieces} pieces to pull · ${byBarcode} signed off by barcode`,
+    M,
+    y,
+  )
 
   // ---- footer on every page ---------------------------------------------
   const pages = doc.getNumberOfPages()

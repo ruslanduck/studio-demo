@@ -1,47 +1,50 @@
-import { useEffect, useState } from 'react'
-import { PackageCheck } from 'lucide-react'
+import { Check, PackageCheck, Barcode, Layers } from 'lucide-react'
 import Modal from './Modal'
-import { packingLineKey, packingProgress } from '../lib/packing'
+import { useStore } from '../store'
+import { packingLineKey, packingProgress, packingRows } from '../lib/packing'
 
-// One sign-off field: a small initials box. Typing initials + blur/Enter signs
-// it (records initials + timestamp in the store); clearing it un-signs. Green
-// when signed. This is the digital form of the PDF's initial boxes (6.2 / 6.5).
-function SignBox({ signoff, onSign, onClear }) {
-  const [val, setVal] = useState(signoff?.initials ?? '')
-  useEffect(() => {
-    setVal(signoff?.initials ?? '')
-  }, [signoff?.initials])
+// Two letters for the person doing the packing. The DATA still holds initials
+// (that's what the paper form and the PDF carry), but nobody types them any more
+// — one tap signs as whoever is logged in.
+const initialsOf = (name) =>
+  (name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('') || '?'
 
+// One sign-off: a CHECKBOX, not a text field. Packing is a "yes it's in the
+// case" decision made with gloves on, and typing initials three times per copy
+// is what nobody does. Checking it records the signed-in account's initials and
+// the timestamp (so who + when is still answerable — hover the box); unchecking
+// clears it.
+function SignCheck({ signoff, onSign, onClear, label }) {
   const signed = !!signoff?.initials
-  const commit = () => {
-    const t = val.trim().toUpperCase()
-    if (t === (signoff?.initials ?? '')) return
-    if (t) onSign(t)
-    else onClear()
-  }
-
   return (
-    <input
-      type="text"
-      value={val}
-      onChange={(e) => setVal(e.target.value.replace(/[^A-Za-z.]/g, '').slice(0, 4))}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur()
-      }}
-      placeholder="–"
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={signed}
+      aria-label={label}
+      onClick={() => (signed ? onClear() : onSign())}
       title={
         signed
-          ? `${signoff.initials}${signoff.at ? ' · ' + new Date(signoff.at).toLocaleString() : ''}`
-          : 'Tap to sign'
+          ? `${signoff.initials}${signoff.at ? ' · ' + new Date(signoff.at).toLocaleString() : ''} · tap to undo`
+          : label
       }
       className={[
-        'h-9 w-11 shrink-0 rounded-md border text-center text-sm font-semibold uppercase outline-none transition',
+        'grid h-9 w-11 shrink-0 place-items-center rounded-md border transition',
         signed
-          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-          : 'border-slate-300 text-slate-700 placeholder:text-slate-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100',
+          ? 'border-emerald-400 bg-emerald-500 text-white'
+          : 'border-slate-300 text-transparent hover:border-violet-400 hover:bg-violet-50',
       ].join(' ')}
-    />
+    >
+      <Check size={16} strokeWidth={3} />
+      {signed && signoff.initials && (
+        <span className="sr-only">{signoff.initials}</span>
+      )}
+    </button>
   )
 }
 
@@ -58,13 +61,23 @@ export default function PackingChecklistModal({
   onClear,
   onClose,
 }) {
+  // The shoot supplies the concrete copies (its reservations), which is what lets
+  // a x2 line become two ticks. Read here rather than threaded through every
+  // caller — the same reasoning as ItemAvailability.
+  const inventory = useStore((s) => s.inventory)
+  const bookings = useStore((s) => s.bookings)
+  const profile = useStore((s) => s.profile)
+  const myInitials = initialsOf(profile?.full_name ?? 'Demo user')
+
   const packing = order?.packing || {}
-  const groups = estimate?.groups || []
+  const booking = bookings.find((b) => b.id === order?.setId) ?? null
+  const groups = packingRows(estimate, { inventory, booking })
   const allLines = groups.flatMap((g) => g.lines)
   const prog = packingProgress(allLines, packing, keyPrefix)
+  const unitRows = allLines.filter((r) => r.kind === 'unit').length
 
-  const sign = (line, slot, initials) =>
-    onSign(packingLineKey(line, keyPrefix), slot, initials, line.itemName)
+  const sign = (line, slot) =>
+    onSign(packingLineKey(line, keyPrefix), slot, myInitials, line.itemName)
   const clear = (line, slot) => onClear(packingLineKey(line, keyPrefix), slot)
 
   return (
@@ -77,8 +90,9 @@ export default function PackingChecklistModal({
                 {order.jobName ?? order.setTitle ?? 'Order'}
               </div>
               <div className="mt-0.5 text-xs text-slate-500">
-                {order.poNumber ? `PO ${order.poNumber} · ` : ''}Two initials at sign-out, one at
-                return.
+                {order.poNumber ? `PO ${order.poNumber} · ` : ''}
+                One row per barcoded copy. Two ticks at sign-out, one at return — each records who
+                and when.
               </div>
             </div>
             <div className="flex shrink-0 gap-5 text-center text-xs">
@@ -105,7 +119,10 @@ export default function PackingChecklistModal({
         ) : (
           <>
             <div className="mb-1 flex items-center gap-3 px-3 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              <span className="min-w-0 flex-1">Line</span>
+              <span className="min-w-0 flex-1">
+                {prog.total} row{prog.total === 1 ? '' : 's'}
+                {unitRows > 0 ? ` · ${unitRows} by barcode` : ''}
+              </span>
               <span className="w-11 shrink-0 text-center">Out</span>
               <span className="w-11 shrink-0 text-center">Out</span>
               <span className="w-11 shrink-0 text-center">Ret</span>
@@ -122,6 +139,7 @@ export default function PackingChecklistModal({
                           : 'bg-slate-200 text-slate-600',
                       ].join(' ')}
                     >
+                      {g.type === 'kit' && <Layers size={10} />}
                       {g.type === 'kit' ? g.name : 'A-la-carte'}
                     </span>
                   </div>
@@ -153,26 +171,45 @@ export default function PackingChecklistModal({
                               )}
                             </div>
                             <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                              <span>×{l.quantity}</span>
-                              {l.barcode && <span className="font-mono">#{l.barcode}</span>}
+                              {/* A copy is named by its barcode; a counted row
+                                  shows how many and why it isn't per-copy. */}
+                              {l.kind === 'unit' ? (
+                                <span className="inline-flex items-center gap-1 font-mono text-slate-500">
+                                  <Barcode size={11} />#{l.barcode ?? '—'}
+                                </span>
+                              ) : (
+                                <>
+                                  <span className="font-medium text-slate-500">×{l.quantity}</span>
+                                  <span
+                                    className={
+                                      l.why === 'no unit reserved' ? 'text-amber-600' : 'text-slate-400'
+                                    }
+                                  >
+                                    {l.why}
+                                  </span>
+                                </>
+                              )}
                               {l.source === 'sub_rental' && (
                                 <span className="text-amber-600">{l.vendorName ?? 'sub-rental'}</span>
                               )}
                             </div>
                           </div>
-                          <SignBox
+                          <SignCheck
                             signoff={s.out1}
-                            onSign={(v) => sign(l, 'out1', v)}
+                            label="First sign-out check"
+                            onSign={() => sign(l, 'out1')}
                             onClear={() => clear(l, 'out1')}
                           />
-                          <SignBox
+                          <SignCheck
                             signoff={s.out2}
-                            onSign={(v) => sign(l, 'out2', v)}
+                            label="Second sign-out check"
+                            onSign={() => sign(l, 'out2')}
                             onClear={() => clear(l, 'out2')}
                           />
-                          <SignBox
+                          <SignCheck
                             signoff={s.ret}
-                            onSign={(v) => sign(l, 'ret', v)}
+                            label="Returned check"
+                            onSign={() => sign(l, 'ret')}
                             onClear={() => clear(l, 'ret')}
                           />
                         </li>
@@ -188,7 +225,7 @@ export default function PackingChecklistModal({
 
       <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 py-3">
         <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
-          <PackageCheck size={14} /> Sign-offs save automatically.
+          <PackageCheck size={14} /> Ticks save automatically, signed as {myInitials}.
         </span>
         <button
           type="button"
