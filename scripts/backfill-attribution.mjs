@@ -96,7 +96,6 @@ export async function backfillAttribution(client) {
 
   for (const [table, seedKey] of [
     ['item_usage', 'id'],
-    ['order_addons', 'id'],
   ]) {
     const { data: rows, error } = await db.from(table).select('id, created_by').is('created_by', null)
     if (error) {

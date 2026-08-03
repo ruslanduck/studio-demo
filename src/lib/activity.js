@@ -16,8 +16,6 @@ export const EVENT = {
   ORDER_REOPENED: 'order.reopened',
   ORDER_DELETED: 'order.deleted',
   EQ_CHANGED: 'order.equipment_changed',
-  ADDON_CREATED: 'addon.created',
-  ADDON_DELETED: 'addon.deleted',
   PACKING_SIGNED: 'packing.signed',
   PACKING_CLEARED: 'packing.cleared',
   // The scanning station. The scan LOG (`scans`) is the operational record the
@@ -56,7 +54,6 @@ export const ARCHIVE_KINDS = {
   company: 'company',
   kit: 'kit',
   scenario: 'scenario list',
-  addon: 'add-on list',
   companyType: 'company type',
 }
 
@@ -179,10 +176,6 @@ export function describeEvent(ev) {
       }
     case EVENT.ORDER_DELETED:
       return { icon: 'trash', title: 'Scrapped the order', detail: d.jobName ?? null }
-    case EVENT.ADDON_CREATED:
-      return { icon: 'plus', title: 'Added an add-on list', detail: d.label ?? null }
-    case EVENT.ADDON_DELETED:
-      return { icon: 'trash', title: 'Deleted an add-on list', detail: d.label ?? null }
     case EVENT.PACKING_SIGNED:
       return {
         icon: 'signature',

@@ -76,10 +76,6 @@ import {
   setOrderLines as sbSetOrderLines,
   setPackingSignoff as sbSetPackingSignoff,
   clearPackingSignoff as sbClearPackingSignoff,
-  createAddon as sbCreateAddon,
-  setAddonLines as sbSetAddonLines,
-  archiveAddon as sbArchiveAddon,
-  restoreAddon as sbRestoreAddon,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 import { reservedUnitsForOrder, overlaps } from './lib/availability'
@@ -302,7 +298,6 @@ function buildSeedData() {
       setTitle: set?.title ?? o.setTitle ?? null,
       packing: {}, // digital packing checklist sign-offs (6.2 / 6.5), by lineKey
       scans: [], // scan-out / scan-in log (epic #6) — filled at the station
-      addons: [], // add-on packing lists (6.4): [{ id, label, createdAt, lines }]
       lines: o.lines.map(([itemId, quantity, vendorId], li) => {
         const source = vendorId ? 'sub_rental' : 'in_house'
         return {
@@ -2601,177 +2596,10 @@ export const useStore = create(
 
       clearScanSyncError: () => set({ scanSyncError: null }),
 
-      // Add-on packing lists (6.4). Create an empty add-on (returns its id so the
-      // UI can open the equipment editor on it), replace its lines, or delete it.
-      // The order's main lines are never touched.
-      createAddon: async (orderId, label) => {
-        const logNew = () =>
-          get().logActivity({
-            type: EVENT.ADDON_CREATED,
-            entityType: 'order',
-            entityId: orderId,
-            data: { label: (label || '').trim() || null },
-          })
-        if (usingSupabase) {
-          const id = await sbCreateAddon(orderId, label)
-          logNew()
-          await get().hydrate({ quiet: true })
-          return id
-        }
-        logNew()
-        const id = `addon-${orderId}-${Date.now().toString(36)}`
-        set({
-          orders: get().orders.map((o) =>
-            o.id !== orderId
-              ? o
-              : {
-                  ...o,
-                  addons: [
-                    ...(o.addons || []),
-                    { id, label: (label || '').trim() || null, createdAt: new Date().toISOString(), lines: [] },
-                  ],
-                },
-          ),
-        })
-        return id
-      },
-
-      setAddonLines: async (orderId, addonId, lines) => {
-        // An add-on IS equipment added to the order, so it counts as "who last
-        // changed the gear" too — that's the day-of addition people argue about.
-        const order = get().orders.find((o) => o.id === orderId)
-        const addon = (order?.addons || []).find((a) => a.id === addonId)
-        const diff = diffOrderLines(addon?.lines ?? [], lines)
-        const logEq = () =>
-          get().logActivity({
-            type: EVENT.EQ_CHANGED,
-            entityType: 'order',
-            entityId: orderId,
-            data: { ...diff, source: 'addon', addonId, addonLabel: addon?.label ?? null },
-          })
-        if (usingSupabase) {
-          await sbSetAddonLines(addonId, lines)
-          await sbTouchOrderEquipment(orderId, get().session?.user?.id ?? null)
-          logEq()
-          await get().hydrate({ quiet: true })
-          return { ok: true }
-        }
-        logEq()
-        const state = get()
-        const byId = Object.fromEntries(state.inventory.map((i) => [i.id, i]))
-        const unitBarcode = {}
-        for (const item of state.inventory)
-          for (const u of item.units || []) unitBarcode[u.id] = u.barcode
-        const resolved = (lines || [])
-          .filter((l) => l.itemId)
-          .map((l, i) => ({
-            id: l.id ?? `addline-${addonId}-${i}`,
-            itemId: l.itemId,
-            itemName: byId[l.itemId]?.name ?? l.itemName ?? null,
-            quantity: Math.max(1, Number(l.quantity) || 1),
-            dayRate: byId[l.itemId]?.dayRate ?? null,
-            kitId: l.kitId ?? null,
-            unitId: l.unitId ?? null,
-            barcode: l.barcode ?? (l.unitId ? unitBarcode[l.unitId] ?? null : null),
-            slotLabel: l.slotLabel ?? null,
-            source: l.source === 'sub_rental' ? 'sub_rental' : 'in_house',
-            vendorId: l.source === 'sub_rental' ? l.vendorId ?? null : null,
-            vendorName:
-              l.source === 'sub_rental'
-                ? state.companies.find((c) => c.id === l.vendorId)?.name ?? null
-                : null,
-          }))
-        set({
-          orders: state.orders.map((o) =>
-            o.id !== orderId
-              ? o
-              : { ...o, addons: (o.addons || []).map((a) => (a.id === addonId ? { ...a, lines: resolved } : a)) },
-          ),
-        })
-        return { ok: true }
-      },
-
-      // An add-on list is archived with its lines and its namespaced packing
-      // sign-offs, so a day-of dispute can still be reconstructed afterwards.
-      archiveAddon: async (orderId, addonId) => {
-        const label =
-          (get().orders.find((o) => o.id === orderId)?.addons || []).find((a) => a.id === addonId)
-            ?.label ?? null
-        const logGone = () =>
-          get().logActivity({
-            type: EVENT.ARCHIVED,
-            entityType: 'order',
-            entityId: orderId,
-            data: { what: 'addon', name: label },
-          })
-        if (usingSupabase) {
-          try {
-            await sbArchiveAddon(addonId, get().session?.user?.id ?? null)
-          } catch (e) {
-            return { error: e.message }
-          }
-          logGone()
-          await get().hydrate({ quiet: true })
-          return { ok: true }
-        }
-        logGone()
-        const stamp = new Date().toISOString()
-        set({
-          orders: get().orders.map((o) =>
-            o.id !== orderId
-              ? o
-              : {
-                  ...o,
-                  addons: (o.addons || []).map((a) =>
-                    a.id === addonId ? { ...a, archivedAt: stamp, archivedBy: LOCAL_ACTOR } : a,
-                  ),
-                },
-          ),
-        })
-        return { ok: true }
-      },
-
-      restoreAddon: async (orderId, addonId) => {
-        get().logActivity({
-          type: EVENT.RESTORED,
-          entityType: 'order',
-          entityId: orderId,
-          data: {
-            what: 'addon',
-            name:
-              (get().orders.find((o) => o.id === orderId)?.addons || []).find(
-                (a) => a.id === addonId,
-              )?.label ?? null,
-          },
-        })
-        if (usingSupabase) {
-          try {
-            await sbRestoreAddon(addonId)
-          } catch (e) {
-            return { error: e.message }
-          }
-          await get().hydrate({ quiet: true })
-          return { ok: true }
-        }
-        set({
-          orders: get().orders.map((o) =>
-            o.id !== orderId
-              ? o
-              : {
-                  ...o,
-                  addons: (o.addons || []).map((a) =>
-                    a.id === addonId ? { ...a, archivedAt: null, archivedBy: null } : a,
-                  ),
-                },
-          ),
-        })
-        return { ok: true }
-      },
-
       // Archiving an order releases its gear AND takes its shoot off the calendar:
       // the shoot exists because this order equips it, so leaving a phantom
       // booking behind (which is what deleting used to do) was the wrong default.
-      // Its lines, add-ons and packing sign-offs are all kept.
+      // Its lines and packing sign-offs are all kept.
       archiveOrder: async (id) => {
         const order = get().orders.find((o) => o.id === id)
         if (!order) return { error: 'Order not found.' }

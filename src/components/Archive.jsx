@@ -113,7 +113,6 @@ export default function Archive() {
   const restoreInventoryItem = useStore((s) => s.restoreInventoryItem)
   const restoreUnit = useStore((s) => s.restoreUnit)
   const restoreRecord = useStore((s) => s.restoreRecord)
-  const restoreAddon = useStore((s) => s.restoreAddon)
   const focusInventory = useStore((s) => s.focusInventory)
   const openOrder = useStore((s) => s.openOrder)
   const focusPeople = useStore((s) => s.focusPeople)
@@ -162,16 +161,6 @@ export default function Archive() {
   const archivedKits = useMemo(() => kits.filter(isArchived), [kits])
   const archivedLists = useMemo(() => scenarios.filter(isArchived), [scenarios])
   const archivedTypes = useMemo(() => companyTypes.filter(isArchived), [companyTypes])
-  const archivedAddons = useMemo(
-    () =>
-      orders
-        .filter((o) => !isArchived(o))
-        .flatMap((order) =>
-          (order.addons || []).filter(isArchived).map((addon) => ({ order, addon })),
-        ),
-    [orders],
-  )
-
   const total =
     archivedOrders.length +
     archivedBookings.length +
@@ -373,20 +362,6 @@ export default function Archive() {
           ))}
         />
 
-        <Section
-          title="Add-on lists"
-          rows={archivedAddons.map(({ order, addon }) => (
-            <Row
-              key={addon.id}
-              icon={Package}
-              title={addon.label || 'Add-on'}
-              meta={`on ${order.jobName || order.number} · ${(addon.lines || []).length} line(s)`}
-              at={addon.archivedAt}
-              canRestore={mayRestore}
-              busy={busy === `addon:${addon.id}`}
-              onRestore={run(`addon:${addon.id}`, () => restoreAddon(order.id, addon.id))}
-              onOpen={() => openOrder(order.id, { view: 'archive', label: 'Archive' })}
-            />
           ))}
         />
 

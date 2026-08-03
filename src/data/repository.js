@@ -1086,8 +1086,7 @@ async function getScansByOrder() {
   return map
 }
 
-// Map a DB order/addon line row to the app's line shape (shared by orders and
-// add-ons, since add-on lines mirror order_lines).
+// Map a DB order line row to the app's line shape.
 function mapLineRow(l) {
   return {
     id: l.id ?? null,
@@ -1103,47 +1102,6 @@ function mapLineRow(l) {
     vendorId: l.vendor?.id ?? l.vendor_company_id ?? null,
     vendorName: l.vendor?.name ?? null,
   }
-}
-
-// Add-on packing lists grouped by order id (6.4). Fetched separately so orders
-// still load if the 6.4 migration hasn't run yet.
-async function getAddonsByOrder() {
-  const lines = `addon_lines ( id, quantity, kit_id, unit_id, slot_label, source, vendor_company_id,
-                     item:inventory_items ( id, name, day_rate ),
-                     unit:units ( id, barcode ),
-                     vendor:companies!vendor_company_id ( id, name ) )`
-  // `created_by` was stored and never read — an add-on is the most day-of,
-  // most disputable action in the app, so it should say who added it.
-  const withArchive = `id, order_id, label, created_at, ${ARCHIVE_COLS}, author:profiles!created_by ( full_name ), ${lines}`
-  let { data, error } = await supabase
-    .from('order_addons')
-    .select(withArchive)
-    .order('created_at')
-  if (error) {
-    ;({ data, error } = await supabase
-      .from('order_addons')
-      .select(stripArchive(withArchive))
-      .order('created_at'))
-  }
-  if (error) {
-    ;({ data, error } = await supabase
-      .from('order_addons')
-      .select(`id, order_id, label, created_at, ${lines}`)
-      .order('created_at'))
-  }
-  if (error) return {}
-  const map = {}
-  for (const a of data || []) {
-    ;(map[a.order_id] ||= []).push({
-      id: a.id,
-      label: a.label,
-      createdAt: a.created_at,
-      createdBy: a.author?.full_name ?? null,
-      lines: (a.addon_lines || []).map(mapLineRow),
-      ...archiveFields(a),
-    })
-  }
-  return map
 }
 
 export async function getOrders() {
@@ -1185,11 +1143,7 @@ export async function getOrders() {
   if (error) ({ data, error } = await supabase.from('orders').select(withoutKind).order('ordered_at'))
   if (error) return []
 
-  const [packing, addonsByOrder, scansByOrder] = await Promise.all([
-    getPackingSignoffs(),
-    getAddonsByOrder(),
-    getScansByOrder(),
-  ])
+  const [packing, scansByOrder] = await Promise.all([getPackingSignoffs(), getScansByOrder()])
 
   return (data || []).map((o) => ({
     id: o.id,
@@ -1216,7 +1170,6 @@ export async function getOrders() {
     eqUpdatedBy: o.eq_editor?.full_name ?? null,
     eqUpdatedAt: o.eq_updated_at ?? null,
     packing: packing[o.id] || {},
-    addons: addonsByOrder[o.id] || [],
     scans: scansByOrder[o.id] || [],
     lines: (o.order_lines || []).map(mapLineRow),
     ...archiveFields(o),
@@ -1582,45 +1535,3 @@ export async function clearPackingSignoff(orderId, lineKey, slot) {
   if (error) throw error
 }
 
-// Add-on packing lists (6.4). Add-ons are their own labelled line lists on an
-// order; the main order_lines are never touched.
-export async function createAddon(orderId, label) {
-  const { data, error } = await supabase
-    .from('order_addons')
-    .insert({ order_id: orderId, label: label?.trim() || null })
-    .select('id')
-    .single()
-  if (error) throw error
-  return data.id
-}
-
-// Replace an add-on's lines (same delete-then-insert as setOrderLines).
-export async function setAddonLines(addonId, lines) {
-  const { error: delErr } = await supabase.from('addon_lines').delete().eq('addon_id', addonId)
-  if (delErr) throw delErr
-  const rows = (lines || [])
-    .filter((l) => l.itemId)
-    .map((l) => ({
-      addon_id: addonId,
-      inventory_item_id: l.itemId,
-      quantity: Math.max(1, Number(l.quantity) || 1),
-      kit_id: l.kitId || null,
-      unit_id: l.unitId || null,
-      slot_label: l.slotLabel?.trim() || null,
-      source: l.source === 'sub_rental' ? 'sub_rental' : 'in_house',
-      vendor_company_id: l.source === 'sub_rental' ? l.vendorId || null : null,
-      notes: l.notes?.trim() || null,
-    }))
-  if (!rows.length) return
-  const { error } = await supabase.from('addon_lines').insert(rows)
-  if (error) throw error
-}
-
-// The add-on's lines and its namespaced packing sign-offs stay with it.
-export async function archiveAddon(addonId, actorId = null) {
-  return archiveRow('order_addons', addonId, actorId)
-}
-
-export async function restoreAddon(addonId) {
-  return restoreRow('order_addons', addonId)
-}

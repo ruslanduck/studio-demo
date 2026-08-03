@@ -44,12 +44,10 @@ const slug = (s) =>
 export function packingListFileName(order, opts = {}) {
   const job = slug(order.jobName || order.setTitle || 'order') || 'order'
   const po = order.poNumber ? `-${order.poNumber}` : ''
-  const addon = opts.addonLabel ? `-addon-${slug(opts.addonLabel) || 'extra'}` : ''
-  return `packing-list-${job}${po}${addon}.pdf`.replace(/--+/g, '-')
+  return `packing-list-${job}${po}.pdf`.replace(/--+/g, '-')
 }
 
-// `opts.docTitle` overrides the header (default "PACKING LIST"); `opts.addonLabel`
-// prints an add-on line under the job name — both used for Add-On lists (6.4).
+// `opts.docTitle` overrides the header (default "PACKING LIST").
 export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
   const est = orderOrEstimate?.groups ? orderOrEstimate : buildEstimate(orderOrEstimate, context)
   // The printed sheet and the digital checklist must be the SAME list, or the
@@ -121,13 +119,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
   text(est.order.jobName, M, y)
   y += 20
 
-  if (opts.addonLabel) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(10)
-    setInk(INK.accent)
-    text(`ADD-ON — ${opts.addonLabel}`, M, y)
-    y += 18
-  }
+
 
   const meta = [
     ['PO number', est.order.poNumber || '—'],

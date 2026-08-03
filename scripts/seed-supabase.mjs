@@ -35,8 +35,8 @@ function must(label, { error }) {
 // deleted first: its DELETE trigger writes to events, so events is cleared right
 // after. kit_slots must precede units because `kit_slots.fixed_unit_id` (3.3)
 // references units with no cascade. Epic-6 tables (packing_signoffs,
-// order_addons, addon_lines) aren't listed: they ON DELETE CASCADE from orders,
-// and none blocks the units delete (addon_lines.unit_id is ON DELETE SET NULL).
+// aren't listed: they ON DELETE CASCADE from orders, and none blocks the units
+// delete.
 const WIPE_ORDER = [
   'set_units', 'events', 'roster_entries', 'order_lines', 'item_usage',
   'kit_slots', 'kit_items',

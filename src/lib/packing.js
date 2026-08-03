@@ -1,17 +1,17 @@
-// Packing checklist helpers (epic #6, 6.2 + 6.5). Shared by the store, the
-// digital checklist modal and (later) the scanning page so all agree on how a
-// line is identified and when it's considered signed out / returned.
+// Packing checklist helpers (epic #6). Shared by the store, the digital
+// checklist, the order card and the printed pull sheet, so they all agree on what
+// a row is, how it's identified and when it counts as signed out / returned.
 
 // The three sign-off slots per line: two at sign-out, one at return.
 export const PACKING_SLOTS = ['out1', 'out2', 'ret']
 
 // A stable key for a packing-list line. Order lines are replaced wholesale when
-// equipment is edited, so we key sign-offs by the line's content, not its id.
-// item + slot label + barcode is unique per line (a-la-carte is one line per
-// item; kit slots each carry their own assigned unit's barcode). `prefix`
-// namespaces an add-on's lines (6.4) so they don't collide with the main list.
-export const packingLineKey = (line, prefix = '') =>
-  `${prefix}${line.itemId ?? ''}::${line.slotLabel ?? ''}::${line.barcode ?? ''}`
+// equipment is edited, so sign-offs are keyed by the line's CONTENT, not its id:
+// item + slot label + barcode, which is unique now that barcoded stock is one row
+// per copy (see `packingRows`). The prefix argument that namespaced add-on lists
+// went with the add-ons themselves.
+export const packingLineKey = (line) =>
+  `${line.itemId ?? ''}::${line.slotLabel ?? ''}::${line.barcode ?? ''}`
 
 // What the crew actually ticks off, one row at a time.
 //
@@ -103,11 +103,11 @@ export function packingRows(estimate, { inventory = [], booking = null } = {}) {
 
 // A line is "out" once BOTH sign-out slots are initialled; "returned" once the
 // return slot is. Returns counts over a flat list of estimate lines.
-export function packingProgress(lines = [], packing = {}, prefix = '') {
+export function packingProgress(lines = [], packing = {}) {
   let out = 0
   let ret = 0
   for (const l of lines) {
-    const s = packing[packingLineKey(l, prefix)] || {}
+    const s = packing[packingLineKey(l)] || {}
     if (s.out1?.initials && s.out2?.initials) out += 1
     if (s.ret?.initials) ret += 1
   }

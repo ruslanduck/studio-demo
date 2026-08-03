@@ -56,7 +56,6 @@ export default function PackingChecklistModal({
   order,
   estimate,
   title = 'Packing checklist',
-  keyPrefix = '',
   onSign,
   onClear,
   onClose,
@@ -73,12 +72,12 @@ export default function PackingChecklistModal({
   const booking = bookings.find((b) => b.id === order?.setId) ?? null
   const groups = packingRows(estimate, { inventory, booking })
   const allLines = groups.flatMap((g) => g.lines)
-  const prog = packingProgress(allLines, packing, keyPrefix)
+  const prog = packingProgress(allLines, packing)
   const unitRows = allLines.filter((r) => r.kind === 'unit').length
 
   const sign = (line, slot) =>
-    onSign(packingLineKey(line, keyPrefix), slot, myInitials, line.itemName)
-  const clear = (line, slot) => onClear(packingLineKey(line, keyPrefix), slot)
+    onSign(packingLineKey(line), slot, myInitials, line.itemName)
+  const clear = (line, slot) => onClear(packingLineKey(line), slot)
 
   return (
     <Modal open={open} onClose={onClose} size="lg" title={title}>
@@ -145,7 +144,7 @@ export default function PackingChecklistModal({
                   </div>
                   <ul className="space-y-1">
                     {g.lines.map((l, i) => {
-                      const key = packingLineKey(l, keyPrefix)
+                      const key = packingLineKey(l)
                       const s = packing[key] || {}
                       const returned = !!s.ret?.initials
                       const out = !!(s.out1?.initials && s.out2?.initials)
