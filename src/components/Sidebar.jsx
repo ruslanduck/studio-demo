@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useStore } from '../store'
 import { WORKSPACE_NAV } from '../data/nav'
+import { roleLabel } from '../lib/permissions'
 import Logo, { BRAND_NAME } from './Logo'
 
 // Navigation for phone / iPad-portrait ONLY: an off-canvas drawer opened from the
@@ -10,6 +11,7 @@ import Logo, { BRAND_NAME } from './Logo'
 // of width the tables would rather have.
 export default function Sidebar() {
   const activeView = useStore((s) => s.activeView)
+  const profile = useStore((s) => s.profile)
   const setActiveView = useStore((s) => s.setActiveView)
   const sidebarOpen = useStore((s) => s.sidebarOpen)
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
@@ -92,11 +94,16 @@ export default function Sidebar() {
           })}
         </nav>
 
-        <div className="mt-auto p-4">
-          <p className="text-[11px] leading-relaxed text-slate-400">
-            Demo build · works on desktop, iPad &amp; iPhone
-          </p>
-        </div>
+        {/* The drawer footer used to advertise "Demo build". On a phone the top bar
+            has no room for the account block, so this is where it belongs. */}
+        {profile && (
+          <div className="mt-auto border-t border-slate-200 p-4">
+            <div className="truncate text-sm font-medium text-slate-800">{profile.full_name}</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">
+              {roleLabel(profile.role)}
+            </div>
+          </div>
+        )}
       </aside>
     </>
   )
