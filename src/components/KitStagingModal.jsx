@@ -136,6 +136,13 @@ export default function KitStagingModal({
   //   { itemId, slotKey } — slotKey null = choosing a copy for an ad-hoc add.
   const [unitPicker, setUnitPicker] = useState(null)
   const [scanOk, setScanOk] = useState(null) // last accepted scan, for feedback
+  // Sending a unit for repair is a real inventory write, so it takes the crew's
+  // words with it: { key, vendor, issue }.
+  const [broken, setBroken] = useState(null)
+  // What the last replace actually did. Without this, "send to repair" looked
+  // like it had done nothing: the freed slot and the repaired unit cancel out in
+  // the "N free" count, so the number legitimately doesn't move.
+  const [lastAction, setLastAction] = useState(null)
   const [replacing, setReplacing] = useState(null) // slot key showing the replace-reason choice
   const [editing, setEditing] = useState(null) // { key, value, error } — inline barcode edit
   const [pendingScan, setPendingScan] = useState(null) // { code, slotKey, itemName } — register offer
@@ -196,6 +203,8 @@ export default function KitStagingModal({
     setPendingScan(null)
     setUnitPicker(null)
     setScanOk(null)
+    setBroken(null)
+    setLastAction(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, kit])
 
@@ -354,28 +363,54 @@ export default function KitStagingModal({
 
   // Un-assign a filled slot so it can take a different unit (return to pool).
   function returnToStock(key) {
+    const f = fills.find((x) => x.key === key)
     setFills((prev) =>
-      prev.map((f) =>
-        f.key === key ? { ...f, unitId: null, barcode: null, source: null, state: 'empty' } : f,
+      prev.map((x) =>
+        x.key === key ? { ...x, unitId: null, barcode: null, source: null, state: 'empty' } : x,
       ),
     )
     setReplacing(null)
     setActiveKey(key)
     setScanError(null)
+    setLastAction({
+      tone: 'plain',
+      text: `#${f?.barcode} went back to stock — pick another copy for this slot.`,
+    })
   }
 
   // Replace because the unit is broken: send it to repair (global — it becomes
   // unavailable everywhere and logs in 2.6), then empty the slot for a re-scan.
-  function markBroken(f) {
-    onMarkBroken?.(f.itemId, f.unitId)
+  // Broken: the unit goes to the 2.6 repair log with what the crew reported, and
+  // leaves the pool everywhere — not just this slot. `onMarkBroken` is REQUIRED
+  // for that; if a parent forgot to pass it the write would silently not happen,
+  // so say so rather than emptying the slot and implying a repair.
+  function markBroken() {
+    const f = fills.find((x) => x.key === broken.key)
+    if (!f) return setBroken(null)
+    if (!onMarkBroken) {
+      setBroken(null)
+      return setLastAction({
+        tone: 'bad',
+        text: "This window can't send units for repair — do it from the item's card in Inventory.",
+      })
+    }
+    onMarkBroken(f.itemId, f.unitId, {
+      vendor: broken.vendor.trim() || null,
+      issue: broken.issue.trim() || 'Flagged broken while packing',
+    })
     setFills((prev) =>
       prev.map((x) =>
         x.key === f.key ? { ...x, unitId: null, barcode: null, source: null, state: 'empty' } : x,
       ),
     )
+    setBroken(null)
     setReplacing(null)
     setActiveKey(f.key)
     setScanError(null)
+    setLastAction({
+      tone: 'good',
+      text: `#${f.barcode} sent for repair${broken.vendor.trim() ? ` to ${broken.vendor.trim()}` : ''} — it's out of the pool everywhere and logged on the item.`,
+    })
   }
 
   // Save an inline barcode edit for an assigned unit (persists to stock).
@@ -590,11 +625,40 @@ export default function KitStagingModal({
           </div>
         )}
 
+        {lastAction && (
+          <div
+            className={[
+              'mb-3 flex items-start gap-1.5 rounded-lg px-3 py-2 text-xs font-medium ring-1',
+              lastAction.tone === 'good'
+                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                : lastAction.tone === 'bad'
+                  ? 'bg-rose-50 text-rose-700 ring-rose-200'
+                  : 'bg-slate-50 text-slate-600 ring-slate-200',
+            ].join(' ')}
+          >
+            {lastAction.tone === 'bad' ? (
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            ) : lastAction.tone === 'good' ? (
+              <Wrench size={13} className="mt-0.5 shrink-0" />
+            ) : (
+              <Undo2 size={13} className="mt-0.5 shrink-0" />
+            )}
+            <span className="min-w-0 flex-1">{lastAction.text}</span>
+            <button
+              type="button"
+              onClick={() => setLastAction(null)}
+              className="shrink-0 rounded px-1 text-slate-400 transition hover:bg-white/60"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {needCount > 0 ? (
           <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
             <AlertTriangle size={13} />
-            {needCount} slot{needCount === 1 ? '' : 's'} still need a unit — scan, use available, or
-            remove before adding.
+            {needCount} slot{needCount === 1 ? '' : 's'} still need a unit — scan a barcode, choose a
+            copy, or remove the slot before adding.
           </div>
         ) : (
           fills.length > 0 && (
@@ -776,7 +840,10 @@ export default function KitStagingModal({
                     </button>
                     <button
                       type="button"
-                      onClick={() => markBroken(f)}
+                      onClick={() => {
+                        setBroken({ key: f.key, vendor: '', issue: '' })
+                        setReplacing(null)
+                      }}
                       className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-medium text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
                     >
                       <Wrench size={13} /> Broken → send to repair
@@ -788,6 +855,59 @@ export default function KitStagingModal({
                     >
                       Cancel
                     </button>
+                  </div>
+                )}
+
+                {/* Broken → repair: what's wrong goes with it, since this writes to
+                    the item's repair log and takes the copy out of the pool. */}
+                {broken?.key === f.key && (
+                  <div className="border-t border-rose-200 bg-rose-50/60 px-3 py-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-rose-700">
+                      <Wrench size={13} />
+                      Send #{f.barcode} for repair
+                    </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+                      <input
+                        type="text"
+                        value={broken.vendor}
+                        onChange={(e) => setBroken((b) => ({ ...b, vendor: e.target.value }))}
+                        placeholder="Repair shop (optional)"
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                      />
+                      <input
+                        autoFocus
+                        type="text"
+                        value={broken.issue}
+                        onChange={(e) => setBroken((b) => ({ ...b, issue: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            markBroken()
+                          } else if (e.key === 'Escape') setBroken(null)
+                        }}
+                        placeholder="What's wrong with it?"
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={markBroken}
+                        className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-rose-700"
+                      >
+                        Send to repair
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBroken(null)}
+                        className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-white"
+                      >
+                        Cancel
+                      </button>
+                      <span className="ml-auto text-[11px] text-slate-500">
+                        It leaves the pool for every job until it's marked back.
+                      </span>
+                    </div>
                   </div>
                 )}
 

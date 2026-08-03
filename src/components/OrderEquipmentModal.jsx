@@ -15,7 +15,7 @@ import {
 import Modal from './Modal'
 import KitStagingModal from './KitStagingModal'
 import { studioLabel } from '../data/studios'
-import { notArchived } from '../store'
+import { useStore, notArchived } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
 import { buildEstimate, money } from '../lib/estimate'
 import { availableCount, freeUnitsOf, resolveUnitsForQuantities } from '../lib/availability'
@@ -52,6 +52,9 @@ export default function OrderEquipmentModal({
   onClose,
   onSave,
 }) {
+  // Writes the staging window can make on real stock (repair log, barcode fix).
+  const sendToRepair = useStore((st) => st.sendToRepair)
+  const setUnitBarcode = useStore((st) => st.setUnitBarcode)
   const [itemLines, setItemLines] = useState([]) // { itemId, quantity, source, vendorId }
   const [stagedUnits, setStagedUnits] = useState([]) // kit lines (unit-level)
   const [staging, setStaging] = useState(null)
@@ -809,6 +812,12 @@ export default function OrderEquipmentModal({
           setStaging(null)
         }}
         onCancel={() => setStaging(null)}
+        // Both of these are REAL inventory writes the staging window offers, and
+        // both were missing here: the calls are optional, so sending a unit for
+        // repair from an order emptied the slot, wrote no repair, logged nothing
+        // and left the count unchanged — which is exactly what it looked like.
+        onMarkBroken={(itemId, unitId, details) => sendToRepair(itemId, unitId, details)}
+        onSetBarcode={(itemId, unitId, barcode) => setUnitBarcode(itemId, unitId, barcode)}
       />
     </>
   )

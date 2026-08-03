@@ -897,6 +897,29 @@
 > register." (one hash); `#0966` pasted in kit staging → assigned to the MONITOR slot. Demo data reseeded after.
 > ⚠️ The console keeps stale `[vite] Failed to reload` lines from mid-edit HMR races; the app reloads and renders
 > clean, and `npm run build` passes (it would fail on a real syntax error).
+> **FIX — "Broken → send to repair" from an ORDER did nothing at all.** Reported: sent a unit for repair twice,
+> availability stayed 12, nothing in the item's log. Root cause: `OrderEquipmentModal` never passed
+> `onMarkBroken` / `onSetBarcode` to `KitStagingModal` — only `BookingModal` did — and the staging window calls
+> them optionally (`onMarkBroken?.()`), so the slot emptied, no repair row was written, no event was logged and
+> the pool never changed. The pencil (barcode correction) was the same silent no-op in that flow.
+> ⚠️ This is the `companies={companies}` bug class again, but INVERTED: a *missing* optional prop, which
+> `npm run audit:jsx` cannot see (it only flags props whose value identifier is undeclared). When a child calls a
+> handler with `?.`, a parent that forgets it fails silently — the child now says so instead
+> ("This window can't send units for repair — do it from the item's card").
+> Also fixed the two things that made the failure unreadable even once wired: **a comment is now taken** (repair
+> shop + "What's wrong with it?", Enter to submit — `repairs.vendor`/`issue` were always nullable, so a blank
+> shop is legal and the issue falls back to "Flagged broken while packing"), and the window **says what the
+> write did** ("#0963 sent for repair to Sony Pro Support — it's out of the pool everywhere and logged on the
+> item"). That last part matters because **the "N free" count legitimately does not move**: the slot's own unit
+> was already excluded as claimed, so releasing it and removing it for repair cancel out. The pool really does
+> shrink — reopening the window shows it (4 free → 3).
+> `BookingModal` passes the typed details through instead of its old hardcoded "Flagged broken during kit
+> staging", and the stale "scan, use available, or remove" hint now matches the buttons.
+> Verified in local mode: send #0963 with shop + issue → slot empties, green line, unit reads "In repair — Sony
+> Pro Support" in the units table, item Activity shows "Demo user sent a unit for repair · Sony Pro Support ·
+> Zoom ring sticks at 50mm · #0963", and the lens pool went 4 → 3. Pencil in the same flow: `0965` refused
+> (belongs to the SmallHD monitor) with the panel kept open, `9001` written through to `units.barcode`. Demo
+> data reseeded after; 0 console errors.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

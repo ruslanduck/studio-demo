@@ -678,8 +678,14 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
       dateWindow={dateWindow}
       ownUnitIds={bookingUnits}
       reservedUnitIds={reservedForStaging}
-      onMarkBroken={(itemId, unitId) =>
-        sendToRepair(itemId, unitId, { issue: 'Flagged broken during kit staging' })
+      // The staging window now asks WHAT is wrong (and optionally where it went),
+      // so pass that through instead of a fixed sentence. The fallback keeps a
+      // blank submission meaningful in the repair log.
+      onMarkBroken={(itemId, unitId, details = {}) =>
+        sendToRepair(itemId, unitId, {
+          vendor: details.vendor || null,
+          issue: details.issue || 'Flagged broken while packing',
+        })
       }
       onSetBarcode={(itemId, unitId, barcode) => setUnitBarcode(itemId, unitId, barcode)}
       onConfirm={(units) => {
