@@ -55,7 +55,7 @@ import { packingProgress } from '../lib/packing'
 // Orders / Estimates (epic #5, 5.1 + 5.2).
 //
 // An Order is the equipment list for a Set — not an e-commerce order. It carries
-// the studio, working dates, job name and photographer, plus the hand-typed
+// the studio, the set date, job name and photographer, plus the hand-typed
 // accounting PO, and starts life on HOLD (yellow) before being CONFIRMED (green).
 //
 // Delivered here: the creation form (5.1), the PO field and created-by/date
@@ -820,7 +820,7 @@ function OrderDetail({
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             The job
           </h4>
-          <Row icon={CalendarRange} label="Working dates">
+          <Row icon={CalendarRange} label="Set date">
             {order.startsOn ? dateRange(order.startsOn, order.endsOn) : '—'}
           </Row>
           <Row icon={Building2} label="Studio">

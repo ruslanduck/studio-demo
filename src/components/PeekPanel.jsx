@@ -277,7 +277,7 @@ function OrderPeek({ id }) {
 
       <Section title="The job">
         <div className="space-y-1.5">
-          <Field label="Working dates">
+          <Field label="Set date">
             {order.startsOn === order.endsOn
               ? order.startsOn
               : `${order.startsOn} → ${order.endsOn}`}

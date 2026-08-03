@@ -2200,7 +2200,7 @@ export const useStore = create(
         const { jobName, studioId, startsOn } = order
         if (!jobName?.trim()) return { error: 'Give the job a name.' }
         if (!studioId) return { error: 'Pick a studio.' }
-        if (!startsOn) return { error: 'Pick the first working date.' }
+        if (!startsOn) return { error: 'Pick the set date.' }
 
         const used = usingSupabase
           ? await sbCountSetsOn(studioId, startsOn)
@@ -2318,7 +2318,7 @@ export const useStore = create(
         const orders = state.orders
           .map((o) => (o.id === id ? resolveOrder({ ...o, ...changes, id }, state.companies) : o))
           .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
-        // The Set mirrors the order's job name, studio and first working date.
+        // The Set mirrors the order's job name, studio and set date.
         const target = orders.find((o) => o.id === id)
         const mirrored = state.bookings.map((b) =>
           target?.setId && b.id === target.setId

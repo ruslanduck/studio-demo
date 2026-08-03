@@ -95,7 +95,7 @@ export default function OrderEquipmentModal({
 
   const itemsById = useMemo(() => Object.fromEntries(inventory.map((i) => [i.id, i])), [inventory])
   const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
-  // Availability is asked about the ORDER's working dates (see lib/availability).
+  // Availability is asked about the ORDER's set date (see lib/availability).
   const dateWindow = useMemo(
     () => ({ from: order?.startsOn || null, to: order?.endsOn || order?.startsOn || null }),
     [order?.startsOn, order?.endsOn],

@@ -130,11 +130,12 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
     // The crew pulling gear needs to know WHICH set of the day it's for.
     ['Set', est.order.setLabel || '—'],
     [
-      'Working dates',
+      'Set date',
       est.order.startsOn
         ? est.order.endsOn && est.order.endsOn !== est.order.startsOn
+          // Legacy rows from when an order could span days.
           ? `${est.order.startsOn} to ${est.order.endsOn}  (${est.days} days)`
-          : `${est.order.startsOn}  (1 day)`
+          : est.order.startsOn
         : '—',
     ],
     ['Photographer', est.order.photographer || '—'],

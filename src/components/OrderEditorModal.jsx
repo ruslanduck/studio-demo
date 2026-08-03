@@ -39,7 +39,6 @@ const blank = {
   setLabel: '',
   studioId: '1',
   startsOn: '',
-  endsOn: '',
   photographer: '',
   poNumber: '',
   status: 'hold',
@@ -165,7 +164,6 @@ export default function OrderEditorModal({
             setLabel: order.setLabel ?? '',
             studioId: order.studioId ?? '1',
             startsOn: order.startsOn ?? '',
-            endsOn: order.endsOn ?? order.startsOn ?? '',
             photographer: order.photographer ?? '',
             poNumber: order.poNumber ?? '',
             status: order.status ?? 'hold',
@@ -200,11 +198,11 @@ export default function OrderEditorModal({
   const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
 
   // Availability is a question about DATES: gear committed to another day says
-  // nothing about this job. The window is the working dates being typed above,
-  // so the counts change as soon as the dates do.
+  // nothing about this job. A shoot is one day, so the window is that single set
+  // date — the counts change as soon as it does.
   const dateWindow = useMemo(
-    () => ({ from: form.startsOn || null, to: form.endsOn || form.startsOn || null }),
-    [form.startsOn, form.endsOn],
+    () => ({ from: form.startsOn || null, to: form.startsOn || null }),
+    [form.startsOn],
   )
   const freeFor = (item) =>
     availableCount(item, { claimed: stagedIds, window: dateWindow })
@@ -391,17 +389,10 @@ export default function OrderEditorModal({
 
   const set = (changes) => setForm((f) => ({ ...f, ...changes }))
 
-  // Keep the end date from preceding the start date.
-  const endInvalid = useMemo(
-    () => !!form.endsOn && !!form.startsOn && form.endsOn < form.startsOn,
-    [form.endsOn, form.startsOn],
-  )
-
   async function submit(e) {
     e?.preventDefault()
     if (!form.jobName.trim()) return setError('Give the job a name — what are we shooting?')
-    if (!form.startsOn) return setError('Pick the first working date.')
-    if (endInvalid) return setError('The last working date is before the first one.')
+    if (!form.startsOn) return setError('Pick the set date.')
     // A sub-rental line without a vendor is legal in the DB (a half-picked row
     // shouldn't be an error) but useless on a pull sheet, so it's blocked here.
     const noVendor = subRentals.find((l) => !l.vendorId)
@@ -415,7 +406,8 @@ export default function OrderEditorModal({
       ...form,
       jobName: form.jobName.trim(),
       setLabel: form.setLabel.trim(),
-      endsOn: form.endsOn || form.startsOn,
+      // One-day shoot: the window closes on the same date it opens.
+      endsOn: form.startsOn,
     }
     // The gear chosen above goes in with the order, in one action.
     const res = isEdit
@@ -505,25 +497,17 @@ export default function OrderEditorModal({
             </div>
           </div>
 
+          {/* A shoot is always a single day, so there is one date, not a range.
+              `endsOn` is still written (equal to it) because availability, the
+              estimate's billable days and the order search all read a window. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className={label}>First working date</label>
+              <label className={label}>Set date</label>
               <DateField
                 value={form.startsOn}
                 onChange={(e) => set({ startsOn: e.target.value })}
                 className={field}
               />
-            </div>
-            <div>
-              <label className={label}>Last working date</label>
-              <DateField
-                value={form.endsOn}
-                onChange={(e) => set({ endsOn: e.target.value })}
-                className={field}
-              />
-              <p className="mt-1 text-[11px] text-slate-400">
-                Leave empty for a single-day job.
-              </p>
             </div>
           </div>
 

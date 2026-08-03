@@ -101,7 +101,10 @@
 > (`20260731120000_orders_epic5.sql`). Terminology agreed with Clay and used throughout the code:
 > **Job** = what we shoot (free-text job name), **Set** = the shoot itself (≤5 per studio per day, own
 > roster + gear), **Order** = the equipment list for a set (NOT an e-commerce order). The `orders` stub
-> (company/number/status, read-only in 4.5) became real: `job_name`, `studio_id`, `starts_on`/`ends_on`,
+> (company/number/status, read-only in 4.5) became real: `job_name`, `studio_id`, `starts_on`/`ends_on`
+> (⚠️ a shoot is ALWAYS one day, agreed later: the form shows a single **Set date** and writes
+> `ends_on` = `starts_on`. The column stays because availability, billable days and the order search
+> all read a window, and legacy rows may still span days),
 > `photographer_contact_id` → contacts, `po_number`, `created_by` (defaults to `auth.uid()` like the other
 > attribution columns), and the status check now allows `hold` alongside the legacy values. New sidebar
 > view **Orders** (`src/components/Orders.jsx`): list with job search across PO / job name / dates /
