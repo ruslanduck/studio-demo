@@ -948,6 +948,14 @@ function OrderDetail({
                         <span className="shrink-0 text-xs text-slate-500">×{l.quantity}</span>
                         <span className="w-20 shrink-0 text-right text-xs text-slate-500">
                           {l.dayRate == null ? 'no rate' : `${money(l.dayRate)}/day`}
+                          {l.rateOverridden && (
+                            <span
+                              className="ml-1 text-violet-500"
+                              title="Priced on this line, not from the item's own rate"
+                            >
+                              set here
+                            </span>
+                          )}
                         </span>
                         <span className="w-20 shrink-0 text-right text-sm font-medium text-slate-800">
                           {l.dayRate == null ? '—' : money(l.lineTotal)}

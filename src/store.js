@@ -2327,6 +2327,13 @@ export const useStore = create(
             console.error('reservation sync failed:', e)
           }
           logStatus(statusMoved ? res : null)
+          // The gear saved but a typed price didn't, because this database is
+          // missing the per-line rate column. Say so instead of letting the
+          // number quietly disappear on the next reload.
+          if (wrote.rateNotStored)
+            return {
+              error: `The equipment saved, but ${wrote.rateNotStored} line price(s) did not: this database is missing the order-line rate column (migration 20260811120000). Apply it, then re-enter the price.`,
+            }
           return { ok: true, ...res }
         }
         const state = get()
@@ -2385,7 +2392,7 @@ export const useStore = create(
         const prevLines = order?.lines ?? []
         const eqStats = diffOrderLines(prevLines, lines)
         if (usingSupabase) {
-          await sbSetOrderLines(orderId, lines)
+          const wrote = (await sbSetOrderLines(orderId, lines)) || {}
           await sbTouchOrderEquipment(orderId, get().session?.user?.id ?? null)
           get().logActivity({
             type: EVENT.EQ_CHANGED,
@@ -2423,7 +2430,11 @@ export const useStore = create(
             itemId: l.itemId,
             itemName: byId[l.itemId]?.name ?? l.itemName ?? null,
             quantity: Math.max(1, Number(l.quantity) || 1),
-            dayRate: byId[l.itemId]?.dayRate ?? null,
+            // A typed per-line rate wins over the item's (a sub-rental line is
+            // priced by its vendor); untouched lines follow the item.
+            dayRate: l.rateOverridden && l.dayRate != null ? Number(l.dayRate) : byId[l.itemId]?.dayRate ?? null,
+            itemDayRate: byId[l.itemId]?.dayRate ?? null,
+            rateOverridden: !!l.rateOverridden && l.dayRate != null,
             kitId: l.kitId ?? null,
             unitId: l.unitId ?? null,
             barcode: l.barcode ?? (l.unitId ? unitBarcode[l.unitId] ?? null : null),

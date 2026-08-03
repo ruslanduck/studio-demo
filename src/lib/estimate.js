@@ -4,7 +4,9 @@
 // out. Keeping this free of React and of jsPDF means the same numbers feed the
 // on-screen estimate and the PDF, and both can be tested in Node.
 //
-// Money model: an item has a `dayRate`; the estimate charges
+// Money model: a LINE's `dayRate` wins, falling back to the item's — a
+// sub-rental line is priced by its vendor, which has nothing to do with our own
+// rate for a comparable piece. The estimate charges
 // quantity × dayRate × billable days. Items with no rate (stock that is used up) are listed
 // but contribute 0 and are counted so the UI can say so out loud rather than
 // quietly understating the total.
@@ -78,6 +80,9 @@ export function buildEstimate(order, { inventory = [], kits = [], booking = null
       quantity,
       itemName: l.itemName ?? item?.name ?? 'Item',
       dayRate: rate,
+      // Whether this line's price was set ON THE LINE (a sub-rental's vendor
+      // price, or a one-off) rather than inherited from the item.
+      rateOverridden: !!l.rateOverridden,
       lineTotal: rate == null ? 0 : rate * quantity * days,
     }
   })

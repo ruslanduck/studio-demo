@@ -88,6 +88,9 @@ export default function OrderEquipmentModal({
           quantity: l.quantity ?? 1,
           source: l.source === SUB_RENTAL ? SUB_RENTAL : IN_HOUSE,
           vendorId: l.vendorId ?? null,
+          // A rate typed on this line before; null means "follow the item".
+          dayRate: l.rateOverridden ? l.dayRate ?? null : null,
+          rateOverridden: !!l.rateOverridden,
         })
       }
     }
@@ -172,7 +175,10 @@ export default function OrderEquipmentModal({
         quantity: l.quantity,
         source: l.source,
         vendorId: l.vendorId,
-        dayRate: itemsById[l.itemId]?.dayRate ?? null,
+        // A typed rate is what this line costs; otherwise the item's own.
+        dayRate: l.rateOverridden && l.dayRate != null ? l.dayRate : itemsById[l.itemId]?.dayRate ?? null,
+        itemDayRate: itemsById[l.itemId]?.dayRate ?? null,
+        rateOverridden: !!l.rateOverridden && l.dayRate != null,
       })),
     ],
     [stagedUnits, itemLines, itemsById],
@@ -273,6 +279,17 @@ export default function OrderEquipmentModal({
 
   const updateLine = (index, changes) =>
     setItemLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...changes } : l)))
+
+  // What this line costs per day. Typing a number overrides the item's rate for
+  // THIS line only — the item everyone else quotes from is untouched. Clearing
+  // the field goes back to following the item.
+  function setLineRate(index, raw) {
+    const t = String(raw ?? '').trim()
+    if (t === '') return updateLine(index, { dayRate: null, rateOverridden: false })
+    const n = Number(t.replace(',', '.'))
+    if (!Number.isFinite(n) || n < 0) return
+    updateLine(index, { dayRate: n, rateOverridden: true })
+  }
 
   const removeLine = (index) => setItemLines((prev) => prev.filter((_, i) => i !== index))
 
@@ -643,6 +660,48 @@ export default function OrderEquipmentModal({
                               no vendor companies on file
                             </span>
                           ))}
+
+                        {/* The rental price for this line. A sub-rental is priced
+                            by its vendor, so our own rate is only a starting
+                            point; leaving it empty quotes the item's rate. */}
+                        <label className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                          <span className="text-slate-400">$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={l.rateOverridden && l.dayRate != null ? String(l.dayRate) : ''}
+                            onChange={(e) => setLineRate(i, e.target.value)}
+                            placeholder={
+                              itemsById[l.itemId]?.dayRate != null
+                                ? String(itemsById[l.itemId].dayRate)
+                                : '—'
+                            }
+                            title={
+                              isSub
+                                ? "What the vendor charges per day for this line"
+                                : "Rate per day for this line — leave empty to use the item's own rate"
+                            }
+                            className={[
+                              'w-16 rounded-md border px-1.5 py-1 text-right text-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100',
+                              l.rateOverridden
+                                ? 'border-violet-300 font-medium text-violet-700'
+                                : 'border-slate-300 text-slate-700 placeholder:text-slate-300',
+                            ].join(' ')}
+                          />
+                          <span className="text-slate-400">/day</span>
+                          {l.rateOverridden ? (
+                            <button
+                              type="button"
+                              onClick={() => setLineRate(i, '')}
+                              title="Back to the item's own rate"
+                              className="rounded px-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                            >
+                              reset
+                            </button>
+                          ) : isSub ? (
+                            <span className="text-amber-600">vendor price not set</span>
+                          ) : null}
+                        </label>
                       </div>
                     </li>
                   )

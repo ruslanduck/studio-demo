@@ -1005,6 +1005,33 @@
 > button; **Re-open** brings the button back; **Close order** locks it again; the checklist and Print PDF stay
 > reachable throughout. 0 console errors. NOTE the store guard itself has no UI route left to exercise — it
 > exists for the stale-modal race and any future call site, and was reviewed by reading, not by staging a race.
+> **FEATURE — a rental price ON THE ORDER LINE** (`20260811120000_order_line_day_rate.sql`). Requested: adding a
+> rental item to an order must let you enter its rental price. `inventory_items.day_rate` (5.4) is OUR rate for
+> gear we own and is the right default — but it is the WRONG answer for a sub-rental line: that gear is the
+> vendor's, the price is whatever this deal costs, and until now such a line was quietly quoted at our own rate
+> for a comparable piece we happen to own. New nullable `order_lines.day_rate`: null = follow the item (what
+> every existing row means), a typed value overrides it FOR THIS LINE ONLY, so a vendor's price or a one-off
+> discount never edits the item everyone else quotes from.
+> `buildEstimate` already read `line.dayRate ?? item.dayRate`, so the estimate, the card and both PDFs picked it
+> up for free; it now also carries `rateOverridden`, which the card shows as a small "set here" so a vendor price
+> is visibly not our rate. UI: a `$ ___ /day` field on every a-la-carte line with the item's rate as the
+> PLACEHOLDER (so the default is legible), `reset` back to the item, and for a sub-rental line an explicit
+> "vendor price not set" until it is. Kit lines are untouched — they're unit-level rows of an item we own.
+> ⚠️ **Fixed a trap I introduced:** I first put `day_rate` inside `getOrders`'s BASE select, which on a
+> pre-migration database fails every rich layer and degrades to the stub shape — orders would silently lose
+> kits, units, sources and vendors, not just the price. It is now the OUTERMOST layer
+> (`withLineRate = withSetLabel.replace(...)`), verified against the real prod DB: the top layer fails with
+> **42703** and the next one still returns `id, item, unit, kit_id, source, vendor, unit_id, quantity,
+> slot_label, vendor_company_id`. `setOrderLines` likewise strips the column and retries — but REPORTS it
+> ("the equipment saved, but N line price(s) did not … apply migration 20260811120000"), because a price that
+> silently vanishes is worse than one refused out loud.
+> 10 Node assertions on the pricing (vendor price beats ours, days multiply, an unrated line still contributes
+> nothing, **$0 is a real price and not "unset"**). Verified in local mode: the field shows 285 as a placeholder,
+> switching a line to Sub-rental reads "vendor price not set", typing 340 moves the modal footer
+> 475 → **530**, saving shows "$340.00/day set here" on the card with the estimate at $530, re-opening the picker
+> loads 340 back, and `reset` returns to 475. Demo data reseeded after.
+> ⚠️ **The migration is NOT applied yet** — the studio's faster Wi-Fi blocks 5432 again (443 fine). Prod is
+> unaffected until it runs (verified above), and a typed price is refused with the message rather than dropped.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

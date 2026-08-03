@@ -1093,7 +1093,16 @@ function mapLineRow(l) {
     itemId: l.item?.id ?? null,
     itemName: l.item?.name ?? null,
     quantity: l.quantity,
-    dayRate: l.item?.day_rate != null ? Number(l.item.day_rate) : null,
+    // The LINE's own rate wins; the item's is the default. A sub-rental line is
+    // priced by the vendor, so it must be able to differ from our rate.
+    dayRate:
+      l.day_rate != null
+        ? Number(l.day_rate)
+        : l.item?.day_rate != null
+          ? Number(l.item.day_rate)
+          : null,
+    itemDayRate: l.item?.day_rate != null ? Number(l.item.day_rate) : null,
+    rateOverridden: l.day_rate != null,
     kitId: l.kit_id ?? null,
     unitId: l.unit?.id ?? l.unit_id ?? null,
     barcode: l.unit?.barcode ?? null,
@@ -1129,13 +1138,22 @@ export async function getOrders() {
   // hasn't run 20260809120000 keeps everything else instead of falling all the
   // way back to the stub shape.
   const withSetLabel = `${withArchive}, set_label`
+  // The per-line rate override (20260811120000) is the OUTERMOST layer for the
+  // same reason: it lives inside the order_lines embed, so a database without the
+  // column would otherwise fail every shape that carries equipment at all and
+  // degrade to the stub — losing kits, units and vendors, not just the price.
+  const withLineRate = withSetLabel.replace(
+    'order_lines ( id, quantity,',
+    'order_lines ( id, quantity, day_rate,',
+  )
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
      order_lines ( quantity, item:inventory_items ( id, name ) ),
      sets ( id, title, date )`
   const withoutKind = withKind.replace('kind, ', '')
 
-  let { data, error } = await supabase.from('orders').select(withSetLabel).order('ordered_at')
+  let { data, error } = await supabase.from('orders').select(withLineRate).order('ordered_at')
+  if (error) ({ data, error } = await supabase.from('orders').select(withSetLabel).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withArchive).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(full).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(fullNoEq).order('ordered_at'))
@@ -1455,6 +1473,9 @@ export async function setOrderLines(orderId, lines) {
       order_id: orderId,
       inventory_item_id: l.itemId,
       quantity: Math.max(1, Number(l.quantity) || 1),
+      // Null = quote at the item's own day rate. Only a typed value is stored, so
+      // an untouched line keeps following the item.
+      day_rate: l.rateOverridden && l.dayRate != null ? Number(l.dayRate) : null,
       kit_id: l.kitId || null,
       unit_id: l.unitId || null,
       slot_label: l.slotLabel?.trim() || null,
@@ -1464,9 +1485,20 @@ export async function setOrderLines(orderId, lines) {
       vendor_company_id: l.source === 'sub_rental' ? l.vendorId || null : null,
       notes: l.notes?.trim() || null,
     }))
-  if (!rows.length) return
-  const { error } = await supabase.from('order_lines').insert(rows)
+  if (!rows.length) return {}
+  let { error } = await supabase.from('order_lines').insert(rows)
+  if (error && /day_rate/.test(error.message || '')) {
+    // This database hasn't run 20260811120000. Write everything else rather than
+    // losing the whole list — and REPORT it, because a price that silently
+    // vanishes is worse than one that was refused out loud.
+    const stripped = rows.map(({ day_rate: _drop, ...rest }) => rest)
+    ;({ error } = await supabase.from('order_lines').insert(stripped))
+    if (error) throw error
+    const dropped = rows.filter((r) => r.day_rate != null).length
+    return dropped ? { rateNotStored: dropped } : {}
+  }
   if (error) throw error
+  return {}
 }
 
 // Packing checklist sign-offs (6.2 / 6.5). Upsert one slot of a line; the
