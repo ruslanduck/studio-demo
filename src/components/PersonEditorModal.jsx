@@ -12,6 +12,7 @@ import {
   Archive as ArchiveIcon,
 } from 'lucide-react'
 import Modal from './Modal'
+import SelectField from './SelectField'
 import { PEOPLE_CATEGORIES } from '../data/people'
 
 // Person editor (Build order #4, 4.1 + 4.2).
@@ -148,34 +149,22 @@ export default function PersonEditorModal({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className={label}>Category</label>
-              <select
+              <SelectField
                 value={form.category}
                 onChange={(e) => set({ category: e.target.value, subcategory: '' })}
+                options={[{ value: '', label: '—' }, ...Object.keys(PEOPLE_CATEGORIES)]}
                 className={field}
-              >
-                <option value="">—</option>
-                {Object.keys(PEOPLE_CATEGORIES).map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className={label}>Subcategory</label>
               {subcategories.length > 0 ? (
-                <select
+                <SelectField
                   value={form.subcategory}
                   onChange={(e) => set({ subcategory: e.target.value })}
+                  options={[{ value: '', label: '—' }, ...subcategories]}
                   className={field}
-                >
-                  <option value="">—</option>
-                  {subcategories.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                />
               ) : (
                 <input
                   type="text"
@@ -211,37 +200,31 @@ export default function PersonEditorModal({
                     <X size={16} />
                   </button>
                 </div>
-                <select
+                <SelectField
                   value={newCompany.companyType}
                   onChange={(e) => setNewCompany((n) => ({ ...n, companyType: e.target.value }))}
+                  placeholder="Type —"
+                  options={companyTypes.map((t) => ({ value: t.name, label: t.name }))}
                   className={field}
-                >
-                  <option value="">Type —</option>
-                  {companyTypes.map((t) => (
-                    <option key={t.id} value={t.name}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                />
                 <p className="text-[11px] text-violet-700/80">
                   Created and linked when you save.
                 </p>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <select
+                <SelectField
                   value={form.companyId}
                   onChange={(e) => set({ companyId: e.target.value })}
+                  options={[
+                    { value: '', label: 'Freelance / none' },
+                    ...companies.map((c) => ({
+                      value: c.id,
+                      label: `${c.name}${c.companyType ? ` · ${c.companyType}` : ''}`,
+                    })),
+                  ]}
                   className={field}
-                >
-                  <option value="">Freelance / none</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {c.companyType ? ` · ${c.companyType}` : ''}
-                    </option>
-                  ))}
-                </select>
+                />
                 <button
                   type="button"
                   onClick={() => setNewCompany({ name: '', companyType: '' })}

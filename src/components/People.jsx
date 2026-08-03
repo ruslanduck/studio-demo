@@ -28,6 +28,7 @@ import { PEOPLE_CATEGORIES } from '../data/people'
 import { orderStatusMeta } from '../data/orderStatus'
 import PersonEditorModal from './PersonEditorModal'
 import CompanyEditorModal from './CompanyEditorModal'
+import SelectField from './SelectField'
 import { usingSupabase } from '../data/repository'
 import { uploadCv } from '../data/repository'
 
@@ -265,18 +266,12 @@ export default function People() {
             </div>
 
             {tab === 'people' && (
-              <select
+              <SelectField
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
+                options={[{ value: 'All', label: 'All categories' }, ...categories]}
                 className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              >
-                <option value="All">All categories</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              />
             )}
           </div>
 

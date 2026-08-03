@@ -15,6 +15,7 @@ import UnitEditorModal from './UnitEditorModal'
 import StockModal from './StockModal'
 import ActivityList from './ActivityList'
 import ItemAvailability from './ItemAvailability'
+import SelectField from './SelectField'
 import { useActivity } from '../lib/useActivity'
 
 // Render `text` with the first occurrence of `query` (already lowercased) wrapped
@@ -89,22 +90,16 @@ function VendorPicker({ unit, vendors, disabled, onChange }) {
       </span>
     )
   return (
-    <select
+    <SelectField
       value={unit.subRentalVendorId ?? ''}
       onChange={(e) => onChange(e.target.value || null)}
-      title="Which company we rent this unit from"
+      ariaLabel="Which company we rent this unit from"
+      options={[{ value: '', label: 'no vendor' }, ...vendors.map((c) => ({ value: c.id, label: c.name }))]}
       className={[
-        'max-w-[11rem] rounded-md border px-1.5 py-1 text-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100',
+        'w-[11rem] rounded-md border px-1.5 py-1 text-xs outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100',
         current ? 'border-slate-300 text-slate-700' : 'border-amber-300 text-amber-700',
       ].join(' ')}
-    >
-      <option value="">no vendor</option>
-      {vendors.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.name}
-        </option>
-      ))}
-    </select>
+    />
   )
 }
 
@@ -533,42 +528,24 @@ export default function Inventory() {
             </div>
             {entryType === 'items' && (
             <div className="grid grid-cols-2 gap-2">
-              <select
+              <SelectField
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
+                options={[{ value: 'All', label: 'All categories' }, ...CATEGORIES]}
                 className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              >
-                <option value="All">All categories</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <select
+              />
+              <SelectField
                 value={brand}
                 onChange={(e) => setBrand(e.target.value)}
+                options={[{ value: 'All', label: 'All brands' }, ...brands]}
                 className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              >
-                <option value="All">All brands</option>
-                {brands.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-              <select
+              />
+              <SelectField
                 value={kind}
                 onChange={(e) => setKind(e.target.value)}
+                options={[{ value: 'All', label: 'All types' }, ...ITEM_KINDS]}
                 className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              >
-                <option value="All">All types</option>
-                {ITEM_KINDS.map((k) => (
-                  <option key={k.value} value={k.value}>
-                    {k.label}
-                  </option>
-                ))}
-              </select>
+              />
               {filtersActive && (
                 <button
                   type="button"

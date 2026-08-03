@@ -5,6 +5,7 @@ import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 import DateField from './DateField'
+import SelectField from './SelectField'
 
 const MAX_QTY = 500
 
@@ -149,13 +150,12 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={label}>Category</label>
-              <select value={form.category} onChange={set('category')} className={field}>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              <SelectField
+                value={form.category}
+                onChange={set('category')}
+                options={CATEGORIES}
+                className={field}
+              />
             </div>
             <div>
               <label className={label}>Subcategory</label>

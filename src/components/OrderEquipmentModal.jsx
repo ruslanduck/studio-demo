@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import Modal from './Modal'
 import KitStagingModal from './KitStagingModal'
+import SelectField from './SelectField'
 import { studioLabel } from '../data/studios'
 import { useStore, notArchived } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
@@ -393,23 +394,19 @@ export default function OrderEquipmentModal({
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
                 Start from a scenario list
               </label>
-              <select
+              <SelectField
                 value=""
                 onChange={(e) => {
                   const list = liveScenarios.find((l) => l.id === e.target.value)
                   if (list) applyList(list)
-                  e.target.value = ''
                 }}
+                placeholder="Pick a preset…"
+                options={liveScenarios.map((l) => ({
+                  value: l.id,
+                  label: `${l.name}${l.category ? ` · ${l.category}` : ''} (${l.entries.length} lines)`,
+                }))}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              >
-                <option value="">Pick a preset…</option>
-                {liveScenarios.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                    {l.category ? ` · ${l.category}` : ''} ({l.entries.length} lines)
-                  </option>
-                ))}
-              </select>
+              />
               {applied && (
                 <div className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-900 ring-1 ring-violet-200">
                   <strong>{applied.name}</strong> applied. Edit anything below.
@@ -631,21 +628,16 @@ export default function OrderEquipmentModal({
                         </div>
                         {isSub &&
                           (vendors.length > 0 ? (
-                            <select
+                            <SelectField
                               value={l.vendorId ?? ''}
                               onChange={(e) => updateLine(i, { vendorId: e.target.value || null })}
+                              placeholder="pick a vendor…"
+                              options={vendors.map((c) => ({ value: c.id, label: c.name }))}
                               className={[
-                                'rounded-md border px-2 py-1 text-xs outline-none transition focus:ring-2 focus:ring-violet-100',
+                                'w-40 rounded-md border px-2 py-1 text-xs outline-none transition focus:ring-2 focus:ring-violet-100',
                                 l.vendorId ? 'border-slate-300 text-slate-700' : 'border-amber-400 text-amber-700',
                               ].join(' ')}
-                            >
-                              <option value="">pick a vendor…</option>
-                              {vendors.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           ) : (
                             <span className="text-[11px] text-amber-600">
                               no vendor companies on file
@@ -734,22 +726,16 @@ export default function OrderEquipmentModal({
                 Add item
               </button>
               {kits.length > 0 && (
-                <select
+                <SelectField
                   value=""
                   onChange={(e) => {
                     const kit = kits.find((k) => k.id === e.target.value)
                     if (kit) setStaging(kit)
-                    e.target.value = ''
                   }}
-                  className="rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-500 outline-none transition hover:border-violet-300 hover:text-violet-600"
-                >
-                  <option value="">Add a kit…</option>
-                  {liveKits.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Add a kit…"
+                  options={liveKits.map((k) => ({ value: k.id, label: k.name }))}
+                  className="w-48 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-500 outline-none transition hover:border-violet-300 hover:text-violet-600"
+                />
               )}
             </div>
           )}

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   Building2,
-  Check,
+  Check,
+
   AlertTriangle,
   Settings2,
   Plus,
@@ -10,6 +11,7 @@ import {
   Archive as ArchiveIcon,
 } from 'lucide-react'
 import Modal from './Modal'
+import SelectField from './SelectField'
 
 // Company editor (Build order #4, 4.3 + 4.4).
 //
@@ -165,32 +167,26 @@ export default function CompanyEditorModal({
               </button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <select
+              <SelectField
                 value={form.companyType}
                 onChange={(e) => set({ companyType: e.target.value })}
+                placeholder="—"
+                options={[
+                  { value: '', label: '—' },
+                  ...companyTypes.map((t) => ({ value: t.name, label: t.name })),
+                  // A removed type still labels the companies that used it, so it
+                  // stays selectable here and says what happened to it.
+                  ...(orphanType ? [{ value: orphanType, label: `${orphanType} (removed)` }] : []),
+                ]}
                 className={field}
-              >
-                <option value="">—</option>
-                {companyTypes.map((t) => (
-                  <option key={t.id} value={t.name}>
-                    {t.name}
-                  </option>
-                ))}
-                {orphanType && <option value={orphanType}>{orphanType} (removed)</option>}
-              </select>
+              />
               <div>
-                <select
+                <SelectField
                   value={form.kind}
                   onChange={(e) => set({ kind: e.target.value })}
+                  options={KINDS.map(([v, l]) => ({ value: v, label: l }))}
                   className={field}
-                  title="Coarse direction used elsewhere in the app"
-                >
-                  {KINDS.map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 

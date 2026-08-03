@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { Activity, TrendingUp, Briefcase, Plus, CalendarRange } from 'lucide-react'
 import Modal from './Modal'
 import DateField from './DateField'
+import SelectField from './SelectField'
 import { STUDIOS, studioLabel } from '../data/studios'
 import { usageSummary } from '../data/usage'
 
@@ -140,13 +141,12 @@ export default function WorkHistoryModal({ open, onClose, item, canLog, onLog })
               </div>
               <div>
                 <label className={label}>Studio</label>
-                <select value={form.studioId} onChange={set('studioId')} className={field}>
-                  {STUDIOS.map((id) => (
-                    <option key={id} value={id}>
-                      {studioLabel(id)}
-                    </option>
-                  ))}
-                </select>
+                <SelectField
+                  value={form.studioId}
+                  onChange={set('studioId')}
+                  options={STUDIOS.map((id) => ({ value: id, label: studioLabel(id) }))}
+                  className={field}
+                />
               </div>
               <div>
                 <label className={label}>Qty</label>

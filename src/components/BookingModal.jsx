@@ -20,6 +20,8 @@ import Modal from './Modal'
 import DateField from './DateField'
 import TimeField from './TimeField'
 import KitStagingModal from './KitStagingModal'
+import SelectField from './SelectField'
+import ComboField from './ComboField'
 
 const fieldClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
@@ -260,17 +262,12 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={labelClass}>Studio</label>
-              <select
+              <SelectField
                 value={form.studioId}
                 onChange={set('studioId')}
+                options={studios.map((id) => ({ value: id, label: studioLabel(id) }))}
                 className={fieldClass}
-              >
-                {studios.map((id) => (
-                  <option key={id} value={id}>
-                    {studioLabel(id)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className={labelClass}>Date</label>
@@ -301,35 +298,23 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={labelClass}>Photographer</label>
-              <input
-                type="text"
-                list="photographer-options"
+              <ComboField
                 value={form.photographer}
                 onChange={set('photographer')}
+                options={photographers}
                 placeholder="Select or type…"
                 className={fieldClass}
               />
-              <datalist id="photographer-options">
-                {photographers.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
             </div>
             <div>
               <label className={labelClass}>Model</label>
-              <input
-                type="text"
-                list="model-options"
+              <ComboField
                 value={form.model}
                 onChange={set('model')}
+                options={models}
                 placeholder="Select or type…"
                 className={fieldClass}
               />
-              <datalist id="model-options">
-                {models.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
             </div>
           </div>
 
@@ -372,22 +357,19 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                     size={16}
                     className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-violet-500"
                   />
-                  <select
+                  <SelectField
                     value=""
                     onChange={(e) => {
                       const list = scenarios.find((l) => l.id === e.target.value)
                       if (list) applyList(list)
                     }}
+                    placeholder="Start from a scenario list…"
+                    options={scenarios.map((l) => ({
+                      value: l.id,
+                      label: `${l.name}${l.category ? ` · ${l.category}` : ''} (${l.entries.length} lines)`,
+                    }))}
                     className={fieldClass + ' pl-9'}
-                  >
-                    <option value="">Start from a scenario list…</option>
-                    {scenarios.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name}
-                        {l.category ? ` · ${l.category}` : ''} ({l.entries.length} lines)
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
 
                 {applied && (
@@ -600,21 +582,16 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                   size={16}
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-violet-500"
                 />
-                <select
+                <SelectField
                   value=""
                   onChange={(e) => {
                     const kit = kits.find((k) => k.id === e.target.value)
                     if (kit) setStaging(kit)
                   }}
+                  placeholder="Add a kit…"
+                  options={kits.map((k) => ({ value: k.id, label: k.name }))}
                   className={fieldClass + ' pl-9'}
-                >
-                  <option value="">Add a kit…</option>
-                  {kits.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             )}
           </div>

@@ -920,6 +920,28 @@
 > Zoom ring sticks at 50mm · #0963", and the lens pool went 4 → 3. Pencil in the same flow: `0965` refused
 > (belongs to the SmallHD monitor) with the panel kept open, `9001` written through to `units.barcode`. Demo
 > data reseeded after; 0 console errors.
+> **UI — one dropdown for the whole app** (`SelectField` + `ComboField`, no migration). Reported: the Studio
+> and Photographer dropdowns look nothing alike. They weren't the same control: Studio was a native `<select>`
+> whose OPEN list is drawn by the OPERATING SYSTEM (dark on macOS, unstyleable), and Photographer was
+> `<input list>` + `<datalist>`, whose suggestion list is drawn by the BROWSER — two OS widgets, two looks,
+> neither ours. No amount of CSS fixes that; the open list of a native select cannot be styled at all. So both
+> were replaced, exactly the trade `DateField` already made for dates: `SelectField` is a listbox
+> (trigger + portal popover, checkmark on the selected row) and `ComboField` is free text WITH filtered
+> suggestions (a photographer who isn't on the list must still be typeable). Both mirror DateField's popover —
+> `position: fixed` through a portal so a modal's `overflow` can't clip them, outside-click and Escape to close
+> (Escape `stopPropagation`s so it closes the list, not the modal), one radius, one shadow — and both call
+> `onChange` with an event-like `{ target: { value } }`, which is why all 28 call sites kept their handler
+> bodies verbatim.
+> Converted **25 selects across 11 files + 3 datalists** (BookingModal photographer/model, the order form's
+> photographer). `document.querySelectorAll('select').length` is now **0**. Two behaviours worth knowing: the
+> ACTION dropdowns ("Add a kit…", "Pick a preset…") stay controlled at `value=""`, so they fall back to the
+> placeholder after firing — the old `e.target.value = ''` reset became dead code and was dropped; and the
+> popover flips ABOVE the trigger when there isn't room below (verified in a 420px-tall viewport: trigger at
+> y=279, popover placed 163–269).
+> Verified in the browser by measuring, not eyeballing: both popovers report the same `rgb(255,255,255)` and
+> `border-radius: 12px`; Studio lists all six studios with the checkmark on the current one and picking one
+> closes it; the photographer combo filters to "Marcus Reed" on "ma" and picking it writes the value; the kit
+> dropdown inside the scrollable equipment modal is not clipped and staging still opens; 0 console errors.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

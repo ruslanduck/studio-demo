@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 import Modal from './Modal'
 import DateField from './DateField'
+import SelectField from './SelectField'
+import ComboField from './ComboField'
 import { studioLabel } from '../data/studios'
 
 // Order (Estimate) creation form — epic #5, 5.1 + 5.2.
@@ -217,33 +219,22 @@ export default function OrderEditorModal({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className={label}>Studio</label>
-              <select
+              <SelectField
                 value={form.studioId}
                 onChange={(e) => set({ studioId: e.target.value })}
+                options={studios.map((id) => ({ value: id, label: studioLabel(id) }))}
                 className={field}
-              >
-                {studios.map((id) => (
-                  <option key={id} value={id}>
-                    {studioLabel(id)}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className={label}>Photographer</label>
-              <input
-                type="text"
-                list="order-photographer-options"
+              <ComboField
                 value={form.photographer}
                 onChange={(e) => set({ photographer: e.target.value })}
+                options={photographers}
                 placeholder="Select or type…"
                 className={field}
               />
-              <datalist id="order-photographer-options">
-                {photographers.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
             </div>
           </div>
 

@@ -4,7 +4,8 @@ import {
   Search,
   Plus,
   X,
-  Check,
+  Check,
+
   ChevronUp,
   ChevronDown,
   Lock,
@@ -13,6 +14,7 @@ import {
   Archive as ArchiveIcon,
 } from 'lucide-react'
 import Modal from './Modal'
+import SelectField from './SelectField'
 import { notArchived } from '../store'
 import { activeUnits } from '../data/inventory'
 
@@ -281,19 +283,16 @@ export default function KitEditorModal({
 
                       {isFixed ? (
                         units.length > 0 ? (
-                          <select
+                          <SelectField
                             value={s.fixedUnitId ?? ''}
                             onChange={(e) => setSlot(i, { fixedUnitId: e.target.value || null })}
-                            className="rounded-md border border-slate-300 px-2 py-1 font-mono text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-                          >
-                            <option value="">pick a unit…</option>
-                            {units.map((u) => (
-                              <option key={u.id} value={u.id}>
-                                #{u.barcode}
-                                {u.status !== 'available' ? ' (out)' : ''}
-                              </option>
-                            ))}
-                          </select>
+                            placeholder="pick a unit…"
+                            options={units.map((u) => ({
+                              value: u.id,
+                              label: `#${u.barcode}${u.status !== 'available' ? ' (out)' : ''}`,
+                            }))}
+                            className="w-40 rounded-md border border-slate-300 px-2 py-1 font-mono text-xs outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                          />
                         ) : (
                           <span className="text-[11px] font-medium text-amber-600">
                             no free unit to pin

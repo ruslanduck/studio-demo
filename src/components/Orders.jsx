@@ -48,6 +48,7 @@ import { useActivity } from '../lib/useActivity'
 import { orderFeed } from '../lib/activity'
 import OrderEquipmentModal from './OrderEquipmentModal'
 import PackingChecklistModal from './PackingChecklistModal'
+import SelectField from './SelectField'
 import { buildEstimate, money } from '../lib/estimate'
 import { downloadEstimatePdf } from '../lib/estimatePdf'
 import { downloadPackingListPdf } from '../lib/packingListPdf'
@@ -332,59 +333,42 @@ export default function Orders() {
                   </span>
                 )}
               </button>
-              <select
+              <SelectField
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
+                options={Object.entries(SORTS).map(([val, meta]) => ({ value: val, label: meta.label }))}
                 className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none transition focus:border-violet-400"
-              >
-                {Object.entries(SORTS).map(([val, meta]) => (
-                  <option key={val} value={val}>
-                    {meta.label}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             {showFilters && (
               <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
                 <div className="grid grid-cols-2 gap-2">
-                  <select
+                  <SelectField
                     value={status}
                     onChange={(e) => setStatus(e.target.value)}
+                    options={[
+                      { value: 'All', label: 'Any status' },
+                      ...statuses.map((v) => ({ value: v, label: ORDER_STATUS[v]?.label ?? v })),
+                    ]}
                     className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
-                  >
-                    <option value="All">Any status</option>
-                    {statuses.map((v) => (
-                      <option key={v} value={v}>
-                        {ORDER_STATUS[v]?.label ?? v}
-                      </option>
-                    ))}
-                  </select>
-                  <select
+                  />
+                  <SelectField
                     value={studioFilter}
                     onChange={(e) => setStudioFilter(e.target.value)}
+                    options={[
+                      { value: 'All', label: 'Any studio' },
+                      ...studioOptions.map((id) => ({ value: id, label: studioLabel(id) })),
+                    ]}
                     className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
-                  >
-                    <option value="All">Any studio</option>
-                    {studioOptions.map((id) => (
-                      <option key={id} value={id}>
-                        {studioLabel(id)}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
-                <select
+                <SelectField
                   value={photographer}
                   onChange={(e) => setPhotographer(e.target.value)}
+                  options={[{ value: 'All', label: 'Any photographer' }, ...photographerOptions]}
                   className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
-                >
-                  <option value="All">Any photographer</option>
-                  {photographerOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                />
                 <div>
                   <div className="mb-1 text-[11px] font-medium text-slate-500">
                     Shooting between — any job whose dates overlap
