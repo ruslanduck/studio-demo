@@ -2365,11 +2365,24 @@ export const useStore = create(
       // { itemId, quantity, kitId?, unitId?, slotLabel? }; names and day rates are
       // resolved here so the estimate and the PDF read the same numbers.
       setOrderLines: async (orderId, lines) => {
+        // A CLOSED order is history: the shoot happened, the gear came back and
+        // the reservations were released. Changing what it carried would rewrite
+        // the record every other screen reads — the packing sheet that was
+        // signed, the scan log, the estimate that was quoted. Re-open it first.
+        //
+        // The guard lives HERE and not only on the button, because a picker left
+        // open while someone else closed the order would otherwise still save.
+        const order = get().orders.find((o) => o.id === orderId)
+        if (order && isClosedStatus(order.status))
+          return {
+            error:
+              'This order is closed — its equipment is the record of what went out. Re-open it to change the gear.',
+          }
         // "The order is attributed to whoever last added inventory to it" — this
         // is that moment, and until now it left no trace at all. The lines are
         // replaced wholesale, so diff against the previous ones: the log has to
         // say WHAT changed, not just that something did.
-        const prevLines = get().orders.find((o) => o.id === orderId)?.lines ?? []
+        const prevLines = order?.lines ?? []
         const eqStats = diffOrderLines(prevLines, lines)
         if (usingSupabase) {
           await sbSetOrderLines(orderId, lines)

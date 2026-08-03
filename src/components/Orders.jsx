@@ -22,6 +22,7 @@ import {
   PackageCheck,
   Layers,
   ScanLine,
+  Lock,
 } from 'lucide-react'
 import { useStore, notArchived, MAX_SETS_PER_DAY } from '../store'
 import { useCan } from '../lib/useCan'
@@ -859,16 +860,28 @@ function OrderDetail({
               Equipment
               {estimate.lineCount > 0 && ` · ${estimate.pieces} pcs`}
             </h4>
-            {canManage && (
-              <button
-                type="button"
-                onClick={onEditEquipment}
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-violet-600 transition hover:bg-violet-50"
-              >
-                <Boxes size={13} />
-                Edit equipment
-              </button>
-            )}
+            {canManage &&
+              // A closed order's equipment is the record of what went out, so it
+              // stops being editable. Re-open it to change the gear — the store
+              // refuses the write either way.
+              (isClosedStatus(order.status) ? (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-400"
+                  title="Closed orders keep the gear they went out with. Re-open the order to change it."
+                >
+                  <Lock size={12} />
+                  Closed — locked
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onEditEquipment}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-violet-600 transition hover:bg-violet-50"
+                >
+                  <Boxes size={13} />
+                  Edit equipment
+                </button>
+              ))}
           </div>
 
           {estimate.groups.length > 0 ? (
