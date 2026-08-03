@@ -26,6 +26,10 @@ export const CAP = {
   COMPANY_MANAGE: 'company.manage',
   // Orders / estimates (epic #5).
   ORDER_MANAGE: 'order.manage',
+  // The scanning station (epic #6): signing gear out of the building and back
+  // in. Separate from ORDER_MANAGE because a packing shift is allowed to move
+  // gear without being allowed to rewrite the order.
+  SCAN: 'scan.use',
 }
 
 export const ALL_CAPS = Object.values(CAP)

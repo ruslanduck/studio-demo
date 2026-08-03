@@ -1058,6 +1058,34 @@ async function getPackingSignoffs() {
   return map
 }
 
+// Scan log grouped by order id (epic #6, the scanning station). Fetched in its
+// own try/caught query like the packing sign-offs, so orders still load on a DB
+// where the scanning migration hasn't run — the station just reports no history.
+async function getScansByOrder() {
+  const { data, error } = await supabase
+    .from('scans')
+    .select(
+      'id, order_id, set_id, unit_id, item_id, barcode, item_name, direction, scanned_at, scanner:profiles!scanned_by ( id, full_name )',
+    )
+    .order('scanned_at', { ascending: true })
+  if (error) return {}
+  const map = {}
+  for (const r of data || []) {
+    ;(map[r.order_id] ||= []).push({
+      id: r.id,
+      setId: r.set_id ?? null,
+      unitId: r.unit_id ?? null,
+      itemId: r.item_id ?? null,
+      barcode: r.barcode ?? null,
+      itemName: r.item_name ?? null,
+      direction: r.direction,
+      at: r.scanned_at,
+      by: r.scanner?.full_name ?? null,
+    })
+  }
+  return map
+}
+
 // Map a DB order/addon line row to the app's line shape (shared by orders and
 // add-ons, since add-on lines mirror order_lines).
 function mapLineRow(l) {
@@ -1157,7 +1185,11 @@ export async function getOrders() {
   if (error) ({ data, error } = await supabase.from('orders').select(withoutKind).order('ordered_at'))
   if (error) return []
 
-  const [packing, addonsByOrder] = await Promise.all([getPackingSignoffs(), getAddonsByOrder()])
+  const [packing, addonsByOrder, scansByOrder] = await Promise.all([
+    getPackingSignoffs(),
+    getAddonsByOrder(),
+    getScansByOrder(),
+  ])
 
   return (data || []).map((o) => ({
     id: o.id,
@@ -1185,6 +1217,7 @@ export async function getOrders() {
     eqUpdatedAt: o.eq_updated_at ?? null,
     packing: packing[o.id] || {},
     addons: addonsByOrder[o.id] || [],
+    scans: scansByOrder[o.id] || [],
     lines: (o.order_lines || []).map(mapLineRow),
     ...archiveFields(o),
   }))
@@ -1485,6 +1518,40 @@ export async function setOrderLines(orderId, lines) {
 
 // Packing checklist sign-offs (6.2 / 6.5). Upsert one slot of a line; the
 // partial payload leaves the other two slots untouched on conflict.
+// Append one scan (epic #6). The log is append-only — `scanned_by` is left to
+// the column default (auth.uid()) so the "who" can't be spoofed from the client,
+// exactly like every other attribution column.
+export async function logScan({ orderId, setId, unitId, itemId, barcode, itemName, direction }) {
+  const { data, error } = await supabase
+    .from('scans')
+    .insert({
+      order_id: orderId,
+      set_id: setId ?? null,
+      unit_id: unitId ?? null,
+      item_id: itemId ?? null,
+      barcode: barcode ?? null,
+      item_name: itemName ?? null,
+      direction,
+    })
+    .select('id, scanned_at')
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Move one reservation row's status. 'checked_out' and 'reserved' both occupy the
+// unit (see `occupies`), so a scan never changes what is available — it records
+// where the copy physically is.
+export async function setSetUnitStatus(setId, unitId, status) {
+  if (!setId || !unitId) return
+  const { error } = await supabase
+    .from('set_units')
+    .update({ status })
+    .eq('set_id', setId)
+    .eq('unit_id', unitId)
+  if (error) throw error
+}
+
 export async function setPackingSignoff(orderId, lineKey, slot, initials, itemName) {
   const nowIso = new Date().toISOString()
   const row = {

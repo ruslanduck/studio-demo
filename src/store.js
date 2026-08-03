@@ -25,6 +25,8 @@ import {
   setUnitBarcode as sbSetUnitBarcode,
   setReservationsForSet as sbSetReservationsForSet,
   markSetReturned as sbMarkSetReturned,
+  logScan as sbLogScan,
+  setSetUnitStatus as sbSetSetUnitStatus,
   logEvent as sbLogEvent,
   getEvents as sbGetEvents,
   getEventsForUnits as sbGetEventsForUnits,
@@ -82,6 +84,7 @@ import {
 import { supabase } from './lib/supabase'
 import { reservedUnitsForOrder, overlaps } from './lib/availability'
 import { isClosedStatus } from './data/orderStatus'
+import { SCAN_OUT, SCAN_IN, expectedUnits, resolveScan } from './lib/scanning'
 import { EVENT, diffOrderLines } from './lib/activity'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
@@ -298,6 +301,7 @@ function buildSeedData() {
       setId: set?.id ?? null,
       setTitle: set?.title ?? o.setTitle ?? null,
       packing: {}, // digital packing checklist sign-offs (6.2 / 6.5), by lineKey
+      scans: [], // scan-out / scan-in log (epic #6) — filled at the station
       addons: [], // add-on packing lists (6.4): [{ id, label, createdAt, lines }]
       lines: o.lines.map(([itemId, quantity, vendorId], li) => {
         const source = vendorId ? 'sub_rental' : 'in_house'
@@ -772,6 +776,9 @@ export const useStore = create(
       inventoryFocus: null, // { itemId, unitId, kitId, listId, ts } | null
       orderFocus: null, // { orderId, ts } | null
       orderDraft: null, // { payload, ts } | null — a new order awaiting its gear
+      // A scan that appeared on screen but whose write was refused (e.g. the
+      // scanning migration hasn't run on this database). Shown at the station.
+      scanSyncError: null,
       peopleFocus: null, // { personId, companyId, ts } | null
 
       // Send the caller's location to the stack + push a browser history entry.
@@ -2503,6 +2510,96 @@ export const useStore = create(
             console.error('packing clear failed:', e),
           )
       },
+
+      // --- the scanning station (epic #6) ----------------------------------
+      //
+      // One scan. Validation lives in `lib/scanning` (pure, asserted under Node);
+      // this only writes: append to the order's log, move the reservation row's
+      // status so the DB says where the copy is, and put the act in the activity
+      // feed with the account that did it.
+      //
+      // OPTIMISTIC, like the packing sign-off: a scanning station cannot wait on
+      // a round-trip while someone holds a camera over the reader.
+      scanUnit: (orderId, code, direction) => {
+        const state = get()
+        const order = state.orders.find((o) => o.id === orderId)
+        if (!order) return { error: 'That order is gone — reload.' }
+        const booking = state.bookings.find((b) => b.id === order.setId)
+        const expected = expectedUnits(order, booking, state.inventory)
+        const res = resolveScan(code, {
+          order,
+          expected,
+          scans: order.scans || [],
+          direction,
+          inventory: state.inventory,
+        })
+        if (!res.ok) return res
+
+        const unit = res.unit
+        const at = new Date().toISOString()
+        const entry = {
+          id: `scan-${unit.unitId}-${at}`,
+          setId: order.setId ?? null,
+          unitId: unit.unitId,
+          itemId: unit.itemId,
+          barcode: unit.barcode,
+          itemName: unit.itemName,
+          direction,
+          at,
+          by: state.profile?.fullName ?? 'Demo user',
+        }
+        set({
+          orders: state.orders.map((o) =>
+            o.id === orderId ? { ...o, scans: [...(o.scans || []), entry] } : o,
+          ),
+        })
+
+        get().logActivity({
+          type: direction === SCAN_OUT ? EVENT.SCANNED_OUT : EVENT.SCANNED_IN,
+          entityType: 'order',
+          entityId: orderId,
+          unitId: unit.unitId,
+          data: { barcode: unit.barcode, itemName: unit.itemName },
+        })
+
+        if (usingSupabase) {
+          sbLogScan({
+            orderId,
+            setId: order.setId,
+            unitId: unit.unitId,
+            itemId: unit.itemId,
+            barcode: unit.barcode,
+            itemName: unit.itemName,
+            direction,
+          }).catch((e) => {
+            // The scan showed instantly (a station can't wait on a round-trip),
+            // so a failed write has to be TAKEN BACK and said out loud —
+            // otherwise the screen claims gear moved and a reload disagrees.
+            // This is also what a pre-migration database looks like.
+            console.error('scan log failed:', e)
+            set({
+              orders: get().orders.map((o) =>
+                o.id === orderId
+                  ? { ...o, scans: (o.scans || []).filter((x) => x.id !== entry.id) }
+                  : o,
+              ),
+              scanSyncError: `That scan didn't reach the database (${e?.message ?? 'write refused'}) — nothing was recorded.`,
+            })
+          })
+          // 'checked_out' and 'reserved' both occupy the unit, so this changes
+          // what the DB says about WHERE the copy is, never what is available.
+          sbSetSetUnitStatus(
+            order.setId,
+            unit.unitId,
+            direction === SCAN_OUT ? 'checked_out' : 'reserved',
+          ).catch((e) => console.error('set_unit status failed:', e))
+        }
+
+        set({ scanSyncError: null })
+        return { ok: true, unit, direction, at }
+      },
+
+      clearScanSyncError: () => set({ scanSyncError: null }),
 
       // Add-on packing lists (6.4). Create an empty add-on (returns its id so the
       // UI can open the equipment editor on it), replace its lines, or delete it.

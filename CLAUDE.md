@@ -813,8 +813,62 @@
 > ⚠️ Browser-tool note: in this preview pane `computer` coordinates are CSS pixels while the screenshot is
 > downscaled (dpr 2), so ref/screenshot-derived clicks landed off-target; `form_input` (DOM-based) and reading
 > state back out of `localStorage` are what actually verified the flow.
-> Next in #6: the scanning page (scan-out/in log with who+time — closing an order is now a manual action;
-> auto-closing once every line is signed back in is the remaining piece).
+> **FIX — pick WHICH copy fills a kit slot, and make a pasted barcode work.** Two dead ends reported in the
+> staging window, both real. (1) "Use available" called `freeUnitsOf(item)[0]`, so after Replace → **Return to
+> stock** the copy you had just released was first in the pool and came straight back — there was no way to
+> take a different one, and the pencil (a stock correction) read as the only alternative. The button is now
+> **"Choose unit"** and opens `UnitPickList`: the copies free FOR THE ORDER'S DATES, each with barcode, serial,
+> shelf and a note when that copy is spoken for on some other day. Ad-hoc "Add item" is two steps now for the
+> same reason (item → which copy). (2) Pasting a barcode did nothing: resolution hung on `Enter`, which a
+> hardware scanner sends but Ctrl+V does not. A value that IS a known barcode (`knownBarcodes` set) assigns on
+> the spot, there's an explicit **Assign** button, and an accepted scan reports "#0966 → SmallHD 702 Touch
+> Monitor · Monitor" instead of silently clearing the field. The field also STATES the rule it always followed:
+> a barcode belongs to one copy, so the scan fills whichever slot expects that item — that is how the app knows
+> what was scanned, and why the case can be worked in any order; a code whose item no slot needs says exactly
+> that.
+> ⚠️ `ownUnitIds` is an ARRAY from BookingModal and a SET from OrderEquipmentModal — everything else forwards it
+> to `isUnitFree`, which normalises it, so the new list was the first code to call `.includes` on it and
+> white-screened the view. Normalised locally.
+> Verified in the browser: #0962 picked → Replace → Return to stock → **#0964** picked (the thing that was
+> impossible), paste of 0966 with no Enter → assigned to the MONITOR slot, wrong-item and unknown codes refused
+> with their reasons, unknown → "Register & assign" offer intact. 0 console errors.
+> **EPIC #6 COMPLETE — the scanning station** (`20260810120000_scanning.sql`). Audit first: 6.1 packing PDF,
+> 6.2 sign-off initials, 6.3 vendor per line, 6.4 add-ons and 6.5 digital checklist were all in place; what did
+> NOT exist was the scan log and any check that gear came back. Both now do.
+> `src/lib/scanning.js` is PURE (no React/store/browser — 28 Node assertions): `isScannable` (confirmed, not
+> archived, not closed), `expectedUnits(order, booking, inventory)`, `scanStates`, `scanProgress`,
+> `outstandingUnits` and `resolveScan`. Two decisions worth keeping: **expected units come from the SET's
+> reservations, not the order's lines** (a loose a-la-carte line carries a quantity, not units — the
+> reservations are the resolved answer, and sub-rental lines are vendor gear with no barcode of ours), and the
+> **log is append-only with the LAST scan winning**, so a unit that goes out again on a second day reads as out
+> and a double scan is answerable ("already scanned out") instead of counted twice.
+> `scans` is its own table (soft `unit_id`/`item_id` refs like `events`, so a written-off copy doesn't take its
+> history down), SELECT + INSERT only — no update, no delete: a scan log you can rewrite is not a log.
+> `set_units.status` moves 'reserved' → 'checked_out' → 'reserved'; both non-returned states occupy the unit, so
+> **a scan never changes availability**, only where the copy is.
+> New view **Scanning** (`src/components/Scanning.jsx`, its own tab — it stays open by the door for a shift):
+> left column lists only CONFIRMED orders with live "N out · N back · N to go", right side is Scan out / Scan in,
+> one big always-focused input, per-unit state with who+when, and the full history newest-first. Store
+> `scanUnit(orderId, code, direction)` is OPTIMISTIC like the packing sign-off — but a failed write is **taken
+> back** and reported (`scanSyncError`), because a station that claims gear moved when the DB disagrees is worse
+> than a slow one. That path is also what a pre-migration database looks like. New cap `SCAN` (a packing shift
+> may move gear without being allowed to rewrite the order) and events `scan.out`/`scan.in`, so the order's own
+> Activity feed answers "who took the camera out".
+> **Closing now verifies the gear is back:** `Close order` is disabled while `outstandingUnits` isn't empty and
+> names what's still out (both in the tooltip and in the card's new Scanning block). An order whose gear was
+> never scanned out still closes — a crew can pull a job without using the station, and blocking that would make
+> the flow unusable.
+> Verified end-to-end in LOCAL mode: 10 of 15 orders offered; scan out #0851 → "1 out · 0 back · 10 still on the
+> shelf" with "out 03 Aug, 13:04 · Demo user"; duplicate refused and NOT counted twice; #0999 (ours, other
+> order) and #4242 (not in the register) refused with their own messages; scan-in of a unit that never went out
+> refused; Close order disabled with "1 piece(s) are still scanned out"; scan in → history shows both
+> directions with actor + time and Close order unlocks ("The shoot is done and the gear is back"). Demo data
+> reseeded after; 0 console errors, build + `audit:jsx` clean.
+> ⚠️ **The migration is NOT applied yet** — this network blocks Postgres ports again (443 fine, 5432 timed out
+> to every host including github.com:5432, the same signature as before). Until `20260810120000_scanning.sql`
+> runs, supabase mode degrades honestly: `getScansByOrder` returns {} (no history) and any scan is taken back
+> with the red "didn't reach the database" banner. Apply with the pooler `db push` from a network that allows
+> 5432, then re-verify a scan on prod.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

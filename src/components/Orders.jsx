@@ -21,6 +21,7 @@ import {
   Briefcase,
   PackageCheck,
   Layers,
+  ScanLine,
 } from 'lucide-react'
 import { useStore, notArchived, MAX_SETS_PER_DAY } from '../store'
 import { useCan } from '../lib/useCan'
@@ -51,6 +52,7 @@ import { buildEstimate, money } from '../lib/estimate'
 import { downloadEstimatePdf } from '../lib/estimatePdf'
 import { downloadPackingListPdf } from '../lib/packingListPdf'
 import { packingProgress } from '../lib/packing'
+import { expectedUnits, scanProgress, outstandingUnits } from '../lib/scanning'
 
 // Orders / Estimates (epic #5, 5.1 + 5.2).
 //
@@ -510,6 +512,7 @@ export default function Orders() {
               </button>
               <OrderDetail
                 order={selected}
+                booking={selectedBooking}
                 estimate={selectedEstimate}
                 canManage={can(CAP.ORDER_MANAGE)}
                 onEdit={() => setEditor({ open: true, order: selected })}
@@ -699,6 +702,7 @@ function Row({ icon: Icon, label, children }) {
 
 function OrderDetail({
   order,
+  booking,
   estimate,
   canManage,
   onEdit,
@@ -725,6 +729,13 @@ function OrderDetail({
     estimate.groups.flatMap((g) => g.lines),
     order.packing || {},
   )
+  // Scanning (epic #6). The scan log is what says the gear physically came back,
+  // which is what closing the order is allowed to depend on.
+  const inventoryList = useStore((s) => s.inventory)
+  const setActiveView = useStore((s) => s.setActiveView)
+  const scanExpected = expectedUnits(order, booking, inventoryList)
+  const scanProg = scanProgress(scanExpected, order.scans ?? [])
+  const stillOut = outstandingUnits(scanExpected, order.scans ?? [])
   const [addonLabel, setAddonLabel] = useState('')
   return (
     <>
@@ -806,7 +817,13 @@ function OrderDetail({
                   <button
                     type="button"
                     onClick={() => onSetStatus(CLOSED_STATUS)}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                    disabled={stillOut.length > 0}
+                    title={
+                      stillOut.length > 0
+                        ? `${stillOut.length} piece(s) are still scanned out — bring them back first`
+                        : 'The shoot is done and the gear is back'
+                    }
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <PackageCheck size={15} />
                     Close order
@@ -1106,6 +1123,53 @@ function OrderDetail({
             </p>
           )}
         </section>
+
+        {/* The scanning station's side of the story: what has physically left the
+            building. Shown only once the order is confirmed, because that's the
+            only state that holds gear. */}
+        {(order.status === 'confirmed' || isClosedStatus(order.status)) && (
+          <section className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center gap-2">
+              <ScanLine size={15} className="text-slate-500" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Scanning
+              </h4>
+            </div>
+            {scanProg.total === 0 ? (
+              <p className="mt-1 text-xs text-slate-500">
+                No gear is reserved for this order, so there is nothing to scan.
+              </p>
+            ) : (
+              <>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  <span className="font-medium text-amber-600">{scanProg.out}</span> out ·{' '}
+                  <span className="font-medium text-emerald-600">{scanProg.back}</span> back ·{' '}
+                  {scanProg.pending} still on the shelf · {scanProg.total} total
+                </p>
+                {stillOut.length > 0 && (
+                  <p className="mt-1 text-xs text-amber-600">
+                    {stillOut.length} piece(s) are still out — the order can't be closed until they
+                    are scanned back in ({stillOut
+                      .slice(0, 4)
+                      .map((u) => `#${u.barcode}`)
+                      .join(', ')}
+                    {stillOut.length > 4 ? '…' : ''}).
+                  </p>
+                )}
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('scanning')}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <ScanLine size={15} />
+                    Open the scanning station
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        )}
 
         {/* 6.4 — Add-On packing lists (day-of additions, main list untouched) */}
         {(order.status === 'confirmed' || isClosedStatus(order.status)) && (

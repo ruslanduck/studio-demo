@@ -20,6 +20,11 @@ export const EVENT = {
   ADDON_DELETED: 'addon.deleted',
   PACKING_SIGNED: 'packing.signed',
   PACKING_CLEARED: 'packing.cleared',
+  // The scanning station. The scan LOG (`scans`) is the operational record the
+  // station reads; these events put the same act in the order's own feed, so
+  // "who took the camera out" is answerable from the order card too.
+  SCANNED_OUT: 'scan.out',
+  SCANNED_IN: 'scan.in',
   ITEM_CREATED: 'item.created',
   ITEM_UPDATED: 'item.updated',
   ITEM_DELETED: 'item.deleted',
@@ -186,6 +191,18 @@ export function describeEvent(ev) {
       }
     case EVENT.PACKING_CLEARED:
       return { icon: 'eraser', title: `Cleared ${slotLabel(d.slot)}`, detail: d.itemName ?? null }
+    case EVENT.SCANNED_OUT:
+      return {
+        icon: 'scan',
+        title: 'Scanned out',
+        detail: [d.itemName, d.barcode ? `#${d.barcode}` : null].filter(Boolean).join(' · '),
+      }
+    case EVENT.SCANNED_IN:
+      return {
+        icon: 'scan',
+        title: 'Scanned back in',
+        detail: [d.itemName, d.barcode ? `#${d.barcode}` : null].filter(Boolean).join(' · '),
+      }
     case EVENT.ITEM_CREATED:
       return { icon: 'boxes', title: 'Added this item', detail: d.name ?? null }
     case EVENT.ITEM_UPDATED:
