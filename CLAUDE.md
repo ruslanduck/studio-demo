@@ -864,11 +864,23 @@
 > refused; Close order disabled with "1 piece(s) are still scanned out"; scan in → history shows both
 > directions with actor + time and Close order unlocks ("The shoot is done and the gear is back"). Demo data
 > reseeded after; 0 console errors, build + `audit:jsx` clean.
-> ⚠️ **The migration is NOT applied yet** — this network blocks Postgres ports again (443 fine, 5432 timed out
-> to every host including github.com:5432, the same signature as before). Until `20260810120000_scanning.sql`
-> runs, supabase mode degrades honestly: `getScansByOrder` returns {} (no history) and any scan is taken back
-> with the red "didn't reach the database" banner. Apply with the pooler `db push` from a network that allows
-> 5432, then re-verify a scan on prod.
+> **Migration APPLIED and verified on prod** (pushed from a network that allows 5432; the studio's faster Wi-Fi
+> blocks that port, but only `db push` needs it — PostgREST is 443, so everything below was checked over it).
+> Verified BEHAVIOURALLY as the `authenticated` role, not by trusting "Finished": INSERT works and stamps
+> `scanned_by = auth.uid()`; a forged `scanned_by` is refused (**42501**); `direction:'sideways'` is refused
+> (**23514**); UPDATE and DELETE affect **0 rows** each and the row survives both (append-only, as intended —
+> only service_role can clear it); the app's exact embed `scanner:profiles!scanned_by` resolves ("out 0792 ·
+> Ann Taylor"), which is the thing that silently breaks without the FK; `set_units` accepts 'checked_out' and
+> goes back. The other two side fetches `getOrders` runs (packing_signoffs, order_addons) still answer, so
+> nothing regressed. Prod has **9 confirmed orders** with reservations (11/8/7/7/6/5/5/4 units) for the station
+> to list.
+> Then a full ROUND TRIP through exactly what `store.scanUnit` does, with the UI's own pure module judging the
+> fetched rows: station lists 11 copies → scan out #0851 → `{total:11,out:1,pending:10}`, `set_units` =
+> checked_out, log "out #0851 by Ann Taylor", close BLOCKED (1 still out) → scan in → `{out:0,back:1}`, status
+> back to reserved, close ALLOWED. Undone afterwards: 2 scans deleted with service_role, `scans` back to 0 rows,
+> every `set_units` status back to 'reserved' — prod exactly as found.
+> ℹ️ The in-browser check ran in LOCAL mode; the supabase path was verified headlessly (same approach as the
+> item availability calendar) because signing in means typing a password, which I don't do.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
