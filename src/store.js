@@ -771,6 +771,7 @@ export const useStore = create(
       navStack: [], // [{ view, label, focus }]
       inventoryFocus: null, // { itemId, unitId, kitId, listId, ts } | null
       orderFocus: null, // { orderId, ts } | null
+      orderDraft: null, // { payload, ts } | null — a new order awaiting its gear
       peopleFocus: null, // { personId, companyId, ts } | null
 
       // Send the caller's location to the stack + push a browser history entry.
@@ -822,20 +823,36 @@ export const useStore = create(
       clearInventoryFocus: () => set({ inventoryFocus: null }),
 
       // A shoot on the calendar IS its order, so clicking it opens that order.
-      // `equipment: true` also opens the gear picker on arrival — that's what
-      // makes "create an order" land on adding equipment instead of a dead end.
-      openOrder: (orderId, from = null, { equipment = false } = {}) => {
+      // (Creating one goes through `openOrderDraft` below instead — the order
+      // doesn't exist yet at that point.)
+      openOrder: (orderId, from = null) => {
         if (!orderId) return
         if (get().isViewBlocked('order', orderId)) return
         if (from) get().pushNav(from)
         set({
-          orderFocus: { orderId, openEquipment: equipment, ts: Date.now() },
+          orderFocus: { orderId, ts: Date.now() },
           activeView: 'orders',
           sidebarOpen: false,
           peekStack: [],
         })
       },
       clearOrderFocus: () => set({ orderFocus: null }),
+
+      // Step one of creating an order, answered on the CALENDAR. Nothing is
+      // written yet: the form's answers travel to the Orders view, which opens
+      // the equipment window, and THAT is what creates the order. Backing out
+      // there leaves no empty order and no booked studio slot behind.
+      openOrderDraft: (payload, from = null) => {
+        if (!payload) return
+        if (from) get().pushNav(from)
+        set({
+          orderDraft: { payload, ts: Date.now() },
+          activeView: 'orders',
+          sidebarOpen: false,
+          peekStack: [],
+        })
+      },
+      clearOrderDraft: () => set({ orderDraft: null }),
 
       // --- activity log: who did what ---------------------------------------
       //

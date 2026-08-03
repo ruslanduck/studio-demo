@@ -777,6 +777,42 @@
 > ⚠️ A screenshot is useless for this — the capture lands after the animation settles. Temporarily forcing
 > `animation-duration: 8s` and reading `getAnimations()[0]` + `getComputedStyle` on the next `requestAnimationFrame`
 > is what actually proves it (and the class read IMMEDIATELY after a click is stale — React hasn't flushed).
+> **CHANGE — one date on an order, and creating one is explicitly TWO STEPS (create happens on step two).**
+> Two requests. (1) "Съемки всегда один день" — the form's date RANGE became a single **Set date**; `ends_on` is
+> still written (equal to `starts_on`) because availability, billable days and `orderSearch` all read a window,
+> and legacy multi-day rows must still resolve. Both PDFs print "Set date" and fall back to "A to B (N days)"
+> only for those legacy rows.
+> (2) The inline equipment block added to `OrderEditorModal` in the previous change was REMOVED again on
+> request: "форма на втором шаге отличается и она лучше с точки зрения мелких деталей" — `OrderEquipmentModal`
+> alone owns the in-house/sub-rental switch, the vendor picker and the zero-availability dialog, so duplicating
+> a lesser picker in the form was the wrong half to keep. The flow is now honestly two-step and the buttons say
+> so: step one reads **"Select equipment"** (not "Create order"), step two reads **"Create order"**.
+> The important part is that **nothing is written until step two**. `OrderEditorModal`'s `onCreate` became
+> `onProceed`, which only hands the payload over; `Orders.jsx` holds it in a `draft` state and opens
+> `OrderEquipmentModal` on an order-SHAPED object with `id: null`. `isNew = !order?.id` is how step two knows
+> it's creating: it relabels the button/title, shows a context strip (job · Set · studio · date + "Nothing is
+> saved yet"), and its save calls `createOrder(draft)` then `setOrderLines(newId, lines)`. So cancelling step two
+> leaves **no empty order and no booked studio slot** — the previous flow created the order first and left one
+> behind. Capacity (`MAX_SETS_PER_DAY`) is now checked in `onProceed` too, before the crew spends time picking
+> gear; `createOrder` still checks it when it actually writes.
+> The CALENDAR uses the same two steps: its "New order" form no longer creates anything either — new store
+> action `openOrderDraft(payload, from)` sets a transient `orderDraft` (+ `activeView:'orders'`, pushes the nav
+> trail) which `Orders.jsx` consumes in an effect and opens step two on. The calendar consequently stopped
+> reading `inventory`/`kits`/`scenarios`/`companies`/`createOrder`/`setOrderLines` (six selectors gone —
+> and with them the class of bug that white-screened it).
+> Removed as dead: `pendingEqId` + its effect and `openOrder`'s `{equipment}` option / `orderFocus.openEquipment`
+> — they existed only to open the picker AFTER a create, which no longer happens. A `createdDraftId` ref keeps a
+> retry honest: if the order is written but its lines fail, pressing the button again saves onto that order
+> instead of creating a second one (a ref, so it doesn't reload the picker and discard the picks).
+> Frontend-only, no migration. Verified in local mode: step 1 → "Select equipment" → step 2 titled "New order —
+> equipment" with the context strip → **Cancel left 14 orders and no shoot** → re-run, added Avenger Double Riser
+> → "Create order" → 15 orders, the new one selected on Hold with EQUIPMENT · 1 PCS, $12.00 estimate and
+> "Equipment by …" attribution; then the CALENDAR entry point → landed in Orders with step two open, a
+> "← Back to Studio Calendar" trail and still 15 orders → Cancel → localStorage confirmed 0 orders and 0 bookings
+> for that date. Demo data reseeded afterwards, 0 leftovers, 0 console errors, build + `npm run audit:jsx` clean.
+> ⚠️ Browser-tool note: in this preview pane `computer` coordinates are CSS pixels while the screenshot is
+> downscaled (dpr 2), so ref/screenshot-derived clicks landed off-target; `form_input` (DOM-based) and reading
+> state back out of `localStorage` are what actually verified the flow.
 > Next in #6: the scanning page (scan-out/in log with who+time — closing an order is now a manual action;
 > auto-closing once every line is signed back in is the remaining piece).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).

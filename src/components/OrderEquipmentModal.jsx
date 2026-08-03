@@ -14,12 +14,17 @@ import {
 } from 'lucide-react'
 import Modal from './Modal'
 import KitStagingModal from './KitStagingModal'
+import { studioLabel } from '../data/studios'
 import { notArchived } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
 import { buildEstimate, money } from '../lib/estimate'
 import { availableCount, freeUnitsOf, resolveUnitsForQuantities } from '../lib/availability'
 
 // Equipment entry for an order (epic #5, 5.3 + 5.6).
+//
+// This window is also STEP TWO of creating an order: the order form hands it a
+// draft (an order-shaped object with no id) and the button reads "Create order",
+// writing the order and its gear in one go. Backing out writes nothing at all.
 //
 // 5.3 — three ways in, all reused from earlier epics: a-la-carte items, whole
 // KITS through the epic-3 staging window (which pins a concrete unit per slot),
@@ -326,6 +331,10 @@ export default function OrderEquipmentModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory, pickerSearch, itemLines, stagedIds])
 
+  // A draft handed over by the order form has no id yet: this window is step two
+  // of creating the order, so its button creates rather than saves.
+  const isNew = !order?.id
+
   async function save() {
     const missingVendor = itemLines.find((l) => l.source === SUB_RENTAL && !l.vendorId)
     if (missingVendor) {
@@ -335,7 +344,7 @@ export default function OrderEquipmentModal({
       return
     }
     setBusy(true)
-    const res = await onSave(order.id, lines)
+    const res = await onSave(order?.id ?? null, lines)
     setBusy(false)
     if (res?.error) return setError(res.error)
     onClose()
@@ -359,8 +368,23 @@ export default function OrderEquipmentModal({
 
   return (
     <>
-      <Modal open={open} onClose={onClose} size="lg" title="Order equipment">
+      <Modal open={open} onClose={onClose} size="lg" title={isNew ? 'New order — equipment' : 'Order equipment'}>
         <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
+          {/* Step one's form is gone by now, so restate what this gear is for.
+              An existing order has its detail card right behind this window. */}
+          {isNew && (
+            <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
+              <span className="font-semibold text-slate-800">{order?.jobName}</span>
+              {order?.setLabel ? ` · ${order.setLabel}` : ''}
+              {order?.studioId ? ` · ${studioLabel(order.studioId)}` : ''}
+              {order?.startsOn ? ` · ${order.startsOn}` : ''}
+              <span className="mt-1 block text-slate-500">
+                Nothing is saved yet — <strong>Create order</strong> writes the order and this
+                equipment together. Gear can be changed later.
+              </span>
+            </div>
+          )}
+
           {liveScenarios.length > 0 && (
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -767,7 +791,7 @@ export default function OrderEquipmentModal({
               className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
             >
               <Check size={15} />
-              Save equipment
+              {isNew ? 'Create order' : 'Save equipment'}
             </button>
           </div>
         </div>

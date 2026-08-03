@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Search,
   Plus,
@@ -22,7 +22,7 @@ import {
   PackageCheck,
   Layers,
 } from 'lucide-react'
-import { useStore, notArchived } from '../store'
+import { useStore, notArchived, MAX_SETS_PER_DAY } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
@@ -117,6 +117,8 @@ export default function Orders() {
   const archiveOrder = useStore((s) => s.archiveOrder)
   const orderFocus = useStore((s) => s.orderFocus)
   const clearOrderFocus = useStore((s) => s.clearOrderFocus)
+  const orderDraft = useStore((s) => s.orderDraft)
+  const clearOrderDraft = useStore((s) => s.clearOrderDraft)
   const can = useCan()
 
   const [search, setSearch] = useState('')
@@ -139,10 +141,13 @@ export default function Orders() {
   // What the last confirm/hold did to the stock (supabase mode reports it).
   const [reserveNote, setReserveNote] = useState(null)
 
-  // An order whose equipment picker should open as soon as the order itself
-  // exists in state. Set by creating one (here or from the calendar) — adding
-  // gear is the next thing you always do, so the flow shouldn't stop at "saved".
-  const [pendingEqId, setPendingEqId] = useState(null)
+  // Step one's answers, held until step two creates the order. Nothing is
+  // written before that, so backing out of equipment leaves no empty order.
+  const [draft, setDraft] = useState(null)
+  // Where a just-created order's id is parked. If writing its lines then fails,
+  // pressing the button again saves them onto that order instead of creating a
+  // second one. A ref, so it doesn't reload the picker and lose the picks.
+  const createdDraftId = useRef(null)
 
   // Opened from the calendar (a shoot IS its order): select that order + show
   // its detail on mobile.
@@ -151,20 +156,19 @@ export default function Orders() {
     if (orders.some((o) => o.id === orderFocus.orderId)) {
       setSelectedId(orderFocus.orderId)
       setShowDetailMobile(true)
-      if (orderFocus.openEquipment) setPendingEqId(orderFocus.orderId)
     }
     clearOrderFocus()
   }, [orderFocus, orders, clearOrderFocus])
 
-  // A freshly created order only appears after the refetch, so wait for it
-  // rather than opening the picker on a half-known record.
+  // Step one was answered on the CALENDAR. The order still doesn't exist — the
+  // equipment window below creates it, exactly as when the form opens here.
   useEffect(() => {
-    if (!pendingEqId) return
-    const order = orders.find((o) => o.id === pendingEqId)
-    if (!order) return
-    setEqEditor({ open: true, order })
-    setPendingEqId(null)
-  }, [pendingEqId, orders])
+    if (!orderDraft?.payload) return
+    setDraft(orderDraft.payload)
+    createdDraftId.current = null
+    setEqEditor({ open: true, order: { ...orderDraft.payload, id: null, lines: [] } })
+    clearOrderDraft()
+  }, [orderDraft, clearOrderDraft])
 
   // Highlight marks the first search term; matching itself is multi-term (5.7).
   const query = search.trim().toLowerCase().split(/\s+/)[0] ?? ''
@@ -560,23 +564,24 @@ export default function Orders() {
         order={editor.order}
         studios={studios}
         photographers={photographerNames}
-        inventory={inventory}
-        kits={kits}
-        scenarios={scenarios}
-        companies={liveCompanies}
         onClose={() => setEditor({ open: false, order: null })}
-        onCreate={async (payload, equipment = []) => {
-          const res = await createOrder(payload)
-          if (res?.id) {
-            setSelectedId(res.id)
-            setShowDetailMobile(true)
-            // Gear picked in the form goes straight onto the order. Only when
-            // nothing was picked do we open the full picker, so the flow never
-            // dead-ends on an empty order.
-            if (equipment.length) await setOrderLines(res.id, equipment)
-            else setPendingEqId(res.id)
-          }
-          return res
+        onProceed={(payload) => {
+          // The studio/day capacity is checked HERE, before the crew spends time
+          // picking gear — createOrder checks it again when it actually writes.
+          const used = bookings.filter(
+            (b) =>
+              b.studioId === payload.studioId &&
+              b.date === payload.startsOn &&
+              b.status === 'active',
+          ).length
+          if (used >= MAX_SETS_PER_DAY)
+            return {
+              error: `${studioLabel(payload.studioId)} already has ${used} sets on ${payload.startsOn} (max ${MAX_SETS_PER_DAY}). Pick another studio or date.`,
+            }
+          setDraft(payload)
+          createdDraftId.current = null
+          setEqEditor({ open: true, order: { ...payload, id: null, lines: [] } })
+          return { ok: true }
         }}
         onSave={(id, payload) => updateOrder(id, payload)}
         onDelete={(id) => {
@@ -592,8 +597,29 @@ export default function Orders() {
         kits={kits}
         scenarios={scenarios}
         companies={liveCompanies}
-        onClose={() => setEqEditor({ open: false, order: null })}
-        onSave={(id, lines) => setOrderLines(id, lines)}
+        onClose={() => {
+          setEqEditor({ open: false, order: null })
+          setDraft(null)
+          createdDraftId.current = null
+        }}
+        onSave={async (id, lines) => {
+          const existing = id ?? createdDraftId.current
+          if (existing) return setOrderLines(existing, lines)
+          // Step two of creating: the order and its gear are written together.
+          const res = await createOrder(draft)
+          if (res?.error) return res
+          createdDraftId.current = res?.id ?? null
+          setDraft(null)
+          if (res?.id) {
+            setSelectedId(res.id)
+            setShowDetailMobile(true)
+            if (lines.length) {
+              const lineRes = await setOrderLines(res.id, lines)
+              if (lineRes?.error) return lineRes
+            }
+          }
+          return res
+        }}
       />
 
       <PackingChecklistModal

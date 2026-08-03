@@ -56,20 +56,12 @@ export default function StudioCalendar() {
   const setSelectedDate = useStore((s) => s.setSelectedDate)
   const calendarMode = useStore((s) => s.calendarMode)
   const setCalendarMode = useStore((s) => s.setCalendarMode)
-  const createOrder = useStore((s) => s.createOrder)
-  // The order form now picks equipment inline, so the calendar needs the same
-  // three collections the Orders view hands it.
-  const inventory = useStore((s) => s.inventory)
-  const kits = useStore((s) => s.kits)
-  const scenarios = useStore((s) => s.scenarios)
   // Only for the chips' Set label — the shoots themselves come from `bookings`.
   const orders = useStore((s) => s.orders)
-  // The order form's sub-rental lines need the vendor list. Missing this read is
-  // what white-screened the whole calendar view: the JSX below passed
-  // `companies={companies}` while nothing declared it, and neither `npm run
-  // build` nor the linter catches an undefined identifier inside JSX.
-  const companies = useStore((s) => s.companies)
-  const setOrderLines = useStore((s) => s.setOrderLines)
+  // Step one of creating an order is answered here; the Orders view's equipment
+  // window is what actually writes it. Equipment is NOT picked on the calendar,
+  // so none of the stock collections are read here any more.
+  const openOrderDraft = useStore((s) => s.openOrderDraft)
   const openOrder = useStore((s) => s.openOrder)
   const peek = useStore((s) => s.peek)
   const can = useCan()
@@ -241,33 +233,18 @@ export default function StudioCalendar() {
       />
 
       {/* Create a shoot = create its order (books the Set onto the calendar).
-          The same form as in the Orders view, gear included. */}
+          The same two-step form as in the Orders view: this settles the job and
+          hands it over, the equipment window there creates it. */}
       <OrderEditorModal
         open={orderEditor.open}
         order={null}
         prefill={orderEditor.prefill}
         studios={studios}
         photographers={photographers}
-        inventory={inventory}
-        kits={kits}
-        scenarios={scenarios}
-        companies={companies}
         onClose={() => setOrderEditor({ open: false, prefill: null })}
-        onCreate={async (payload, equipment = []) => {
-          const res = await createOrder(payload)
-          if (!res?.id) return res
-          if (equipment.length) {
-            // Gear was picked in the form — write it, then open the order so the
-            // shoot and its list are both visible.
-            await setOrderLines(res.id, equipment)
-            openOrder(res.id, { view: 'calendar', label: 'Studio Calendar', focus: {} })
-          } else {
-            // Nothing picked: hand over to the full picker in the Orders view.
-            openOrder(res.id, { view: 'calendar', label: 'Studio Calendar', focus: {} }, {
-              equipment: true,
-            })
-          }
-          return res
+        onProceed={(payload) => {
+          openOrderDraft(payload, { view: 'calendar', label: 'Studio Calendar', focus: {} })
+          return { ok: true }
         }}
       />
     </div>
