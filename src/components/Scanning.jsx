@@ -20,6 +20,7 @@ import {
   expectedUnits,
   scanStates,
   scanProgress,
+  normalizeBarcode,
 } from '../lib/scanning'
 
 // The scanning station (epic #6).
@@ -82,6 +83,14 @@ export default function Scanning() {
     [order, booking, inventory],
   )
   const scans = order?.scans ?? []
+  // Every barcode we own, so a pasted code is acted on the moment it lands. A
+  // hardware reader ends with Enter; Ctrl+V doesn't, and waiting for a keypress
+  // that never comes looks exactly like a broken scanner.
+  const knownBarcodes = useMemo(() => {
+    const set = new Set()
+    for (const item of inventory) for (const u of item.units ?? []) if (u.barcode) set.add(u.barcode)
+    return set
+  }, [inventory])
   const states = useMemo(() => scanStates(scans), [scans])
   const progress = useMemo(() => scanProgress(expected, scans), [expected, scans])
 
@@ -276,8 +285,10 @@ export default function Scanning() {
                       inputMode="numeric"
                       value={code}
                       onChange={(e) => {
-                        setCode(e.target.value)
+                        const v = e.target.value
+                        setCode(v)
                         if (flash) setFlash(null)
+                        if (knownBarcodes.has(normalizeBarcode(v))) submit(v)
                       }}
                       onKeyDown={(e) => {
                         // A scanner types the code and presses Enter. Pasting one

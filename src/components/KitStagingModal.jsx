@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import Modal from './Modal'
 import { freeUnitsOf, isUnitFree } from '../lib/availability'
+import { normalizeBarcode } from '../lib/scanning'
 
 // Staging window (Build order #3, 3.2 + 3.3 + 3.4). Adding a kit to a set opens
 // this: the kit's slot *definitions* are resolved into slot *fills* for THIS add.
@@ -244,7 +245,9 @@ export default function KitStagingModal({
   // decides which slot it fills. That's why the crew can scan the case in any
   // order and the highlighted slot is only a preference, not a requirement.
   function assignByBarcode(rawCode, targetKey) {
-    const code = String(rawCode || '').trim()
+    // Accepts what a reader sends AND what a person copies off the screen — the
+    // leading # is decoration, not part of the code.
+    const code = normalizeBarcode(rawCode)
     if (!code) return
     let unit = null
     let item = null
@@ -518,7 +521,7 @@ export default function KitStagingModal({
                 // PASTING one (which is how a scan is imitated by hand) sends no
                 // Enter at all — the code just sat in the field doing nothing.
                 // So a value that IS a known barcode is assigned on the spot.
-                if (knownBarcodes.has(v.trim())) assignByBarcode(v, activeKey)
+                if (knownBarcodes.has(normalizeBarcode(v))) assignByBarcode(v, activeKey)
               }}
               onKeyDown={(e) => {
                 // Barcode scanners send the code + Enter; handle it directly so

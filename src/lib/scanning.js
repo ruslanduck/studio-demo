@@ -20,6 +20,20 @@
 export const SCAN_OUT = 'out'
 export const SCAN_IN = 'in'
 
+// What a barcode reader — or a person — actually hands over.
+//
+// The register stores bare digits ("0806"); the `#` in every screen and PDF is
+// decoration. But the obvious way to imitate a scan is to copy a code off the
+// screen, which copies the `#` with it, and that was refused as "not in the
+// register" (with a doubled ## in the message, since the error adds its own).
+// Readers also append a carriage return, and some prefix a configurable
+// character. So: strip whitespace, then any leading #.
+export const normalizeBarcode = (raw) =>
+  String(raw ?? '')
+    .trim()
+    .replace(/^#+/, '')
+    .trim()
+
 // Only a confirmed order has gear committed to it. A hold reserves nothing (see
 // "orders drive reservations"), and a closed one has already given everything
 // back, so neither can be scanned.
@@ -107,7 +121,7 @@ export function outstandingUnits(expected = [], scans = []) {
 // `inventory` is used only to name a code that exists but doesn't belong to this
 // order — "that's a C-Stand" is far more useful than "unknown barcode".
 export function resolveScan(rawCode, { order, expected = [], scans = [], direction, inventory = [] } = {}) {
-  const code = String(rawCode ?? '').trim()
+  const code = normalizeBarcode(rawCode)
   if (!code) return { error: 'Scan or type a barcode.' }
   if (!isScannable(order))
     return {

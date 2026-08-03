@@ -881,6 +881,22 @@
 > every `set_units` status back to 'reserved' — prod exactly as found.
 > ℹ️ The in-browser check ran in LOCAL mode; the supabase path was verified headlessly (same approach as the
 > item availability calendar) because signing in means typing a password, which I don't do.
+> **FIX — a barcode copied off the screen carries the `#`, and the station refused it.** Reported from prod: a
+> code pasted into Scan out came back "##0806 isn't in the register" — doubled hash and a false negative, while
+> #0806 was sitting in that very order's list. The register stores bare digits; the `#` in every screen and PDF
+> is DECORATION, but the obvious way to imitate a scan is to copy a code off the screen, which copies it too.
+> New `normalizeBarcode` in `lib/scanning.js` (the one place that owns "what a reader actually sends"): trim,
+> strip leading `#`, trim again — so a reader's trailing CR and a copied `#0806` both resolve, and an unknown
+> code now reports itself with ONE hash. Used by `resolveScan` AND by KitStagingModal (same paste, same
+> problem — it also fed the raw value into the known-barcode check, so auto-assign missed too).
+> The STATION also got the kit modal's paste behaviour: a value that is a known barcode fires immediately, since
+> a hardware reader ends with Enter but Ctrl+V doesn't, and waiting for a keypress that never comes looks exactly
+> like a broken scanner. 8 more Node assertions (36 total).
+> Verified in the browser with the reported input: paste `#0806`, no Enter → "#0806 Aputure 300X — out",
+> "1 out · 5 still on the shelf", row reads "out 03 Aug, 13:44 · Demo user"; `#4242` → "#4242 isn't in the
+> register." (one hash); `#0966` pasted in kit staging → assigned to the MONITOR slot. Demo data reseeded after.
+> ⚠️ The console keeps stale `[vite] Failed to reload` lines from mid-edit HMR races; the app reloads and renders
+> clean, and `npm run build` passes (it would fail on a real syntax error).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
