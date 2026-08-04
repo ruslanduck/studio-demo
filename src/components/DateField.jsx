@@ -17,6 +17,7 @@ import {
   setYear,
 } from 'date-fns'
 import { useCalendarFlip } from '../lib/useCalendarFlip'
+import MonthYearPicker from './MonthYearPicker'
 
 // English, locale-proof date field. The native <input type="date"> renders its
 // format in the browser's locale (e.g. "дд.мм.гггг" on a Russian browser),
@@ -26,12 +27,6 @@ import { useCalendarFlip } from '../lib/useCalendarFlip'
 // called with an event-like { target: { value } } so callers stay unchanged.
 const ISO = 'yyyy-MM-dd'
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-// Gear gets bought long before it gets rented, and a purchase date can be
-// decades old — so the year list reaches back far enough to be useful, and a
-// little way forward for a set date that isn't this season.
-const THIS_YEAR = new Date().getFullYear()
-const YEARS = Array.from({ length: 34 }, (_, i) => THIS_YEAR + 3 - i)
 
 function parseIso(v) {
   if (!v) return null
@@ -183,49 +178,15 @@ export default function DateField({ value, onChange, className }) {
               </button>
             </div>
             {picking ? (
-              <div className="px-1 pb-1">
-                <div className="grid grid-cols-3 gap-1">
-                  {MONTHS.map((m, i) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => {
-                        setView((v) => setMonth(v, i))
-                        setPicking(null)
-                      }}
-                      className={[
-                        'rounded-md py-1.5 text-xs font-medium transition',
-                        view.getMonth() === i
-                          ? 'bg-violet-600 text-white'
-                          : 'text-slate-600 hover:bg-violet-50',
-                      ].join(' ')}
-                    >
-                      {m}
-                    </button>
-                  ))}
-                </div>
-                {/* A scrollable span of years, so a purchase 15 years back is one
-                    click away instead of 180 pages of arrows. */}
-                <div className="mt-2 max-h-32 overflow-auto rounded-md border border-slate-100">
-                  <div className="grid grid-cols-4 gap-0.5 p-1">
-                    {YEARS.map((y) => (
-                      <button
-                        key={y}
-                        type="button"
-                        onClick={() => setView((v) => setYear(v, y))}
-                        className={[
-                          'rounded py-1 text-xs transition',
-                          view.getFullYear() === y
-                            ? 'bg-violet-600 font-semibold text-white'
-                            : 'text-slate-600 hover:bg-violet-50',
-                        ].join(' ')}
-                      >
-                        {y}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <MonthYearPicker
+                month={view.getMonth()}
+                year={view.getFullYear()}
+                onMonth={(i) => {
+                  setView((v) => setMonth(v, i))
+                  setPicking(null)
+                }}
+                onYear={(y) => setView((v) => setYear(v, y))}
+              />
             ) : (
             <div key={monthKey} className={`grid grid-cols-7 gap-0.5 px-1 ${flip}`}>
               {WEEKDAYS.map((w) => (

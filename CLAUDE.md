@@ -1090,6 +1090,26 @@
 > Verified in local mode: subcategory suggests 6 Grip kinds; the date popover jumps 2011 → Mar → "March 2011";
 > New kit has Name + Notes and no Category; the August grid shows white weekdays, grey 1-2 Aug, amber 3-4 Aug with
 > "15 free / 2 out"; both filter bars share one look. 0 console errors, build clean, both Node suites pass.
+> **UI — the studio calendar jumps by month and year too.** The date FIELD got this a change earlier; the
+> calendar itself still only had ‹ › + Today, so a shoot two years out was 24 clicks away and a past season
+> worse. The month/year chooser moved out of `DateField` into `src/components/MonthYearPicker.jsx` (one
+> definition, one span of years: `THIS_YEAR + 3 … -30`) and the calendar's PERIOD LABEL became its trigger — the
+> label was already saying which page you're on, so it's the honest place to change it. Same popover contract as
+> DateField: `position: fixed` through a portal, outside-click and Escape to close. Picking a month keeps the day
+> of the month, so the week view lands on a comparable week instead of always on the 1st; in month mode it just
+> turns the page. Using ‹ › or Today folds the chooser away — those are a different intent.
+> ⚠️ **Fixed a real staleness bug while testing it**: both handlers computed from `refDate` captured in the
+> render closure, so picking a year and then a month faster than a re-render computed the month from the OLD year
+> and silently lost the jump (verified: 2026 → Dec landed on Dec 2028). They now read
+> `useStore.getState().selectedDate` at click time. Same trap as `ItemAvailability`'s `stepMonth`, third time in
+> this codebase — if a handler derives from state and can fire twice before a render, read the store, not the
+> closure.
+> Also refactored `goPrev`/`goNext` into one `page(delta)` — they were the same body twice and both needed the
+> new fold-away.
+> Verified in local mode: the label opens 12 months + years 1996-2029; year 2028 → "Jul 31 – Aug 6, 2028", then
+> Mar → "Feb 28 – Mar 5, 2028"; both clicks in ONE tick now give Dec 2026 (the bug above); month mode reads
+> "December 2013" after a jump; Next while open pages AND closes it; Today returns to August 2026. 0 console
+> errors.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

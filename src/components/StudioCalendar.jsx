@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { ChevronLeft, ChevronRight, ChevronDown, Plus } from 'lucide-react'
 import {
   startOfWeek,
   endOfWeek,
@@ -14,12 +15,15 @@ import {
   isToday,
   isWeekend,
   isSameMonth,
+  setMonth,
+  setYear,
 } from 'date-fns'
 import { useStore } from '../store'
 import { studioLabel, studioColor } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { useCalendarFlip } from '../lib/useCalendarFlip'
 import { CAP } from '../lib/permissions'
+import MonthYearPicker from './MonthYearPicker'
 import BookingModal from './BookingModal'
 import OrderEditorModal from './OrderEditorModal'
 
@@ -100,20 +104,22 @@ export default function StudioCalendar() {
   }, [bookings, orders])
 
   const goToday = () => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))
-  const goPrev = () =>
+  // Whether the month/year chooser is open, and where to draw it.
+  const [jumping, setJumping] = useState(false)
+  const jumpBtn = useRef(null)
+  const jumpPop = useRef(null)
+  const [jumpAt, setJumpAt] = useState(null)
+  const page = (delta) => {
+    setJumping(false)
     setSelectedDate(
       format(
-        calendarMode === 'month' ? addMonths(refDate, -1) : addWeeks(refDate, -1),
+        calendarMode === 'month' ? addMonths(refDate, delta) : addWeeks(refDate, delta),
         'yyyy-MM-dd',
       ),
     )
-  const goNext = () =>
-    setSelectedDate(
-      format(
-        calendarMode === 'month' ? addMonths(refDate, 1) : addWeeks(refDate, 1),
-        'yyyy-MM-dd',
-      ),
-    )
+  }
+  const goPrev = () => page(-1)
+  const goNext = () => page(1)
 
   // Create = a new order (booked onto this studio/day). The order starts on Hold
   // and its Set lands on the calendar; equipment is added from the order.
@@ -135,7 +141,60 @@ export default function StudioCalendar() {
     setCalendarMode('week')
   }
 
+  // Same popover contract as DateField: fixed through a portal so nothing clips
+  // it, outside-click and Escape to close.
+  useLayoutEffect(() => {
+    if (!jumping) return
+    const place = () => {
+      const r = jumpBtn.current?.getBoundingClientRect()
+      if (!r) return
+      const w = 232
+      setJumpAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)), width: w })
+    }
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [jumping])
+
+  useEffect(() => {
+    if (!jumping) return
+    const onDown = (e) => {
+      if (jumpBtn.current?.contains(e.target)) return
+      if (jumpPop.current?.contains(e.target)) return
+      setJumping(false)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setJumping(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [jumping])
+
   const weekStart = startOfWeek(refDate, { weekStartsOn: 1 })
+
+  // Jump to a month/year instead of paging there: a shoot two years out is 24
+  // clicks of the arrow away, and a past season is worse. Picking a month keeps
+  // the day of the month where it can (clamped by that month's length), so the
+  // week view lands on a comparable week rather than always on the 1st.
+  // The date as the store has it RIGHT NOW — see the picker's handlers below.
+  const currentRef = () => parseISO(useStore.getState().selectedDate)
+
+  const jumpTo = (date) => {
+    setSelectedDate(format(date, 'yyyy-MM-dd'))
+    setJumping(false)
+  }
+
   const label =
     calendarMode === 'month'
       ? format(refDate, 'MMMM yyyy')
@@ -157,7 +216,20 @@ export default function StudioCalendar() {
           <h2 className="text-xl font-semibold tracking-tight text-slate-900">
             Studio Calendar
           </h2>
-          <p className="text-sm text-slate-500">{label}</p>
+          {/* The period is the control: click it to pick a month and year. */}
+          <button
+            ref={jumpBtn}
+            type="button"
+            onClick={() => setJumping((v) => !v)}
+            title="Pick a month and year"
+            className="-ml-1 inline-flex items-center gap-1 rounded-md px-1 text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+          >
+            {label}
+            <ChevronDown
+              size={13}
+              className={['text-slate-400 transition', jumping ? 'rotate-180' : ''].join(' ')}
+            />
+          </button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -200,6 +272,28 @@ export default function StudioCalendar() {
           </div>
         </div>
       </div>
+
+      {jumping &&
+        jumpAt &&
+        createPortal(
+          <div
+            ref={jumpPop}
+            style={{ position: 'fixed', top: jumpAt.top, left: jumpAt.left, width: jumpAt.width }}
+            className="z-[70] rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
+          >
+            <MonthYearPicker
+              month={refDate.getMonth()}
+              year={refDate.getFullYear()}
+              // Both read the date from the STORE, not from this render's closure:
+              // picking a year and then a month faster than a re-render would
+              // otherwise compute the month from the pre-jump year and lose it.
+              // (Same trap as ItemAvailability's stepMonth.)
+              onMonth={(i) => jumpTo(setMonth(currentRef(), i))}
+              onYear={(y) => setSelectedDate(format(setYear(currentRef(), y), 'yyyy-MM-dd'))}
+            />
+          </div>,
+          document.body,
+        )}
 
       {/* `key` = the page being shown, so ‹ › remount the grid and its slide
           replays (lib/useCalendarFlip picks the direction). Switching Week ↔
