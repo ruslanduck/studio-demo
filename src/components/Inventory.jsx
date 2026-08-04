@@ -16,6 +16,7 @@ import StockModal from './StockModal'
 import ActivityList from './ActivityList'
 import ItemAvailability from './ItemAvailability'
 import SelectField from './SelectField'
+import FilterBar, { FILTER_FIELD } from './FilterBar'
 import { useActivity } from '../lib/useActivity'
 
 // Render `text` with the first occurrence of `query` (already lowercased) wrapped
@@ -306,6 +307,15 @@ export default function Inventory() {
     })
   }, [liveInventory, query, category, brand, kind])
 
+  // How many filters are narrowing the list — the count the Filters button shows.
+  const activeFilters =
+    (category !== 'All' ? 1 : 0) + (brand !== 'All' ? 1 : 0) + (kind !== 'All' ? 1 : 0)
+
+  const clearAll = () => {
+    setSearch('')
+    clearFilters()
+  }
+
   const filtersActive =
     query !== '' || category !== 'All' || brand !== 'All' || kind !== 'All'
 
@@ -468,7 +478,7 @@ export default function Inventory() {
             'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:w-80',
           ].join(' ')}
         >
-          <div className="space-y-2 border-b border-slate-200 p-3">
+          <div className="p-3 pb-0">
             {/* Entry-type toggle: a-la-carte items, kits (3.1), and the
                 predefined scenario lists (3.5). */}
             <div className="flex rounded-lg border border-slate-300 p-0.5">
@@ -497,67 +507,57 @@ export default function Inventory() {
                 </button>
               ))}
             </div>
-            <div className="relative">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={
-                  entryType === 'kits'
-                    ? 'Search kits…'
-                    : entryType === 'lists'
-                      ? 'Search scenario lists…'
-                      : 'Search name, barcode, or serial…'
-                }
-                className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-9 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              />
-              {search !== '' && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  title="Clear search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <X size={14} />
-                </button>
+            <FilterBar
+              search={search}
+              onSearch={setSearch}
+              searchPlaceholder={
+                entryType === 'kits'
+                  ? 'Search kits…'
+                  : entryType === 'lists'
+                    ? 'Search scenario lists…'
+                    : 'Search name, barcode, or serial…'
+              }
+              activeCount={entryType === 'items' ? activeFilters : 0}
+              onClear={clearAll}
+              count={
+                entryType === 'kits'
+                  ? filteredKits.length
+                  : entryType === 'lists'
+                    ? filteredLists.length
+                    : filtered.length
+              }
+              total={
+                entryType === 'kits'
+                  ? liveKits.length
+                  : entryType === 'lists'
+                    ? liveScenarios.length
+                    : liveInventory.length
+              }
+              noun={entryType === 'kits' ? 'kits' : entryType === 'lists' ? 'lists' : 'items'}
+            >
+              {entryType === 'items' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <SelectField
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    options={[{ value: 'All', label: 'All categories' }, ...CATEGORIES]}
+                    className={FILTER_FIELD}
+                  />
+                  <SelectField
+                    value={brand}
+                    onChange={(e) => setBrand(e.target.value)}
+                    options={[{ value: 'All', label: 'All brands' }, ...brands]}
+                    className={FILTER_FIELD}
+                  />
+                  <SelectField
+                    value={kind}
+                    onChange={(e) => setKind(e.target.value)}
+                    options={[{ value: 'All', label: 'All types' }, ...ITEM_KINDS]}
+                    className={FILTER_FIELD}
+                  />
+                </div>
               )}
-            </div>
-            {entryType === 'items' && (
-            <div className="grid grid-cols-2 gap-2">
-              <SelectField
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                options={[{ value: 'All', label: 'All categories' }, ...CATEGORIES]}
-                className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              />
-              <SelectField
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                options={[{ value: 'All', label: 'All brands' }, ...brands]}
-                className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              />
-              <SelectField
-                value={kind}
-                onChange={(e) => setKind(e.target.value)}
-                options={[{ value: 'All', label: 'All types' }, ...ITEM_KINDS]}
-                className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              />
-              {filtersActive && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-                >
-                  <X size={14} />
-                  Clear
-                </button>
-              )}
-            </div>
-            )}
+            </FilterBar>
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto p-2">
@@ -1319,9 +1319,7 @@ function KitList({ kits, selectedId, query, onSelect }) {
     <ul className="space-y-0.5">
       {kits.map((kit) => {
         const active = kit.id === selectedId
-        const subtitle = [kit.category, `${kit.slots.length} item${kit.slots.length === 1 ? '' : 's'}`]
-          .filter(Boolean)
-          .join(' · ')
+        const subtitle = `${kit.slots.length} item${kit.slots.length === 1 ? '' : 's'}`
         return (
           <li key={kit.id}>
             <button
@@ -1374,11 +1372,6 @@ function KitDetail({ kit, inventory, canManage, onEdit, onSelectItem }) {
             <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
               Kit
             </span>
-            {kit.category && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                {kit.category}
-              </span>
-            )}
             <span>
               {kit.slots.length} item{kit.slots.length === 1 ? '' : 's'}
             </span>
@@ -1491,12 +1484,7 @@ function ScenarioListPane({ lists, selectedId, query, onSelect }) {
     <ul className="space-y-0.5">
       {lists.map((list) => {
         const active = list.id === selectedId
-        const subtitle = [
-          list.category,
-          `${list.entries.length} line${list.entries.length === 1 ? '' : 's'}`,
-        ]
-          .filter(Boolean)
-          .join(' · ')
+        const subtitle = `${list.entries.length} line${list.entries.length === 1 ? '' : 's'}`
         return (
           <li key={list.id}>
             <button
@@ -1550,11 +1538,6 @@ function ScenarioDetail({ list, inventory, kits, canManage, onEdit, onSelectItem
             <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
               Scenario list
             </span>
-            {list.category && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                {list.category}
-              </span>
-            )}
             <span>
               {list.entries.length} line{list.entries.length === 1 ? '' : 's'} · ~{totals.units}{' '}
               unit{totals.units === 1 ? '' : 's'}

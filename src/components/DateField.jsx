@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react'
 import {
   format,
   parse,
@@ -13,6 +13,8 @@ import {
   addMonths,
   isSameDay,
   isSameMonth,
+  setMonth,
+  setYear,
 } from 'date-fns'
 import { useCalendarFlip } from '../lib/useCalendarFlip'
 
@@ -24,6 +26,12 @@ import { useCalendarFlip } from '../lib/useCalendarFlip'
 // called with an event-like { target: { value } } so callers stay unchanged.
 const ISO = 'yyyy-MM-dd'
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+// Gear gets bought long before it gets rented, and a purchase date can be
+// decades old — so the year list reaches back far enough to be useful, and a
+// little way forward for a set date that isn't this season.
+const THIS_YEAR = new Date().getFullYear()
+const YEARS = Array.from({ length: 34 }, (_, i) => THIS_YEAR + 3 - i)
 
 function parseIso(v) {
   if (!v) return null
@@ -33,6 +41,10 @@ function parseIso(v) {
 
 export default function DateField({ value, onChange, className }) {
   const [open, setOpen] = useState(false)
+  // The popover has two faces: the day grid, and a month+year chooser reached
+  // by clicking the title. Kept inside the SAME popover rather than nesting
+  // another portal inside this one.
+  const [picking, setPicking] = useState(null) // 'month' | null
   const [view, setView] = useState(() => parseIso(value) || new Date())
   const [coords, setCoords] = useState(null)
   const wrapRef = useRef(null)
@@ -57,6 +69,7 @@ export default function DateField({ value, onChange, className }) {
 
   useLayoutEffect(() => {
     if (!open) return
+    setPicking(null)
     setView(parseIso(value) || new Date())
     place()
     const onScroll = () => place()
@@ -141,22 +154,79 @@ export default function DateField({ value, onChange, className }) {
             <div className="mb-1 flex items-center justify-between px-1">
               <button
                 type="button"
-                onClick={() => setView((v) => addMonths(v, -1))}
+                onClick={() => setView((v) => addMonths(v, picking ? -12 : -1))}
+                title={picking ? 'Previous year' : 'Previous month'}
                 className="rounded-md p-1 text-slate-500 transition hover:bg-slate-100"
               >
                 <ChevronLeft size={16} />
               </button>
-              <span className="text-sm font-semibold text-slate-800">
-                {format(view, 'MMMM yyyy')}
-              </span>
+              {/* Click the title to jump by month or year instead of paging. */}
               <button
                 type="button"
-                onClick={() => setView((v) => addMonths(v, 1))}
+                onClick={() => setPicking((p) => (p ? null : 'month'))}
+                title="Pick a month and year"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+              >
+                {format(view, 'MMMM yyyy')}
+                <ChevronDown
+                  size={13}
+                  className={['text-slate-400 transition', picking ? 'rotate-180' : ''].join(' ')}
+                />
+              </button>
+              <button
+                type="button"
+                onClick={() => setView((v) => addMonths(v, picking ? 12 : 1))}
+                title={picking ? 'Next year' : 'Next month'}
                 className="rounded-md p-1 text-slate-500 transition hover:bg-slate-100"
               >
                 <ChevronRight size={16} />
               </button>
             </div>
+            {picking ? (
+              <div className="px-1 pb-1">
+                <div className="grid grid-cols-3 gap-1">
+                  {MONTHS.map((m, i) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        setView((v) => setMonth(v, i))
+                        setPicking(null)
+                      }}
+                      className={[
+                        'rounded-md py-1.5 text-xs font-medium transition',
+                        view.getMonth() === i
+                          ? 'bg-violet-600 text-white'
+                          : 'text-slate-600 hover:bg-violet-50',
+                      ].join(' ')}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                {/* A scrollable span of years, so a purchase 15 years back is one
+                    click away instead of 180 pages of arrows. */}
+                <div className="mt-2 max-h-32 overflow-auto rounded-md border border-slate-100">
+                  <div className="grid grid-cols-4 gap-0.5 p-1">
+                    {YEARS.map((y) => (
+                      <button
+                        key={y}
+                        type="button"
+                        onClick={() => setView((v) => setYear(v, y))}
+                        className={[
+                          'rounded py-1 text-xs transition',
+                          view.getFullYear() === y
+                            ? 'bg-violet-600 font-semibold text-white'
+                            : 'text-slate-600 hover:bg-violet-50',
+                        ].join(' ')}
+                      >
+                        {y}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
             <div key={monthKey} className={`grid grid-cols-7 gap-0.5 px-1 ${flip}`}>
               {WEEKDAYS.map((w) => (
                 <div
@@ -190,6 +260,7 @@ export default function DateField({ value, onChange, className }) {
                 )
               })}
             </div>
+            )}
             <div className="mt-1 flex items-center justify-between border-t border-slate-100 px-1 pt-1.5">
               <button
                 type="button"

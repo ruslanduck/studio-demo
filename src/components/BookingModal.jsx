@@ -366,7 +366,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                     placeholder="Start from a scenario list…"
                     options={scenarios.map((l) => ({
                       value: l.id,
-                      label: `${l.name}${l.category ? ` · ${l.category}` : ''} (${l.entries.length} lines)`,
+                      label: `${l.name} (${l.entries.length} lines)`,
                     }))}
                     className={fieldClass + ' pl-9'}
                   />

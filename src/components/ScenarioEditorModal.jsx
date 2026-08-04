@@ -4,7 +4,8 @@ import {
   Search,
   Plus,
   X,
-  Check,
+  Check,
+
   ChevronUp,
   ChevronDown,
   Layers,
@@ -22,7 +23,7 @@ import { notArchived } from '../store'
 // lines to whatever is available at the time (see lib/scenarios.js). So any item
 // kind is allowed here, including non-barcoded stock ("take from
 // stock"). Kit lines are always quantity 1 — a kit is staged one at a time.
-const blank = { name: '', category: '', notes: '', entries: [] }
+const blank = { name: '', notes: '', entries: [] }
 
 export default function ScenarioEditorModal({
   open,
@@ -47,7 +48,6 @@ export default function ScenarioEditorModal({
       list
         ? {
             name: list.name ?? '',
-            category: list.category ?? '',
             notes: list.notes ?? '',
             entries: (list.entries || []).map((e) => ({
               type: e.type,
@@ -131,7 +131,6 @@ export default function ScenarioEditorModal({
 
     const payload = {
       name,
-      category: form.category.trim(),
       notes: form.notes,
       entries: form.entries,
     }
@@ -165,17 +164,7 @@ export default function ScenarioEditorModal({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className={label}>Category</label>
-              <input
-                type="text"
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                placeholder="e.g. Editorial"
-                className={field}
-              />
-            </div>
+          <div className="grid gap-3">
             <div>
               <label className={label}>Notes</label>
               <input

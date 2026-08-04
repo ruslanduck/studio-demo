@@ -50,6 +50,7 @@ import { orderFeed } from '../lib/activity'
 import OrderEquipmentModal from './OrderEquipmentModal'
 import PackingChecklistModal from './PackingChecklistModal'
 import SelectField from './SelectField'
+import FilterBar, { FILTER_FIELD } from './FilterBar'
 import { buildEstimate, money } from '../lib/estimate'
 import { downloadEstimatePdf } from '../lib/estimatePdf'
 import { downloadPackingListPdf } from '../lib/packingListPdf'
@@ -131,7 +132,6 @@ export default function Orders() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [sort, setSort] = useState('newest')
-  const [showFilters, setShowFilters] = useState(false)
   const [selectedId, setSelectedId] = useState(() => orders[0]?.id ?? null)
   const [editor, setEditor] = useState({ open: false, order: null })
   const [eqEditor, setEqEditor] = useState({ open: false, order: null })
@@ -276,121 +276,61 @@ export default function Orders() {
             'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:w-96',
           ].join(' ')}
         >
-          <div className="space-y-2 border-b border-slate-200 p-3">
-            <div className="relative">
-              <Search
-                size={16}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="PO, job, photographer… (every word must match)"
-                className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-9 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-              />
-              {search !== '' && (
-                <button
-                  type="button"
-                  onClick={() => setSearch('')}
-                  title="Clear search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowFilters((v) => !v)}
-                className={[
-                  'inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition',
-                  activeFilters > 0
-                    ? 'border-violet-300 bg-violet-50 text-violet-700'
-                    : 'border-slate-300 text-slate-600 hover:bg-slate-50',
-                ].join(' ')}
-              >
-                <SlidersHorizontal size={13} />
-                Filters
-                {activeFilters > 0 && (
-                  <span className="rounded-full bg-violet-600 px-1.5 text-[10px] font-semibold text-white">
-                    {activeFilters}
-                  </span>
-                )}
-              </button>
+          <FilterBar
+            search={search}
+            onSearch={setSearch}
+            searchPlaceholder="PO, job, photographer… (every word must match)"
+            activeCount={activeFilters}
+            onClear={clearAll}
+            count={filtered.length}
+            total={liveOrders.length}
+            noun="orders"
+            trailing={
               <SelectField
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
-                options={Object.entries(SORTS).map(([val, meta]) => ({ value: val, label: meta.label }))}
-                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none transition focus:border-violet-400"
+                options={Object.entries(SORTS).map(([val, meta]) => ({
+                  value: val,
+                  label: meta.label,
+                }))}
+                className={[FILTER_FIELD, 'flex-1'].join(' ')}
+              />
+            }
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <SelectField
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                options={[
+                  { value: 'All', label: 'Any status' },
+                  ...statuses.map((v) => ({ value: v, label: ORDER_STATUS[v]?.label ?? v })),
+                ]}
+                className={FILTER_FIELD}
+              />
+              <SelectField
+                value={studioFilter}
+                onChange={(e) => setStudioFilter(e.target.value)}
+                options={[
+                  { value: 'All', label: 'Any studio' },
+                  ...studioOptions.map((id) => ({ value: id, label: studioLabel(id) })),
+                ]}
+                className={FILTER_FIELD}
               />
             </div>
-
-            {showFilters && (
-              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
-                <div className="grid grid-cols-2 gap-2">
-                  <SelectField
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    options={[
-                      { value: 'All', label: 'Any status' },
-                      ...statuses.map((v) => ({ value: v, label: ORDER_STATUS[v]?.label ?? v })),
-                    ]}
-                    className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
-                  />
-                  <SelectField
-                    value={studioFilter}
-                    onChange={(e) => setStudioFilter(e.target.value)}
-                    options={[
-                      { value: 'All', label: 'Any studio' },
-                      ...studioOptions.map((id) => ({ value: id, label: studioLabel(id) })),
-                    ]}
-                    className="min-w-0 rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
-                  />
-                </div>
-                <SelectField
-                  value={photographer}
-                  onChange={(e) => setPhotographer(e.target.value)}
-                  options={[{ value: 'All', label: 'Any photographer' }, ...photographerOptions]}
-                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-violet-400"
-                />
-                <div>
-                  <div className="mb-1 text-[11px] font-medium text-slate-500">
-                    Shooting between — any job whose dates overlap
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <DateField
-                      value={from}
-                      onChange={(e) => setFrom(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none focus:border-violet-400"
-                    />
-                    <DateField
-                      value={to}
-                      onChange={(e) => setTo(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none focus:border-violet-400"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between px-0.5 text-[11px] text-slate-400">
-              <span>
-                {filtered.length} of {orders.length} orders
-              </span>
-              {(search || activeFilters > 0) && (
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  className="font-medium text-violet-600 transition hover:underline"
-                >
-                  Clear all
-                </button>
-              )}
+            <SelectField
+              value={photographer}
+              onChange={(e) => setPhotographer(e.target.value)}
+              options={[{ value: 'All', label: 'Any photographer' }, ...photographerOptions]}
+              className={[FILTER_FIELD, 'w-full'].join(' ')}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <DateField value={from} onChange={(e) => setFrom(e.target.value)} className={FILTER_FIELD} />
+              <DateField value={to} onChange={(e) => setTo(e.target.value)} className={FILTER_FIELD} />
             </div>
-          </div>
+            <p className="text-[11px] text-slate-400">
+              Dates match any job whose working window overlaps them.
+            </p>
+          </FilterBar>
 
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {filtered.length === 0 ? (

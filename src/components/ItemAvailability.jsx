@@ -159,20 +159,29 @@ export default function ItemAvailability({ item }) {
           const a = dayOf.get(d.iso)
           const booked = a?.booked ?? 0
           const free = a?.free ?? 0
-          const none = free === 0 && (a?.total ?? 0) > 0
+          const total = a?.total ?? 0
+          const none = free === 0 && total > 0
+          // Saturday and Sunday read as grey, the same convention the studio
+          // calendar uses — a quiet weekend shouldn't look like a busy weekday.
+          const weekend = d.date.getDay() === 0 || d.date.getDay() === 6
           return (
             <button
               key={d.iso}
               type="button"
               onClick={() => setSelected(d.iso)}
-              title={`${format(d.date, 'EEE d MMM')} · ${booked} of ${a?.total ?? 0} booked · ${free} free`}
+              title={`${format(d.date, 'EEE d MMM')} · ${booked} of ${total} booked · ${free} free${
+                a?.away ? ` · ${a.away} in repair` : ''
+              }`}
               className={[
                 'rounded-lg border px-1 py-1 text-left transition',
                 d.iso === selected
                   ? 'border-violet-400 ring-2 ring-violet-100'
                   : 'border-slate-200 hover:border-violet-300',
                 !d.inMonth && 'opacity-40',
-                booked === 0 ? 'bg-white' : none ? 'bg-rose-50' : 'bg-amber-50',
+                // A day with sets is tinted by how tight it is: some out (amber),
+                // nothing left (rose). An untouched weekday stays white; a quiet
+                // weekend is grey.
+                none ? 'bg-rose-50' : booked > 0 ? 'bg-amber-50' : weekend ? 'bg-slate-100' : 'bg-white',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -180,23 +189,34 @@ export default function ItemAvailability({ item }) {
               <div
                 className={[
                   'text-[11px] font-semibold leading-none',
-                  d.today ? 'text-violet-600' : 'text-slate-600',
+                  d.today
+                    ? 'text-violet-600'
+                    : weekend && booked === 0
+                      ? 'text-slate-400'
+                      : 'text-slate-600',
                 ].join(' ')}
               >
                 {format(d.date, 'd')}
               </div>
+              {/* Both halves of the answer: what's left, and what's out. "11 free"
+                  alone doesn't say whether the day is quiet or nearly full. */}
               <div
                 className={[
                   'mt-1 text-[10px] leading-none',
-                  booked === 0
-                    ? 'text-slate-400'
-                    : none
-                      ? 'font-semibold text-rose-600'
-                      : 'font-medium text-amber-700',
+                  none
+                    ? 'font-semibold text-rose-600'
+                    : booked > 0
+                      ? 'font-medium text-amber-700'
+                      : weekend
+                        ? 'text-slate-400'
+                        : 'text-slate-400',
                 ].join(' ')}
               >
-                {booked === 0 ? `${free} free` : none ? 'none free' : `${free} free`}
+                {none ? 'none free' : `${free} free`}
               </div>
+              {booked > 0 && (
+                <div className="text-[10px] leading-tight text-slate-500">{booked} out</div>
+              )}
             </button>
           )
         })}

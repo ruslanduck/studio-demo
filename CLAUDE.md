@@ -1065,6 +1065,31 @@
 > `unitId: u-0958` line and the card shows "#0958"; re-opening folded it back to a chip; the fabricated counted
 > kit slot showed "no copy to pick", "2 of 6 slots assigned" and "Add 2 to set" (not 3), with no meaningless
 > Replace. Demo data reseeded afterwards — 0 loose unit lines, fabricated slot gone, 0 console errors.
+> **UI PASS — five reported details.** (1) **Subcategory is a list**: new `SUBCATEGORIES` map in
+> `data/inventory.js` (7 categories × 5-6 kinds), offered through `ComboField` and merged with every
+> subcategory the register already uses under that category — so the list maintains itself. Deliberately NOT a
+> closed dropdown: new kinds of gear arrive, and refusing one is worse than an occasional new entry.
+> (2) **The date popover jumps by month and year**: the title is now a button that swaps the day grid for 12
+> month buttons + a scrollable year list (`THIS_YEAR + 3 … -30`), because paging one month at a time is useless
+> for a purchase date 15 years back — which is exactly what that field asks for. Kept inside the SAME popover
+> rather than nesting another portal. The ‹ › arrows step a YEAR while the chooser is open.
+> (3) **Kits and scenario lists lost their category**: a kit is described by its name and slots, a list by the
+> shoot it's for, and the third free-text label was a taxonomy nobody maintained. Gone from both editors, both
+> list panes, both detail headers, the preset dropdown labels and the unrouted Archive rows. DB columns stay.
+> (4) **The availability grid is legible at a glance**: weekends grey (slate-100), a day with sets amber-50,
+> nothing free rose-50, and each cell now shows BOTH numbers — "15 free" over "2 out". "11 free" alone doesn't
+> say whether a day is quiet or nearly full.
+> (5) **One filter design**: new `FilterBar` (+ exported `FILTER_FIELD`) carries the search box, the
+> Filters disclosure with its active-count badge, an optional trailing control (Orders' sort), the folded filter
+> panel and the "N of M · Clear all" footer. Orders and Inventory both render it, so the two panes stopped being
+> two designs — measured: identical button classes and one dropdown size (6px 8px / 12px) across both.
+> ⚠️ Two of my own slips, both caught in the browser: `liveItems`/`liveScenarios` don't exist in Inventory (the
+> collections are `liveInventory`/`liveLists`) — a white screen the build does not catch; and
+> `npm run audit:jsx` reported `FILTER_FIELD` undeclared, which was a FALSE ALARM — its import pattern didn't
+> understand `import Default, { Named }`. Fixed the script too: a tool whose job is to be believed can't cry wolf.
+> Verified in local mode: subcategory suggests 6 Grip kinds; the date popover jumps 2011 → Mar → "March 2011";
+> New kit has Name + Notes and no Category; the August grid shows white weekdays, grey 1-2 Aug, amber 3-4 Aug with
+> "15 free / 2 out"; both filter bars share one look. 0 console errors, build clean, both Node suites pass.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

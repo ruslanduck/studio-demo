@@ -29,7 +29,7 @@ import { activeUnits } from '../data/inventory'
 // Only barcoded items can fill slots: FIXED needs a unit to pin and GENERIC needs
 // units to scan. Non-barcoded stock is counted by quantity and belongs in a
 // scenario list instead.
-const blank = { name: '', category: '', notes: '', slots: [] }
+const blank = { name: '', notes: '', slots: [] }
 
 export default function KitEditorModal({
   open,
@@ -53,7 +53,6 @@ export default function KitEditorModal({
       kit
         ? {
             name: kit.name ?? '',
-            category: kit.category ?? '',
             notes: kit.notes ?? '',
             slots: (kit.slots || []).map((s) => ({
               itemId: s.itemId,
@@ -134,7 +133,7 @@ export default function KitEditorModal({
     if (unpinned !== -1)
       return setError(`Slot ${unpinned + 1} is FIXED — pick the unit it's pinned to.`)
 
-    const payload = { name, category: form.category.trim(), notes: form.notes, slots: form.slots }
+    const payload = { name, notes: form.notes, slots: form.slots }
     if (isEdit) onSave(kit.id, payload)
     else onCreate(payload)
     onClose()
@@ -160,17 +159,7 @@ export default function KitEditorModal({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className={label}>Category</label>
-              <input
-                type="text"
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                placeholder="e.g. Workstation"
-                className={field}
-              />
-            </div>
+          <div className="grid gap-3">
             <div>
               <label className={label}>Notes</label>
               <input

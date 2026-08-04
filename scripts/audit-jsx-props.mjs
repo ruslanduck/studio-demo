@@ -39,7 +39,11 @@ for (const f of files) {
     const n = esc(name)
     const patterns = [
       new RegExp(`(const|let|var|function|class)\\s+${n}\\b`),
-      new RegExp(`import\\s*\\{[^}]*\\b${n}\\b[^}]*\\}`, 's'),
+      // A named import, with or without a default alongside it:
+      //   import { x } from …        import Default, { x } from …
+      // The second form used to read as undeclared, which is a false alarm in a
+      // tool whose whole job is to be believed.
+      new RegExp(`import\\s+(?:[\\w$]+\\s*,\\s*)?\\{[^}]*\\b${n}\\b[^}]*\\}`, 's'),
       new RegExp(`import\\s+${n}\\b`),
       new RegExp(`as\\s+${n}\\b`),
       // a destructured prop or function parameter

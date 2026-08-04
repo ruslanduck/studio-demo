@@ -537,7 +537,7 @@ export default function OrderEquipmentModal({
                 placeholder="Pick a preset…"
                 options={liveScenarios.map((l) => ({
                   value: l.id,
-                  label: `${l.name}${l.category ? ` · ${l.category}` : ''} (${l.entries.length} lines)`,
+                  label: `${l.name} (${l.entries.length} lines)`,
                 }))}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
               />

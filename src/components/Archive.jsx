@@ -335,7 +335,7 @@ export default function Archive() {
               key={k.id}
               icon={Layers}
               title={k.name}
-              meta={[k.category, `${(k.slots || []).length} slot(s)`].filter(Boolean).join(' · ')}
+              meta={`${(k.slots || []).length} slot(s)`}
               at={k.archivedAt}
               canRestore={mayRestore}
               busy={busy === `kit:${k.id}`}
@@ -352,7 +352,7 @@ export default function Archive() {
               key={l.id}
               icon={ClipboardList}
               title={l.name}
-              meta={[l.category, `${(l.entries || []).length} line(s)`].filter(Boolean).join(' · ')}
+              meta={`${(l.entries || []).length} line(s)`}
               at={l.archivedAt}
               canRestore={mayRestore}
               busy={busy === `scenario:${l.id}`}

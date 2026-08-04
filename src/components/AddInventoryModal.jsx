@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Archive as ArchiveIcon, AlertTriangle } from 'lucide-react'
-import { CATEGORIES, ITEM_KINDS } from '../data/inventory'
+import { CATEGORIES, SUBCATEGORIES, ITEM_KINDS } from '../data/inventory'
+import { useStore } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 import DateField from './DateField'
 import SelectField from './SelectField'
+import ComboField from './ComboField'
 
 const MAX_QTY = 500
 
@@ -46,6 +48,10 @@ function fromItem(item) {
 // Create or edit an inventory item (full field set). In edit mode the type is
 // locked and barcoded quantity is read-only (units are managed individually).
 export default function AddInventoryModal({ open, onClose, onCreate, onSave, onDelete, item }) {
+  // Suggestions for the second level of the tree: the taxonomy for the category
+  // being chosen, plus every subcategory already in use under it (so a value
+  // someone typed last month is offered instead of retyped).
+  const inventory = useStore((s) => s.inventory)
   const can = useCan()
   const isEdit = !!item
   const [form, setForm] = useState(BLANK)
@@ -53,6 +59,14 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
   useEffect(() => {
     if (open) setForm(item ? fromItem(item) : BLANK)
   }, [open, item])
+
+  const subcategoryOptions = useMemo(() => {
+    const fromTaxonomy = SUBCATEGORIES[form.category] ?? []
+    const inUse = inventory
+      .filter((i) => i.category === form.category && i.subcategory)
+      .map((i) => i.subcategory)
+    return [...new Set([...fromTaxonomy, ...inUse])].sort((a, b) => a.localeCompare(b))
+  }, [form.category, inventory])
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
@@ -159,7 +173,18 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
             </div>
             <div>
               <label className={label}>Subcategory</label>
-              <input type="text" value={form.subcategory} onChange={set('subcategory')} placeholder="e.g. LED Panels" className={field} />
+              {/* A list, so one kind of gear doesn't end up under three
+                  spellings — but still typeable, because new kinds arrive and
+                  refusing them would be worse than one new entry. The options
+                  are the taxonomy for the chosen category PLUS whatever the
+                  register already uses, so the list maintains itself. */}
+              <ComboField
+                value={form.subcategory}
+                onChange={set('subcategory')}
+                options={subcategoryOptions}
+                placeholder="Select or type…"
+                className={field}
+              />
             </div>
             <div>
               <label className={label}>Brand</label>

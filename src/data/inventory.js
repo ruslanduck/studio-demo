@@ -14,6 +14,27 @@ export const CATEGORIES = [
   'Audio',
 ]
 
+// Subcategories per category (the second level of the inventory tree). Offered
+// as a LIST so the same gear doesn't end up under three spellings — but not a
+// closed one: new kinds of equipment arrive, and the field also suggests
+// whatever the register is already using.
+export const SUBCATEGORIES = {
+  Grip: ['Clamps', 'Stands', 'Sandbags & Weights', 'Aprons & Flags', 'Applebox & Risers', 'Rigging'],
+  'Electric/Lighting': [
+    'LED Panels',
+    'LED Tubes',
+    'Fresnel & Open Face',
+    'Strobe & Flash',
+    'Modifiers',
+    'Power & Distro',
+  ],
+  Computers: ['Laptops', 'Monitors', 'Peripherals', 'Storage & Media', 'Adapters & Hubs'],
+  Cables: ['Power', 'Video', 'Audio', 'Data', 'Adapters'],
+  Camera: ['Bodies', 'Lenses', 'Support & Tripods', 'Monitoring', 'Media', 'Batteries & Power'],
+  Furniture: ['Seating', 'Tables & Surfaces', 'Props & Set Dressing', 'Carts & Cases'],
+  Audio: ['Microphones', 'Recorders & Mixers', 'Wireless', 'Headphones & Monitoring', 'Stands'],
+}
+
 // Item types (2.1). The type drives the detail card + how the item is counted.
 // There used to be a third type, `consumable`; it was dropped on request —
 // expendable stock is just non-barcoded stock that gets drawn down, which the
