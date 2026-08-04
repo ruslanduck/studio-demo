@@ -174,7 +174,9 @@ export default function OrderEquipmentModal({
   )
 
   const vendors = useMemo(
-    () => companies.filter((c) => notArchived(c) && (c.kind === 'vendor' || c.kind === 'both')),
+    // Any company can be one we rented from: the client/vendor/both axis was
+    // dropped, and the Type list is the studio's own to manage.
+    () => companies.filter(notArchived),
     [companies],
   )
 

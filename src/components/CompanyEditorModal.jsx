@@ -25,7 +25,6 @@ import SelectField from './SelectField'
 const blank = {
   name: '',
   companyType: '',
-  kind: 'client',
   address: '',
   openingHours: '',
   website: '',
@@ -34,11 +33,11 @@ const blank = {
   notes: '',
 }
 
-const KINDS = [
-  ['client', 'Client'],
-  ['vendor', 'Vendor'],
-  ['both', 'Both'],
-]
+// The coarse client / vendor / both axis is gone: the studio has no "clients" to
+// classify here, a company can't be two of those at once, and the editable Type
+// list is the one classification that means anything. `companies.kind` stays in
+// the database (nothing is destroyed) but the app no longer writes or reads it —
+// which is why the sub-rental vendor pickers now offer every company.
 
 export default function CompanyEditorModal({
   open,
@@ -69,7 +68,6 @@ export default function CompanyEditorModal({
         ? {
             name: company.name ?? '',
             companyType: company.companyType ?? '',
-            kind: company.kind ?? 'client',
             address: company.address ?? '',
             openingHours: company.openingHours ?? '',
             website: company.website ?? '',
@@ -166,7 +164,7 @@ export default function CompanyEditorModal({
                 {managingTypes ? 'Done' : 'Manage'}
               </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div>
               <SelectField
                 value={form.companyType}
                 onChange={(e) => set({ companyType: e.target.value })}
@@ -180,14 +178,6 @@ export default function CompanyEditorModal({
                 ]}
                 className={field}
               />
-              <div>
-                <SelectField
-                  value={form.kind}
-                  onChange={(e) => set({ kind: e.target.value })}
-                  options={KINDS.map(([v, l]) => ({ value: v, label: l }))}
-                  className={field}
-                />
-              </div>
             </div>
 
             {managingTypes && (
@@ -196,7 +186,7 @@ export default function CompanyEditorModal({
                   Renaming relabels companies using it. Removing only takes it out of this list.
                 </p>
                 <ul className="space-y-1">
-                  {companyTypes.map((t) => (
+                  {companyTypes.filter((t) => !t.archivedAt).map((t) => (
                     <li key={t.id} className="flex items-center gap-2">
                       {renaming?.id === t.id ? (
                         <>

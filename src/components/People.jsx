@@ -348,7 +348,7 @@ export default function People() {
                 inventory={inventory}
                 canManage={can(CAP.COMPANY_MANAGE)}
                 onEdit={() => setCompanyEditor({ open: true, company: selectedCompany })}
-                onOpenPerson={openPerson}
+                onOpenPerson={(id) => peek({ type: 'person', id })}
                 onOpenJob={openJob}
                 onOpenOrder={(orderId) => peek({ type: 'order', id: orderId })}
               />
@@ -383,7 +383,9 @@ export default function People() {
       <CompanyEditorModal
         open={companyEditor.open}
         company={companyEditor.company}
-        companyTypes={companyTypes}
+        // The LIVE list: removing a type archives it, and the Manage list has to
+        // stop showing it or the × looks like it did nothing.
+        companyTypes={liveCompanyTypes}
         contactCount={
           companyEditor.company
             ? people.filter((p) => p.companyId === companyEditor.company.id).length
