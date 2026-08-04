@@ -1,7 +1,7 @@
 import { Check, PackageCheck, Barcode, Layers } from 'lucide-react'
 import Modal from './Modal'
 import { useStore } from '../store'
-import { packingLineKey, packingProgress, packingRows } from '../lib/packing'
+import { packingLineKey, packingProgress, packingRows, PACKED_SLOT } from '../lib/packing'
 
 // Two letters for the person doing the packing. The DATA still holds initials
 // (that's what the paper form and the PDF carry), but nobody types them any more
@@ -14,11 +14,10 @@ const initialsOf = (name) =>
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('') || '?'
 
-// One sign-off: a CHECKBOX, not a text field. Packing is a "yes it's in the
-// case" decision made with gloves on, and typing initials three times per copy
-// is what nobody does. Checking it records the signed-in account's initials and
-// the timestamp (so who + when is still answerable — hover the box); unchecking
-// clears it.
+// The tick: "this is in the case". One per row — the two sign-out fields and the
+// return field went with the paper form they came from. It still records the
+// signed-in account's initials and the timestamp, so who + when stays answerable
+// (hover the box); clicking again clears it.
 function SignCheck({ signoff, onSign, onClear, label }) {
   const signed = !!signoff?.initials
   return (
@@ -90,23 +89,15 @@ export default function PackingChecklistModal({
               </div>
               <div className="mt-0.5 text-xs text-slate-500">
                 {order.poNumber ? `PO ${order.poNumber} · ` : ''}
-                One row per barcoded copy. Two ticks at sign-out, one at return — each records who
-                and when.
+                One row per barcoded copy — tick it once it's in the case. Returns are recorded at
+                the scanning station.
               </div>
             </div>
-            <div className="flex shrink-0 gap-5 text-center text-xs">
-              <div>
-                <div className="text-base font-semibold text-slate-900">
-                  {prog.out}/{prog.total}
-                </div>
-                <div className="text-slate-400">signed out</div>
+            <div className="shrink-0 text-center text-xs">
+              <div className="text-base font-semibold text-slate-900">
+                {prog.packed}/{prog.total}
               </div>
-              <div>
-                <div className="text-base font-semibold text-slate-900">
-                  {prog.ret}/{prog.total}
-                </div>
-                <div className="text-slate-400">returned</div>
-              </div>
+              <div className="text-slate-400">packed</div>
             </div>
           </div>
         )}
@@ -122,9 +113,7 @@ export default function PackingChecklistModal({
                 {prog.total} row{prog.total === 1 ? '' : 's'}
                 {unitRows > 0 ? ` · ${unitRows} by barcode` : ''}
               </span>
-              <span className="w-11 shrink-0 text-center">Out</span>
-              <span className="w-11 shrink-0 text-center">Out</span>
-              <span className="w-11 shrink-0 text-center">Ret</span>
+              <span className="w-11 shrink-0 text-center">Packed</span>
             </div>
             <div className="space-y-3">
               {groups.map((g) => (
@@ -146,18 +135,15 @@ export default function PackingChecklistModal({
                     {g.lines.map((l, i) => {
                       const key = packingLineKey(l)
                       const s = packing[key] || {}
-                      const returned = !!s.ret?.initials
-                      const out = !!(s.out1?.initials && s.out2?.initials)
+                      // A legacy double sign-out still counts as packed.
+                      const packed =
+                        !!s[PACKED_SLOT]?.initials || !!(s.out1?.initials && s.out2?.initials)
                       return (
                         <li
                           key={`${key}-${i}`}
                           className={[
                             'flex items-center gap-3 rounded-lg border px-3 py-2',
-                            returned
-                              ? 'border-slate-200 bg-slate-50/70'
-                              : out
-                                ? 'border-emerald-200 bg-emerald-50/40'
-                                : 'border-slate-200',
+                            packed ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200',
                           ].join(' ')}
                         >
                           <div className="min-w-0 flex-1">
@@ -194,22 +180,10 @@ export default function PackingChecklistModal({
                             </div>
                           </div>
                           <SignCheck
-                            signoff={s.out1}
-                            label="First sign-out check"
-                            onSign={() => sign(l, 'out1')}
-                            onClear={() => clear(l, 'out1')}
-                          />
-                          <SignCheck
-                            signoff={s.out2}
-                            label="Second sign-out check"
-                            onSign={() => sign(l, 'out2')}
-                            onClear={() => clear(l, 'out2')}
-                          />
-                          <SignCheck
-                            signoff={s.ret}
-                            label="Returned check"
-                            onSign={() => sign(l, 'ret')}
-                            onClear={() => clear(l, 'ret')}
+                            signoff={s[PACKED_SLOT]}
+                            label="Tick when it's in the case"
+                            onSign={() => sign(l, PACKED_SLOT)}
+                            onClear={() => clear(l, PACKED_SLOT)}
                           />
                         </li>
                       )

@@ -2,8 +2,10 @@
 //
 // Generated for a CONFIRMED order: the assigned equipment + quantity per line,
 // grouped exactly like the estimate — but this is a physical pull sheet, not a
-// price doc. So: no money, and every line carries three initial boxes to sign
-// on paper — two at sign-out, one at return (the EQ lifecycle OUT / OUT / RET).
+// price doc. So: no money, and every row carries ONE box to tick when the piece
+// is in the case. It used to carry three (two at sign-out, one at return); the
+// crew wants one, and the return side is the scanning station's record. The
+// printed sheet must match the digital checklist, or two documents get ticked.
 //
 // It reuses buildEstimate's grouped line model (same source of truth: the
 // order's lines) and the estimate PDF's jsPDF setup + ASCII-safety, so the two
@@ -25,14 +27,11 @@ const INK = {
   accent: [124, 58, 237],
 }
 
-// Three initial boxes anchored to the right margin; content columns fill the
-// space to their left.
+// One tick box anchored to the right margin; content columns fill the space to
+// its left, which is now wider than when there were three.
 const SIGN_W = 44
-const SIGN_GAP = 7
-const RET = { x1: PAGE.w - M - SIGN_W, x2: PAGE.w - M }
-const OUT2 = { x1: RET.x1 - SIGN_GAP - SIGN_W, x2: RET.x1 - SIGN_GAP }
-const OUT1 = { x1: OUT2.x1 - SIGN_GAP - SIGN_W, x2: OUT2.x1 - SIGN_GAP }
-const COL = { item: M, detail: M + 150, qtyRight: OUT1.x1 - 12 }
+const PACKED = { x1: PAGE.w - M - SIGN_W, x2: PAGE.w - M }
+const COL = { item: M, detail: M + 150, qtyRight: PACKED.x1 - 12 }
 const mid = (b) => (b.x1 + b.x2) / 2
 
 const slug = (s) =>
@@ -75,9 +74,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
     text('EQUIPMENT', COL.item, yy)
     text('DETAIL', COL.detail, yy)
     right('QTY', COL.qtyRight, yy)
-    center('OUT', mid(OUT1), yy)
-    center('OUT', mid(OUT2), yy)
-    center('RET', mid(RET), yy)
+    center('PACKED', mid(PACKED), yy)
     rule(yy + 6)
     return yy + 20
   }
@@ -90,11 +87,11 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
     if (repeatHead) y = tableHead(y)
   }
 
-  // Three empty initial boxes on the current row.
+  // The empty tick box on the current row.
   function signBoxes(yy) {
     doc.setDrawColor(INK.box[0], INK.box[1], INK.box[2])
     doc.setLineWidth(0.5)
-    for (const b of [OUT1, OUT2, RET]) doc.rect(b.x1, yy - 9, SIGN_W, 13)
+    doc.rect(PACKED.x1, yy - 9, SIGN_W, 13)
   }
 
   // ---- header ------------------------------------------------------------
@@ -220,7 +217,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
   const rowCount = rows.reduce((n, g) => n + g.lines.length, 0)
   const byBarcode = rows.reduce((n, g) => n + g.lines.filter((l) => l.kind === 'unit').length, 0)
   text(
-    `${rowCount} rows · ${est.pieces} pieces to pull · ${byBarcode} signed off by barcode`,
+    `${rowCount} rows to tick · ${est.pieces} pieces to pull · ${byBarcode} by barcode`,
     M,
     y,
   )
@@ -232,7 +229,7 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     setInk(INK.muted)
-    text('Packing list — sign OUT twice, RET once per line.', M, PAGE.h - M + 12)
+    text('Packing list — tick each row when the piece is in the case.', M, PAGE.h - M + 12)
     right(`Page ${p} of ${pages}`, PAGE.w - M, PAGE.h - M + 12)
   }
 

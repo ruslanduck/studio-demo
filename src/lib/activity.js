@@ -301,6 +301,8 @@ export function describeEvent(ev) {
 }
 
 const slotLabel = (slot) =>
-  slot === 'ret' ? 'the return' : slot === 'out2' ? 'the 2nd sign-out' : 'the 1st sign-out'
+  // 'out1' is the only slot the app writes now (see lib/packing PACKED_SLOT);
+  // the other two still appear in events logged before that change.
+  slot === 'ret' ? 'the return' : slot === 'out2' ? 'the 2nd sign-out' : 'packed'
 
 const own = (v) => (v === 'sub_rental' ? 'sub-rental' : v === 'owned' ? 'owned' : (v ?? '—'))

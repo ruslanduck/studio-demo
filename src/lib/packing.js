@@ -2,8 +2,20 @@
 // checklist, the order card and the printed pull sheet, so they all agree on what
 // a row is, how it's identified and when it counts as signed out / returned.
 
-// The three sign-off slots per line: two at sign-out, one at return.
-export const PACKING_SLOTS = ['out1', 'out2', 'ret']
+// ONE tick per row: "this is in the case".
+//
+// It used to be three initials fields (two people at sign-out, one at return),
+// which is what the paper form had. Dropped on request: the crew wants to tick
+// that everything made it to the set, and the RETURN side is already the
+// scanning station's job — scan-in records who and when, and closing an order
+// refuses while anything is still out. A second, weaker record of the same thing
+// is worse than none.
+//
+// The slot is still called `out1` and the other two columns still exist in
+// `packing_signoffs`: nothing is destroyed, the app just stops writing them, so
+// old sign-offs still read back.
+export const PACKED_SLOT = 'out1'
+export const PACKING_SLOTS = [PACKED_SLOT]
 
 // A stable key for a packing-list line. Order lines are replaced wholesale when
 // equipment is edited, so sign-offs are keyed by the line's CONTENT, not its id:
@@ -101,15 +113,14 @@ export function packingRows(estimate, { inventory = [], booking = null } = {}) {
   return out
 }
 
-// A line is "out" once BOTH sign-out slots are initialled; "returned" once the
-// return slot is. Returns counts over a flat list of estimate lines.
+// How many rows are ticked. A row counts as packed once its single tick is set —
+// or if it carries a legacy double sign-out from the three-field era, so an order
+// packed before this change still reads as packed.
 export function packingProgress(lines = [], packing = {}) {
-  let out = 0
-  let ret = 0
+  let packed = 0
   for (const l of lines) {
     const s = packing[packingLineKey(l)] || {}
-    if (s.out1?.initials && s.out2?.initials) out += 1
-    if (s.ret?.initials) ret += 1
+    if (s[PACKED_SLOT]?.initials || (s.out1?.initials && s.out2?.initials)) packed += 1
   }
-  return { total: lines.length, out, ret }
+  return { total: lines.length, packed }
 }

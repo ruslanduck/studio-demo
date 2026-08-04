@@ -583,7 +583,7 @@ function OrderDetail({
   const inventoryList = useStore((s) => s.inventory)
   const setActiveView = useStore((s) => s.setActiveView)
   // Count the rows the crew actually ticks (one per barcoded copy), not the order
-  // lines — otherwise the card's "3/5 signed out" disagrees with the checklist.
+  // lines — otherwise the card's "3/5 packed" disagrees with the checklist.
   const packProg = packingProgress(
     packingRows(estimate, { inventory: inventoryList, booking }).flatMap((g) => g.lines),
     order.packing || {},
@@ -959,19 +959,15 @@ function OrderDetail({
             <>
               <p className="mt-1 text-xs text-slate-500">
                 Two forms of the same pull sheet: print a PDF, or run the digital checklist on the
-                iPad. One row per barcoded copy, three ticks each — two at sign-out, one at return.
+                iPad. One row per barcoded copy, one tick each. Returns are recorded by scanning.
                 {estimate.lineCount === 0 && ' This order has no equipment yet.'}
               </p>
               {estimate.lineCount > 0 && (
                 <p className="mt-1.5 text-xs text-slate-500">
                   <span className="font-medium text-slate-700">
-                    {packProg.out}/{packProg.total}
+                    {packProg.packed}/{packProg.total}
                   </span>{' '}
-                  signed out ·{' '}
-                  <span className="font-medium text-slate-700">
-                    {packProg.ret}/{packProg.total}
-                  </span>{' '}
-                  returned
+                  packed
                 </p>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
