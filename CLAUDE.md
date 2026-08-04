@@ -1030,8 +1030,14 @@
 > switching a line to Sub-rental reads "vendor price not set", typing 340 moves the modal footer
 > 475 → **530**, saving shows "$340.00/day set here" on the card with the estimate at $530, re-opening the picker
 > loads 340 back, and `reset` returns to 475. Demo data reseeded after.
-> ⚠️ **The migration is NOT applied yet** — the studio's faster Wi-Fi blocks 5432 again (443 fine). Prod is
-> unaffected until it runs (verified above), and a typed price is refused with the message rather than dropped.
+> **Migration APPLIED and verified on prod.** Checked behaviourally as the app's own role, through the app's own
+> pricing code: the TOP select layer now succeeds (20 orders); a real SUB-RENTAL line — Sony 24-70mm, our rate
+> **75** — accepted a vendor price of **137.50**, and reading it back through `mapLineRow`'s shape into
+> `buildEstimate` gave "137.5 /day · overridden: true" with the order total following it; clearing to null went
+> back to following the item. Undone afterwards: 105 `order_lines` rows, **0** with a per-line rate — prod
+> exactly as found.
+> ℹ️ No DB check constraint on the value: a negative rate is refused by the field, and only this app writes the
+> column. Worth a `check (day_rate >= 0)` if that ever stops being true.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
