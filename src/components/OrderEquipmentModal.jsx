@@ -11,9 +11,11 @@ import {
   AlertTriangle,
   Truck,
   Home,
+  ScanLine,
 } from 'lucide-react'
 import Modal from './Modal'
 import KitStagingModal from './KitStagingModal'
+import UnitPickList from './UnitPickList'
 import SelectField from './SelectField'
 import { studioLabel } from '../data/studios'
 import { useStore, notArchived } from '../store'
@@ -63,6 +65,8 @@ export default function OrderEquipmentModal({
   const [pickerSearch, setPickerSearch] = useState('')
   const [applied, setApplied] = useState(null)
   const [blocked, setBlocked] = useState(null) // { itemId, name } — hit 0 available
+  // Which a-la-carte line is choosing a copy: the line's index, or null.
+  const [copyPicker, setCopyPicker] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -82,8 +86,32 @@ export default function OrderEquipmentModal({
           kitId: l.kitId,
           kitName: kits.find((k) => k.id === l.kitId)?.name ?? 'Kit',
         })
+      } else if (l.unitId) {
+        // A loose line that names a COPY (chosen or scanned, not from a kit).
+        // Folded back into that item's line as a pinned copy, so the crew sees
+        // one line with its barcodes rather than N one-piece lines.
+        const at = items.findIndex((x) => x.itemId === l.itemId && x.source === IN_HOUSE)
+        const pin = { unitId: l.unitId, barcode: l.barcode ?? null }
+        if (at === -1)
+          items.push({
+            itemId: l.itemId,
+            quantity: 1,
+            source: IN_HOUSE,
+            vendorId: null,
+            dayRate: l.rateOverridden ? l.dayRate ?? null : null,
+            rateOverridden: !!l.rateOverridden,
+            units: [pin],
+          })
+        else {
+          items[at] = {
+            ...items[at],
+            quantity: items[at].quantity + 1,
+            units: [...(items[at].units ?? []), pin],
+          }
+        }
       } else {
-        items.push({
+        const at = items.findIndex((x) => x.itemId === l.itemId && x.source === IN_HOUSE)
+        const loose = {
           itemId: l.itemId,
           quantity: l.quantity ?? 1,
           source: l.source === SUB_RENTAL ? SUB_RENTAL : IN_HOUSE,
@@ -91,7 +119,13 @@ export default function OrderEquipmentModal({
           // A rate typed on this line before; null means "follow the item".
           dayRate: l.rateOverridden ? l.dayRate ?? null : null,
           rateOverridden: !!l.rateOverridden,
-        })
+          units: [],
+        }
+        // Pinned copies of the same item arrived as their own rows; merge the
+        // quantity into that line instead of showing two.
+        if (at !== -1 && loose.source === IN_HOUSE)
+          items[at] = { ...items[at], quantity: items[at].quantity + loose.quantity }
+        else items.push(loose)
       }
     }
     setItemLines(items)
@@ -106,7 +140,16 @@ export default function OrderEquipmentModal({
   }, [open, order, kits])
 
   const itemsById = useMemo(() => Object.fromEntries(inventory.map((i) => [i.id, i])), [inventory])
-  const stagedIds = useMemo(() => new Set(stagedUnits.map((u) => u.unitId)), [stagedUnits])
+  // Copies chosen on a loose line are spoken for just like a kit's units — they
+  // must leave the free pool, or two lines could name the same camera.
+  const pinnedIds = useMemo(
+    () => new Set(itemLines.flatMap((l) => (l.units ?? []).map((u) => u.unitId))),
+    [itemLines],
+  )
+  const stagedIds = useMemo(
+    () => new Set([...stagedUnits.map((u) => u.unitId), ...pinnedIds]),
+    [stagedUnits, pinnedIds],
+  )
   // Availability is asked about the ORDER's set date (see lib/availability).
   const dateWindow = useMemo(
     () => ({ from: order?.startsOn || null, to: order?.endsOn || order?.startsOn || null }),
@@ -169,17 +212,41 @@ export default function OrderEquipmentModal({
         vendorId: null,
         dayRate: itemsById[u.itemId]?.dayRate ?? null,
       })),
-      ...itemLines.map((l) => ({
-        itemId: l.itemId,
-        itemName: itemsById[l.itemId]?.name ?? null,
-        quantity: l.quantity,
-        source: l.source,
-        vendorId: l.vendorId,
-        // A typed rate is what this line costs; otherwise the item's own.
-        dayRate: l.rateOverridden && l.dayRate != null ? l.dayRate : itemsById[l.itemId]?.dayRate ?? null,
-        itemDayRate: itemsById[l.itemId]?.dayRate ?? null,
-        rateOverridden: !!l.rateOverridden && l.dayRate != null,
-      })),
+      ...itemLines.flatMap((l) => {
+        const rate = {
+          // A typed rate is what this line costs; otherwise the item's own.
+          dayRate:
+            l.rateOverridden && l.dayRate != null ? l.dayRate : itemsById[l.itemId]?.dayRate ?? null,
+          itemDayRate: itemsById[l.itemId]?.dayRate ?? null,
+          rateOverridden: !!l.rateOverridden && l.dayRate != null,
+        }
+        const pinned = l.units ?? []
+        // A chosen copy is stored the same way a kit slot's unit is — a
+        // unit-level line — which is why reservations, packing and scanning need
+        // no special case for it (`reservedUnitsForOrder` pre-claims any line
+        // that names a unit).
+        const rows = pinned.map((u) => ({
+          itemId: l.itemId,
+          itemName: itemsById[l.itemId]?.name ?? null,
+          quantity: 1,
+          unitId: u.unitId,
+          barcode: u.barcode ?? null,
+          source: l.source,
+          vendorId: l.vendorId,
+          ...rate,
+        }))
+        const rest = l.quantity - pinned.length
+        if (rest > 0)
+          rows.push({
+            itemId: l.itemId,
+            itemName: itemsById[l.itemId]?.name ?? null,
+            quantity: rest,
+            source: l.source,
+            vendorId: l.vendorId,
+            ...rate,
+          })
+        return rows
+      }),
     ],
     [stagedUnits, itemLines, itemsById],
   )
@@ -195,13 +262,18 @@ export default function OrderEquipmentModal({
   const reservedForStaging = useMemo(
     () => [
       ...stagedUnits.map((u) => u.unitId),
+      ...pinnedIds,
+      // Only the UNPINNED remainder of each line still has to be resolved from
+      // the pool; the pinned copies are already named above.
       ...resolveUnitsForQuantities(
-        itemLines.filter((l) => l.source === IN_HOUSE),
+        itemLines
+          .filter((l) => l.source === IN_HOUSE)
+          .map((l) => ({ ...l, quantity: l.quantity - (l.units ?? []).length })),
         inventory,
         avCtx,
       ),
     ],
-    [stagedUnits, itemLines, inventory, avCtx],
+    [stagedUnits, pinnedIds, itemLines, inventory, avCtx],
   )
 
   const kitGroups = useMemo(() => {
@@ -280,6 +352,11 @@ export default function OrderEquipmentModal({
   const updateLine = (index, changes) =>
     setItemLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...changes } : l)))
 
+  // A sub-rental line is the vendor's gear: it has no copy of OURS to name, so
+  // any pinned copies are released when a line moves over.
+  const clearPins = (index) =>
+    setItemLines((prev) => prev.map((l, i) => (i === index ? { ...l, units: [] } : l)))
+
   // What this line costs per day. Typing a number overrides the item's rate for
   // THIS line only — the item everyone else quotes from is untouched. Clearing
   // the field goes back to following the item.
@@ -293,11 +370,49 @@ export default function OrderEquipmentModal({
 
   const removeLine = (index) => setItemLines((prev) => prev.filter((_, i) => i !== index))
 
+  // Choosing WHICH copy goes on the job, for a plain item — the same question a
+  // kit slot asks. Pinning does not change the quantity: it says which piece the
+  // n-th one is. Non-barcoded stock has no copies to choose, so the UI never
+  // offers this for it.
+  function pinUnit(index, unit) {
+    setItemLines((prev) =>
+      prev.map((l, i) => {
+        if (i !== index) return l
+        const units = l.units ?? []
+        if (units.some((u) => u.unitId === unit.id)) return l
+        return {
+          ...l,
+          // Pinning the (n+1)-th copy of a line that only asked for n pieces
+          // means the crew wants one more.
+          quantity: Math.max(l.quantity, units.length + 1),
+          units: [...units, { unitId: unit.id, barcode: unit.barcode ?? null }],
+        }
+      }),
+    )
+    setCopyPicker(null)
+    setError(null)
+  }
+
+  // Back to "any free copy" for that piece — the resolver picks one at confirm.
+  function unpinUnit(index, unitId) {
+    setItemLines((prev) =>
+      prev.map((l, i) =>
+        i === index ? { ...l, units: (l.units ?? []).filter((u) => u.unitId !== unitId) } : l,
+      ),
+    )
+  }
+
   function stepLine(index, delta) {
     const line = itemLines[index]
     const item = itemsById[line.itemId]
     const next = line.quantity + delta
     if (next <= 0) return removeLine(index)
+    // Fewer pieces than pinned copies is a contradiction: drop the last pin with
+    // the piece it belonged to.
+    if (delta < 0 && next < (line.units ?? []).length) {
+      const last = line.units[line.units.length - 1]
+      unpinUnit(index, last.unitId)
+    }
     // In-house is capped by what's actually free; a vendor's stock is not ours to cap.
     if (line.source === IN_HOUSE && delta > 0 && remainingFor(item) <= 0) {
       setBlocked({ itemId: line.itemId, name: item.name, intent: 'add' })
@@ -320,6 +435,8 @@ export default function OrderEquipmentModal({
       }
     }
     updateLine(index, { source, vendorId: source === SUB_RENTAL ? line.vendorId : null })
+    // Moving to the vendor releases the copies of ours this line had named.
+    if (source === SUB_RENTAL && (line.units ?? []).length) clearPins(index)
     setBlocked(null)
   }
 
@@ -703,6 +820,62 @@ export default function OrderEquipmentModal({
                           ) : null}
                         </label>
                       </div>
+
+                      {/* WHICH copies go on the job. Offered only for our own
+                          barcoded stock: non-barcoded stock is counted, not
+                          tracked copy by copy, and a sub-rental has no barcode of
+                          ours to name. Unpinned pieces stay "any free copy" and
+                          are resolved when the order is confirmed. */}
+                      {!isSub && item?.kind === 'barcoded' && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6">
+                          <span className="text-[11px] text-slate-400">Copies</span>
+                          {(l.units ?? []).map((u) => (
+                            <span
+                              key={u.unitId}
+                              className="inline-flex items-center gap-1 rounded bg-violet-50 px-1.5 py-0.5 font-mono text-[11px] font-medium text-violet-700 ring-1 ring-violet-200"
+                            >
+                              #{u.barcode ?? '—'}
+                              <button
+                                type="button"
+                                onClick={() => unpinUnit(i, u.unitId)}
+                                title="Back to any free copy"
+                                className="rounded text-violet-400 transition hover:text-rose-500"
+                              >
+                                <X size={11} />
+                              </button>
+                            </span>
+                          ))}
+                          {l.quantity - (l.units ?? []).length > 0 && (
+                            <span
+                              className="text-[11px] text-slate-400"
+                              title="Resolved from what's free when the order is confirmed"
+                            >
+                              {l.quantity - (l.units ?? []).length} × any free copy
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCopyPicker(copyPicker === i ? null : i)}
+                            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-violet-600 transition hover:bg-violet-50"
+                          >
+                            <ScanLine size={11} />
+                            {copyPicker === i ? 'Close' : 'Choose / scan a copy'}
+                          </button>
+                        </div>
+                      )}
+
+                      {copyPicker === i && !isSub && item?.kind === 'barcoded' && (
+                        <div className="-mx-3 mt-1.5 overflow-hidden rounded-b-lg">
+                          <UnitPickList
+                            scan
+                            itemName={item?.name ?? 'item'}
+                            units={freeUnitsOf(item, avCtx)}
+                            ownUnitIds={ownUnits}
+                            onPick={(u) => pinUnit(i, u)}
+                            onCancel={() => setCopyPicker(null)}
+                          />
+                        </div>
+                      )}
                     </li>
                   )
                 })}

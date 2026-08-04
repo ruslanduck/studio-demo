@@ -1038,6 +1038,33 @@
 > exactly as found.
 > ℹ️ No DB check constraint on the value: a negative rate is refused by the field, and only this app writes the
 > column. Worth a `check (day_rate >= 0)` if that ever stops being true.
+> **FEATURE — choose the COPY for a plain item too, and never ask for one when there is no barcode.**
+> Requested: picking an item (or applying a preset) should let you set its barcode "the same way as in a kit",
+> and a non-barcoded item should not ask — neither loose nor in a kit. NO migration: `order_lines.unit_id`
+> already exists (kits use it) and `reservedUnitsForOrder` already pre-claims ANY line that names a unit, so the
+> model was ready — only the picker wasn't.
+> `UnitPickList` moved out of KitStagingModal into `src/components/UnitPickList.jsx` (one definition, both
+> windows) and gained an optional scan field: typing filters by barcode or serial, and a value that IS a free
+> copy's barcode is taken immediately — so a reader and a pasted `#0958` both work (`normalizeBarcode`).
+> In `OrderEquipmentModal` each in-house barcoded line now carries a **Copies** row: a chip per pinned copy
+> (× to release it), "N × any free copy" for the rest, and "Choose / scan a copy". Pinning does not change what
+> the crew asked for — it says WHICH piece the n-th one is; unpinned pieces are still resolved at confirm.
+> Storage is the kit's own shape: a pinned copy is emitted as a unit-level line, which is why reservations,
+> packing rows and scanning needed no special case. On load, loose unit-level lines are FOLDED BACK into their
+> item's line as chips instead of showing N one-piece lines. Pinned ids join `claimed`, so a chip removes the
+> copy from the free pool for every other line and kit (visible: "2 left" → "1 left" the moment you pin).
+> Stepping the quantity below the number of pinned copies releases the last pin rather than lying about the
+> count, and switching a line to Sub-rental releases them all — that gear is the vendor's and has no barcode of
+> ours.
+> No copy question for counted stock: the Copies row is gated on `kind === 'barcoded'`, and a KIT slot whose item
+> is non-barcoded now reads "counted stock · no copy to pick", counts as satisfied and is left out of the add
+> (it used to sit "awaiting scan" with 0 free and block confirm forever). `KitEditorModal` already refuses to
+> author such a slot, so that path is defensive — exercised by fabricating one in localStorage.
+> Verified in local mode: 4 barcoded lines each offer Copies, the non-barcoded Gaffer Tape line does NOT;
+> pasting `#0958` with the hash pinned that copy and dropped the pool 2 → 1 left; saving wrote a
+> `unitId: u-0958` line and the card shows "#0958"; re-opening folded it back to a chip; the fabricated counted
+> kit slot showed "no copy to pick", "2 of 6 slots assigned" and "Add 2 to set" (not 3), with no meaningless
+> Replace. Demo data reseeded afterwards — 0 loose unit lines, fabricated slot gone, 0 console errors.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

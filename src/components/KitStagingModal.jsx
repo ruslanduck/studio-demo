@@ -17,6 +17,7 @@ import {
 import Modal from './Modal'
 import { freeUnitsOf, isUnitFree } from '../lib/availability'
 import { normalizeBarcode } from '../lib/scanning'
+import UnitPickList from './UnitPickList'
 
 // Staging window (Build order #3, 3.2 + 3.3 + 3.4). Adding a kit to a set opens
 // this: the kit's slot *definitions* are resolved into slot *fills* for THIS add.
@@ -38,78 +39,6 @@ import { normalizeBarcode } from '../lib/scanning'
 //
 // A slot with no valid unit (empty or conflict) blocks the final add. Slot
 // add/remove/replace choices never change the kit template.
-
-// The copies that are actually free for the dates in question. Shown instead of
-// silently taking the first one: to the crew #0961 and #0962 are different
-// objects (one lives in the van, one has a scratched hood), and after returning a
-// unit to stock they need to be able to pick a DIFFERENT one — which taking the
-// first free unit made impossible, since the one just released came back first.
-function UnitPickList({ itemName, units, onPick, onCancel, ownUnitIds = [], bare = false }) {
-  // Every unit here is free for the dates being staged, so its own `location`
-  // (the job it is committed to NEXT) would read as "taken" if shown bare. What
-  // helps the puller is the shelf, plus a note when the copy is spoken for on
-  // some other day.
-  // Callers pass `ownUnitIds` as an array (BookingModal) or a Set (the order
-  // editor) — everything else here forwards it to `isUnitFree`, which normalises
-  // it, so this is the one place that has to.
-  const own = ownUnitIds instanceof Set ? ownUnitIds : new Set(ownUnitIds ?? [])
-  const note = (u) => {
-    if (own.has(u.id)) return 'already on this job'
-    const other = (u.reservations || []).length
-    return other > 0 ? `booked on ${other} other day${other === 1 ? '' : 's'}` : null
-  }
-
-  const body =
-    units.length === 0 ? (
-      <p className="px-3 py-3 text-center text-xs text-slate-400">
-        No {itemName} is free for these dates.
-      </p>
-    ) : (
-      <ul className="max-h-44 overflow-auto">
-        {units.map((u) => (
-          <li key={u.id}>
-            <button
-              type="button"
-              onClick={() => onPick(u)}
-              className="flex w-full items-center gap-3 px-3 py-1.5 text-left transition hover:bg-violet-50"
-            >
-              <span className="w-16 shrink-0 font-mono text-xs font-medium text-slate-700">
-                #{u.barcode}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-400">
-                {u.serial || '—'}
-              </span>
-              <span className="max-w-[40%] shrink-0 truncate text-[11px] text-slate-500">
-                {u.placement || 'no shelf set'}
-              </span>
-              {note(u) && (
-                <span className="shrink-0 text-[11px] text-amber-600">· {note(u)}</span>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
-    )
-
-  if (bare) return body
-  return (
-    <div className="border-t border-slate-200 bg-slate-50/70">
-      <div className="flex items-center justify-between px-3 pt-2 text-[11px] text-slate-500">
-        <span>
-          {units.length} free {itemName} — pick the copy
-        </span>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded px-1.5 py-0.5 font-medium text-slate-400 transition hover:bg-slate-200 hover:text-slate-600"
-        >
-          Cancel
-        </button>
-      </div>
-      {body}
-    </div>
-  )
-}
 
 export default function KitStagingModal({
   open,
@@ -168,6 +97,11 @@ export default function KitStagingModal({
         state: 'empty',
         conflictReason: null,
       }
+      // Non-barcoded stock is counted, never tracked copy by copy, so there is
+      // nothing to scan or choose: the slot counts as satisfied and says why.
+      // (`KitEditorModal` won't author one; a seeded or SQL-made kit can.)
+      if (item && item.kind !== 'barcoded')
+        return { ...base, state: 'filled', source: 'counted', counted: true }
       if (slotType !== 'fixed') return base // generic → empty, awaiting a scan
 
       const unit = item?.units.find((u) => u.id === slot.fixedUnitId) || null
@@ -229,7 +163,9 @@ export default function KitStagingModal({
     f.state !== 'filled' && (f.slotType === 'generic' || f.slotType === 'extra' || f.overridden)
 
   const needCount = fills.filter((f) => f.state !== 'filled').length
-  const filledCount = fills.filter((f) => f.state === 'filled').length
+  // A counted slot is satisfied but contributes no unit, so it is not part of
+  // what the button promises to add.
+  const filledCount = fills.filter((f) => f.state === 'filled' && !f.counted).length
   const ready = fills.length > 0 && needCount === 0
 
   const fillSlot = (key, unit, source) =>
@@ -477,6 +413,8 @@ export default function KitStagingModal({
     if (!ready) return
     onConfirm(
       fills
+        // A counted slot has no unit to hand over; the item still belongs on the
+        // list, but as quantity, which is what the a-la-carte lines are for.
         .filter((f) => f.unitId)
         .map((f) => ({
           unitId: f.unitId,
@@ -725,7 +663,11 @@ export default function KitStagingModal({
                   </div>
 
                   {/* Right side: state */}
-                  {filled ? (
+                  {f.counted ? (
+                    <span className="shrink-0 text-right text-[11px] text-slate-400">
+                      counted stock · no copy to pick
+                    </span>
+                  ) : filled ? (
                     <div className="flex shrink-0 flex-col items-end">
                       <span className="font-mono text-xs text-slate-600">#{f.barcode}</span>
                       {sourceBadge(f)}
@@ -773,7 +715,7 @@ export default function KitStagingModal({
                         Choose unit
                       </button>
                     )}
-                    {filled && f.source !== 'fixed' && (
+                    {filled && !f.counted && f.source !== 'fixed' && (
                       <>
                         <button
                           type="button"
