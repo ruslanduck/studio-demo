@@ -3,14 +3,12 @@
 // Used by DateField's popover (a purchase date can be decades old) and by the
 // studio calendar's header (a shoot two years out shouldn't take 24 clicks of the
 // arrow). One definition, so both offer the same span and the same shape.
+import { yearsFor } from '../lib/years'
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-// Gear gets bought long before it gets rented, so the list reaches well back; a
-// few years forward covers a season that isn't this one.
-const THIS_YEAR = new Date().getFullYear()
-export const YEARS = Array.from({ length: 34 }, (_, i) => THIS_YEAR + 3 - i)
-
 export default function MonthYearPicker({ month, year, onMonth, onYear }) {
+  const years = yearsFor(year)
   return (
     <div className="px-1 pb-1">
       <div className="grid grid-cols-3 gap-1">
@@ -32,7 +30,7 @@ export default function MonthYearPicker({ month, year, onMonth, onYear }) {
           instead of 180 pages of arrows. */}
       <div className="mt-2 max-h-32 overflow-auto rounded-md border border-slate-100">
         <div className="grid grid-cols-4 gap-0.5 p-1">
-          {YEARS.map((y) => (
+          {years.map((y) => (
             <button
               key={y}
               type="button"

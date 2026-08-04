@@ -1110,6 +1110,27 @@
 > Mar → "Feb 28 – Mar 5, 2028"; both clicks in ONE tick now give Dec 2026 (the bug above); month mode reads
 > "December 2013" after a jump; Next while open pages AND closes it; Today returns to August 2026. 0 console
 > errors.
+> **FIX — the year list follows both the calendar year AND the year you're looking at.** Asked whether it
+> "dynamically adds the next years". It did slide on its own (derived from `new Date().getFullYear()`, never
+> hardcoded: +3 … -30, so next January the top moves up by itself) — but it ignored the year being VIEWED, so
+> paging past 2029 with the arrows showed a list without the year you were on: nothing highlighted and no way
+> back to it from the chooser. `yearsFor(viewed, today)` now returns the union of the standing window and a small
+> band around the viewed year. Moved to `src/lib/years.js` because it is a pure rule and this codebase keeps
+> those in lib/ where plain Node can assert them — 16 assertions incl. the slide (a fixed "today" of Jan 2027
+> yields 2030…1997), viewing +9 / -40, and NaN/undefined.
+> ⚠️ **Two more instances of the stale-closure trap, both found by this one question.** `page(delta)` computed
+> from the render closure, so eight rapid clicks on › stepped ONCE and silently overwrote a month jump that had
+> just happened (measured: 8 clicks moved one week; now they move eight). Everything that steps or jumps in
+> StudioCalendar goes through `currentRef()` = `useStore.getState().selectedDate`. FOURTH occurrence in this
+> codebase — the rule now written down: a handler that derives from state and can fire twice before a render must
+> read the store, not the closure.
+> ⚠️ And a self-inflicted one worth remembering: a scripted edit inserted `currentRef()` usage while its
+> DECLARATION edit silently didn't apply (the anchor had changed shape), leaving a call to an undefined function
+> — `npm run build` passed, `audit:jsx` can't see it. Caught by reloading the page. After a scripted multi-edit,
+> grep for the identifier's declaration, don't assume the script's asserts covered it.
+> Verified in the browser: 2029…1996 on the current week; paged 108 months to September 2035 → the chooser opens
+> on 2037…1996 with **2035 present and highlighted**; 8 rapid › clicks = 8 weeks; Today returns to Aug 3-9 2026
+> and folds the chooser. 0 console errors.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

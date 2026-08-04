@@ -103,19 +103,31 @@ export default function StudioCalendar() {
     return map
   }, [bookings, orders])
 
-  const goToday = () => setSelectedDate(format(new Date(), 'yyyy-MM-dd'))
   // Whether the month/year chooser is open, and where to draw it.
   const [jumping, setJumping] = useState(false)
   const jumpBtn = useRef(null)
   const jumpPop = useRef(null)
   const [jumpAt, setJumpAt] = useState(null)
+
+  // The date as the store has it RIGHT NOW. Every control that steps or jumps
+  // reads through this, so clicks faster than a re-render can't compute from a
+  // stale value.
+  const currentRef = () => parseISO(useStore.getState().selectedDate)
+
+  const goToday = () => {
+    setSelectedDate(format(new Date(), 'yyyy-MM-dd'))
+    setJumping(false)
+  }
+
+  // Paging reads the date from the STORE, not from this render's closure: two
+  // clicks on › faster than a re-render would otherwise both step from the same
+  // starting point and one would be lost. (Third time this trap has appeared —
+  // see ItemAvailability's stepMonth and the month/year handlers below.)
   const page = (delta) => {
     setJumping(false)
+    const at = currentRef()
     setSelectedDate(
-      format(
-        calendarMode === 'month' ? addMonths(refDate, delta) : addWeeks(refDate, delta),
-        'yyyy-MM-dd',
-      ),
+      format(calendarMode === 'month' ? addMonths(at, delta) : addWeeks(at, delta), 'yyyy-MM-dd'),
     )
   }
   const goPrev = () => page(-1)
@@ -187,9 +199,6 @@ export default function StudioCalendar() {
   // clicks of the arrow away, and a past season is worse. Picking a month keeps
   // the day of the month where it can (clamped by that month's length), so the
   // week view lands on a comparable week rather than always on the 1st.
-  // The date as the store has it RIGHT NOW — see the picker's handlers below.
-  const currentRef = () => parseISO(useStore.getState().selectedDate)
-
   const jumpTo = (date) => {
     setSelectedDate(format(date, 'yyyy-MM-dd'))
     setJumping(false)
