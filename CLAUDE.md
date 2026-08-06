@@ -1203,6 +1203,22 @@
 > everything still there (`viewState` in localStorage reads `{orders:{search:'4503',selectedId:'order-7'},
 > inventory:{itemId:'aputure-600d'}}`); People on the Companies tab with Northlight selected survived a reload;
 > the calendar kept Aug 17-23 across one. 0 console errors.
+> **FIX — a filled ComboField could not be reopened, and free entry was invisible.** Reported on the inventory
+> Subcategory field: once filled, "список больше не раскрывается, невозможно ее заменить". Reproduced exactly:
+> the screenshot's value ("Aprons & Flags", a GRIP subcategory) with Category = Computers. `ComboField` filtered
+> by the field's CURRENT value, and the popover only rendered `shown.length > 0` — so a value matching nothing in
+> the list filtered it to zero and the list silently refused to open, with no way out but clearing the text.
+> Two changes: filtering now happens only while TYPING (a new `filtering` flag reset on focus/click/chevron), so
+> opening the list always shows everything whatever is in the field; and the popover renders even with no rows.
+> (2) The "способ добавить новые пункты" already existed — the field is free text — but nothing said so, and issue (1) made it
+> look broken. A typed value the list doesn't have now announces itself: "“Tablets” is not in the list — it will
+> be added when you save." True as written: `subcategoryOptions` merges the taxonomy with every subcategory the
+> register already uses under that category, so saving really does put it in the list.
+> Applies to every ComboField (photographer / model too), which is the point of having one control.
+> Verified in local mode: value from another category + Category=Computers → clicking the field opens the FULL
+> Computers list (5 options) with the note; picked "Monitors" → replaced; typing "stor" → filters to
+> "Storage & Media"; saved an item with a brand-new "Tablets" → stored as `{category:'Computers',
+> subcategory:'Tablets'}` and reopening the modal offers Tablets as the 6th option. Demo data reseeded.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

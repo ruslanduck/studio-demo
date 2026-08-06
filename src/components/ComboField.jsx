@@ -24,18 +24,27 @@ export default function ComboField({
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState(null)
   const [active, setActive] = useState(-1)
+  // Is the list narrowed by what's in the field? Only after a keystroke.
+  const [filtering, setFiltering] = useState(false)
   const wrapRef = useRef(null)
   const inputRef = useRef(null)
   const popRef = useRef(null)
 
   const all = options.map((o) => (typeof o === 'object' && o !== null ? o : { value: o, label: String(o) }))
   const q = String(value ?? '').trim().toLowerCase()
-  // Typing filters; an exact match shows the whole list again, so the field
-  // doesn't collapse to one row the moment you finish a name.
-  const shown =
-    q === '' || all.some((o) => o.label.toLowerCase() === q)
-      ? all
-      : all.filter((o) => o.label.toLowerCase().includes(q))
+
+  // Filtering happens only while TYPING. Opening the list from the chevron (or by
+  // clicking the field) always shows everything, whatever is already in it.
+  //
+  // The old rule filtered by the field's CURRENT value, which made a filled field
+  // a dead end: a value that matches nothing in the list — e.g. a subcategory left
+  // over from another category — filtered the list to zero, and the popover only
+  // rendered when it had rows, so the list silently refused to open and the value
+  // couldn't be changed.
+  const shown = filtering && q !== '' ? all.filter((o) => o.label.toLowerCase().includes(q)) : all
+  // Typed something the list doesn't have. That's allowed — new kinds of gear and
+  // new faces arrive — but it has to be SAID, or free entry is invisible.
+  const isNew = q !== '' && !all.some((o) => o.label.toLowerCase() === q)
 
   const place = () => {
     const el = inputRef.current
@@ -103,10 +112,17 @@ export default function ComboField({
         onChange={(e) => {
           onChange(e)
           setActive(-1)
+          setFiltering(true)
           setOpen(true)
         }}
-        onFocus={() => setOpen(true)}
-        onClick={() => setOpen(true)}
+        onFocus={() => {
+          setFiltering(false)
+          setOpen(true)
+        }}
+        onClick={() => {
+          setFiltering(false)
+          setOpen(true)
+        }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault()
@@ -125,7 +141,11 @@ export default function ComboField({
       <button
         type="button"
         tabIndex={-1}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setFiltering(false)
+          setOpen((o) => !o)
+        }}
+        title="Show the list"
         className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
       >
         <ChevronDown
@@ -136,7 +156,6 @@ export default function ComboField({
 
       {open &&
         coords &&
-        shown.length > 0 &&
         createPortal(
           <div
             ref={popRef}
@@ -150,6 +169,17 @@ export default function ComboField({
             }}
             className="z-[70] overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
           >
+            {/* Free entry, said out loud: the value is already yours, and it joins
+                the list for this category once the record is saved. */}
+            {isNew && (
+              <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] text-slate-500">
+                “<span className="font-medium text-slate-700">{String(value).trim()}</span>” is not
+                in the list — it will be added when you save.
+              </div>
+            )}
+            {shown.length === 0 && !isNew && (
+              <p className="px-3 py-2 text-xs text-slate-400">Nothing to choose from yet.</p>
+            )}
             {shown.map((o, i) => {
               const selected = String(o.value) === String(value ?? '')
               return (
