@@ -11,6 +11,7 @@ import {
   Search,
 } from 'lucide-react'
 import { useStore, notArchived } from '../store'
+import { usePersisted } from '../lib/usePersisted'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
@@ -48,11 +49,12 @@ export default function Scanning() {
   const can = useCan()
   const mayScan = can(CAP.SCAN)
 
-  const [selectedId, setSelectedId] = useState(null)
+  // Which order the station is packing — a shift shouldn't lose it.
+  const [selectedId, setSelectedId] = usePersisted('scanning', 'orderId', null)
   const [direction, setDirection] = useState(SCAN_OUT)
   const [code, setCode] = useState('')
   const [flash, setFlash] = useState(null) // { ok, text }
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = usePersisted('scanning', 'search', '')
   const inputRef = useRef(null)
 
   // Only confirmed, live orders can be scanned; the nearest shoot first, since

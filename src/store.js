@@ -999,6 +999,17 @@ export const useStore = create(
       sidebarOpen: false,
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
+      // Where each screen was left: the selected order / person / item, the
+      // search boxes, the filters. App.jsx renders only the active view, so this
+      // is what makes "switch away and come back" return you to the same place
+      // instead of the first row — and it's persisted, so a reload does too.
+      // Keyed by screen: { orders: {...}, people: {...}, inventory: {...} }.
+      viewState: {},
+      patchViewState: (scope, changes) =>
+        set((s) => ({
+          viewState: { ...s.viewState, [scope]: { ...(s.viewState[scope] ?? {}), ...changes } },
+        })),
+
       calendarMode: 'week', // 'week' | 'month'
       setCalendarMode: (mode) => set({ calendarMode: mode }),
 
@@ -2830,9 +2841,17 @@ export const useStore = create(
       },
       // Local mode persists data to localStorage. Supabase mode persists only
       // UI state — data always comes fresh from the database.
+      // What "where I was" consists of: the active screen, each screen's own
+      // selection + filters, and the calendar's date/mode. Supabase mode used to
+      // persist activeView ALONE, so every selection died on reload.
       partialize: (state) =>
         usingSupabase
-          ? { activeView: state.activeView }
+          ? {
+              activeView: state.activeView,
+              viewState: state.viewState,
+              selectedDate: state.selectedDate,
+              calendarMode: state.calendarMode,
+            }
           : {
               inventory: state.inventory,
               bookings: state.bookings,
@@ -2844,6 +2863,9 @@ export const useStore = create(
               orders: state.orders,
               activity: state.activity,
               activeView: state.activeView,
+              viewState: state.viewState,
+              selectedDate: state.selectedDate,
+              calendarMode: state.calendarMode,
             },
     },
   ),

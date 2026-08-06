@@ -25,6 +25,7 @@ import {
   Lock,
 } from 'lucide-react'
 import { useStore, notArchived, MAX_SETS_PER_DAY } from '../store'
+import { usePersisted } from '../lib/usePersisted'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
@@ -123,16 +124,18 @@ export default function Orders() {
   const clearOrderDraft = useStore((s) => s.clearOrderDraft)
   const can = useCan()
 
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState('All')
+  const [search, setSearch] = usePersisted('orders', 'search', '')
+  const [status, setStatus] = usePersisted('orders', 'status', 'All')
   // 5.7 — job search: free text plus explicit photographer / studio / date-range
   // filters and a sort. All matching lives in lib/orderSearch.
-  const [photographer, setPhotographer] = useState('All')
-  const [studioFilter, setStudioFilter] = useState('All')
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [sort, setSort] = useState('newest')
-  const [selectedId, setSelectedId] = useState(() => orders[0]?.id ?? null)
+  const [photographer, setPhotographer] = usePersisted('orders', 'photographer', 'All')
+  const [studioFilter, setStudioFilter] = usePersisted('orders', 'studio', 'All')
+  const [from, setFrom] = usePersisted('orders', 'from', '')
+  const [to, setTo] = usePersisted('orders', 'to', '')
+  const [sort, setSort] = usePersisted('orders', 'sort', 'newest')
+  // The order you were reading. Resolved against the LIVE list below, so a
+  // stored id whose order is gone falls back to the first row.
+  const [selectedId, setSelectedId] = usePersisted('orders', 'selectedId', null)
   const [editor, setEditor] = useState({ open: false, order: null })
   const [eqEditor, setEqEditor] = useState({ open: false, order: null })
   const [checklistOpen, setChecklistOpen] = useState(false)
@@ -225,7 +228,9 @@ export default function Orders() {
 
   // Live only: an archived order is not viewable anywhere (no Archive screen),
   // so neither a stale selection nor a drill-in may open one.
-  const selected = liveOrders.find((o) => o.id === selectedId) ?? null
+  // A stored id wins even when a filter hides its row (you chose it); with
+  // nothing stored, a first visit lands on the newest order as it always did.
+  const selected = liveOrders.find((o) => o.id === selectedId) ?? liveOrders[0] ?? null
 
   // Built once and shared by the detail card, the estimate/packing PDFs and the
   // digital checklist so they all read the same grouped lines.

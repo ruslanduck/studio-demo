@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine, ClipboardList, Trash2, AlertTriangle } from 'lucide-react'
 import { useStore, notArchived } from '../store'
+import { usePersisted } from '../lib/usePersisted'
 import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel, activeUnits } from '../data/inventory'
 import { availableCount } from '../lib/availability'
 import { useCan } from '../lib/useCan'
@@ -206,16 +207,14 @@ export default function Inventory() {
   const people = useStore((s) => s.people)
   const can = useCan()
 
-  const [entryType, setEntryType] = useState('items') // 'items' | 'kits' | 'lists'
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('All')
-  const [brand, setBrand] = useState('All')
-  const [kind, setKind] = useState('All')
-  const [selectedId, setSelectedId] = useState(
-    () => inventory.find((i) => i.id === 'kbd-magic')?.id ?? inventory[0]?.id ?? null,
-  )
-  const [selectedKitId, setSelectedKitId] = useState(() => kits[0]?.id ?? null)
-  const [selectedListId, setSelectedListId] = useState(() => scenarios[0]?.id ?? null)
+  const [entryType, setEntryType] = usePersisted('inventory', 'entryType', 'items') // 'items' | 'kits' | 'lists'
+  const [search, setSearch] = usePersisted('inventory', 'search', '')
+  const [category, setCategory] = usePersisted('inventory', 'category', 'All')
+  const [brand, setBrand] = usePersisted('inventory', 'brand', 'All')
+  const [kind, setKind] = usePersisted('inventory', 'kind', 'All')
+  const [selectedId, setSelectedId] = usePersisted('inventory', 'itemId', null)
+  const [selectedKitId, setSelectedKitId] = usePersisted('inventory', 'kitId', null)
+  const [selectedListId, setSelectedListId] = usePersisted('inventory', 'listId', null)
   const [itemModal, setItemModal] = useState({ open: false, item: null })
   const [kitModal, setKitModal] = useState({ open: false, kit: null })
   const [listModal, setListModal] = useState({ open: false, list: null })
@@ -367,7 +366,11 @@ export default function Inventory() {
   // Archive screen any more and must not be viewable anywhere — not even via a
   // stale selection, a drill-in link or the "first item" fallback.
   const selected =
-    liveInventory.find((i) => i.id === selectedId) ?? liveInventory[0] ?? null
+    liveInventory.find((i) => i.id === selectedId) ??
+    // First visit: the 17-unit keyboard, which is what shows the unit table off.
+    liveInventory.find((i) => i.id === 'kbd-magic') ??
+    liveInventory[0] ??
+    null
 
   // Kits (entry type #2): filter by name when searching, derive the selection.
   const filteredKits = useMemo(
@@ -375,7 +378,7 @@ export default function Inventory() {
       query === '' ? liveKits : liveKits.filter((k) => k.name.toLowerCase().includes(query)),
     [liveKits, query],
   )
-  const selectedKit = liveKits.find((k) => k.id === selectedKitId) ?? null
+  const selectedKit = liveKits.find((k) => k.id === selectedKitId) ?? liveKits[0] ?? null
 
   // Predefined scenario lists (3.5) — same list/detail pattern as kits.
   const filteredLists = useMemo(

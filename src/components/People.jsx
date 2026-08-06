@@ -21,6 +21,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react'
 import { useStore, notArchived } from '../store'
+import { usePersisted } from '../lib/usePersisted'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
@@ -88,11 +89,11 @@ export default function People() {
   const peek = useStore((s) => s.peek)
   const can = useCan()
 
-  const [tab, setTab] = useState('people') // 'people' | 'companies'
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('All')
-  const [selectedPersonId, setSelectedPersonId] = useState(() => people[0]?.id ?? null)
-  const [selectedCompanyId, setSelectedCompanyId] = useState(() => companies[0]?.id ?? null)
+  const [tab, setTab] = usePersisted('people', 'tab', 'people') // 'people' | 'companies'
+  const [search, setSearch] = usePersisted('people', 'search', '')
+  const [category, setCategory] = usePersisted('people', 'category', 'All')
+  const [selectedPersonId, setSelectedPersonId] = usePersisted('people', 'personId', null)
+  const [selectedCompanyId, setSelectedCompanyId] = usePersisted('people', 'companyId', null)
   const [editor, setEditor] = useState({ open: false, person: null })
   const [companyEditor, setCompanyEditor] = useState({ open: false, company: null })
   const [showDetailMobile, setShowDetailMobile] = useState(false)
@@ -132,8 +133,9 @@ export default function People() {
 
   // Live only: with the Archive screen hidden, an archived person or company is
   // not viewable anywhere — not even via a stale selection or a drill-in.
-  const selectedPerson = livePeople.find((p) => p.id === selectedPersonId) ?? null
-  const selectedCompany = liveCompanies.find((c) => c.id === selectedCompanyId) ?? null
+  const selectedPerson = livePeople.find((p) => p.id === selectedPersonId) ?? livePeople[0] ?? null
+  const selectedCompany =
+    liveCompanies.find((c) => c.id === selectedCompanyId) ?? liveCompanies[0] ?? null
 
   // Categories actually present, so the filter never offers an empty option.
   const categories = useMemo(() => {

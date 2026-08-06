@@ -1180,6 +1180,29 @@
 > Verified in local mode: company name in a LIST row → company card; person card chip → company card with the
 > People tab still selected; contact inside that card → "2 deep" with Back; Escape unwinds to where you started.
 > 0 console errors.
+> **FEATURE — every screen remembers where you were.** Reported: leaving a screen and coming back landed you on
+> the first row again — "чтобы я возвращался на тот же заказ, на того же клиента, инвентарь". Two causes, both real:
+> App.jsx renders ONLY the active view, so switching Orders → Inventory UNMOUNTS Orders and throws away its
+> `useState` (selection, search, filters); and in supabase mode `partialize` persisted `{ activeView }` **alone**,
+> so a reload reset everything else too.
+> New store slice `viewState` (keyed by screen) + `patchViewState`, and `src/lib/usePersisted.js` — a drop-in
+> useState replacement (`const [x, setX] = usePersisted('orders', 'search', '')`) that reads/writes that slice,
+> supports the updater form, and reads the CURRENT value at call time rather than closing over it (the
+> stale-closure trap, fifth appearance). Call sites kept their bodies verbatim; 21 state variables converted
+> across Orders / People / Inventory / Scanning.
+> Persisted now, in BOTH modes: `activeView`, `viewState`, `selectedDate` and `calendarMode`. Deliberately NOT
+> persisted: open modals, half-typed drafts, `showDetailMobile`, the peek/nav stacks — restoring a dialog someone
+> had open, or a form they abandoned, is not "where I was".
+> ⚠️ The selections used to be SEEDED with the first record (`useState(() => orders[0]?.id)`); they now start
+> null, so every resolver needed a first-visit fallback or the detail pane would open empty. Added to Orders,
+> People (person + company) and Inventory's kit list; Inventory's item keeps its demo default (the 17-unit
+> keyboard) as the fallback rather than plain alphabetical first. A stored id whose record is gone falls through
+> to that same fallback, which is what makes an archived or deleted selection harmless.
+> Verified in local mode: picked the 4th order + typed a search → Inventory (picked Aputure 600D Pro) → back to
+> Orders: same order open, "4503" still in the box, "1 of 14 orders"; Inventory still on the Aputure; **reload** →
+> everything still there (`viewState` in localStorage reads `{orders:{search:'4503',selectedId:'order-7'},
+> inventory:{itemId:'aputure-600d'}}`); People on the Companies tab with Northlight selected survived a reload;
+> the calendar kept Aug 17-23 across one. 0 console errors.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
