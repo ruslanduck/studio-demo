@@ -870,15 +870,28 @@ function OrderDetail({
                               {l.slotLabel}
                             </span>
                           )}
-                          {l.source === 'sub_rental' && (
-                            <span
-                              title={l.vendorName ? `Sub-rented from ${l.vendorName}` : 'Sub-rental'}
-                              className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
-                            >
-                              <Truck size={9} />
-                              {l.vendorName ?? 'sub-rental'}
-                            </span>
-                          )}
+                          {l.source === 'sub_rental' &&
+                            // The vendor is a company we have a card for, so its
+                            // name opens it — every company name in the app does.
+                            (l.vendorId ? (
+                              <button
+                                type="button"
+                                onClick={() => peek({ type: 'company', id: l.vendorId })}
+                                title={`Sub-rented from ${l.vendorName ?? 'this vendor'} — open the company`}
+                                className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 underline decoration-amber-400 underline-offset-2 transition hover:bg-amber-200"
+                              >
+                                <Truck size={9} />
+                                {l.vendorName ?? 'sub-rental'}
+                              </button>
+                            ) : (
+                              <span
+                                title="Sub-rental with no vendor picked yet"
+                                className="inline-flex shrink-0 items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800"
+                              >
+                                <Truck size={9} />
+                                sub-rental
+                              </span>
+                            ))}
                         </span>
                         {l.barcode && (
                           <span className="shrink-0 font-mono text-[11px] text-slate-400">

@@ -1163,6 +1163,23 @@
 > Verified in local mode: added "Catering probe" → × → it left the list; the editor shows one Type dropdown and no
 > second one; a contact opens in the right-side card with the Companies tab still selected and "Open full view"
 > available; the vendor picker now lists all **6** companies instead of 3. Demo data reseeded, 0 console errors.
+> **CHANGE — every company and contact NAME is a link, in both directions.** Asked for the reverse of the last
+> change and then generally: "с каждой строки где я вижу компанию или контакт я мог переходить". Audited every
+> surface that renders one and closed the gaps:
+> • the person CARD's company chip now peeks the company instead of jumping to the Companies tab (`openCompany`);
+> • the person LIST row's company name is its own link — the row used to be one big `<button>`, which is exactly
+>   why the company inside it couldn't be clickable (a button can't contain a button). It is a div now: the
+>   person area is one target, the company name another. Measured, not eyeballed: both on one line, row height
+>   unchanged at 56px;
+> • the sub-rental VENDOR badge on an order's equipment line opens that company (it showed a company name and
+>   did nothing); a line with no vendor picked yet stays a plain badge.
+> Already linked before this and left alone: the company card's contacts, its order rows and gear, the order
+> card's photographer / company / shoot, the calendar chips, and both peek cards (person ↔ company stack into each
+> other). Deliberately NOT linked: the packing checklist's vendor name — it's a workflow surface, and a card
+> stacked over a modal has no clean escape (the same rule as the equipment pickers).
+> Verified in local mode: company name in a LIST row → company card; person card chip → company card with the
+> People tab still selected; contact inside that card → "2 deep" with Back; Escape unwinds to where you started.
+> 0 console errors.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

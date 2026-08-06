@@ -285,6 +285,7 @@ export default function People() {
                   setSelectedPersonId(id)
                   setShowDetailMobile(true)
                 }}
+                onOpenCompany={(id) => peek({ type: 'company', id })}
               />
             ) : (
               <CompanyList
@@ -324,7 +325,9 @@ export default function People() {
                   orders={orders}
                   canManage={can(CAP.PERSON_MANAGE)}
                   onEdit={() => setEditor({ open: true, person: selectedPerson })}
-                  onOpenCompany={openCompany}
+                  // The company opens as a card over the person you're reading,
+                  // the same as every other piece of related data.
+                  onOpenCompany={(id) => peek({ type: 'company', id })}
                   onOpenJob={openJob}
                 />
               </>
@@ -418,7 +421,7 @@ function Empty({ icon: Icon, text }) {
   )
 }
 
-function PersonList({ people, selectedId, query, onSelect }) {
+function PersonList({ people, selectedId, query, onSelect, onOpenCompany }) {
   if (people.length === 0)
     return (
       <p className="px-3 py-10 text-center text-sm text-slate-400">
@@ -429,42 +432,61 @@ function PersonList({ people, selectedId, query, onSelect }) {
     <ul className="space-y-0.5">
       {people.map((p) => {
         const active = p.id === selectedId
-        const subtitle = [p.subcategory || p.category, p.companyName].filter(Boolean).join(' · ')
+        const role = p.subcategory || p.category
         return (
           <li key={p.id}>
-            <button
-              type="button"
-              onClick={() => onSelect(p.id)}
+            <div
               className={[
-                'flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition',
+                'flex items-center gap-3 rounded-lg px-2.5 py-2.5 transition',
                 active ? 'bg-violet-50 ring-1 ring-violet-200' : 'hover:bg-slate-50',
               ].join(' ')}
             >
-              <span
-                className={[
-                  'grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold',
-                  active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
-                ].join(' ')}
+              <button
+                type="button"
+                onClick={() => onSelect(p.id)}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
               >
-                {initials(p.name)}
-              </span>
-              <span className="min-w-0">
                 <span
                   className={[
-                    'block truncate text-sm font-medium',
-                    active ? 'text-violet-900' : 'text-slate-800',
+                    'grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold',
+                    active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
                   ].join(' ')}
                 >
-                  <Highlight text={p.name} query={query} />
+                  {initials(p.name)}
                 </span>
-                <span className="block truncate text-xs text-slate-400">{subtitle}</span>
-              </span>
+                <span className="min-w-0">
+                  <span
+                    className={[
+                      'block truncate text-sm font-medium',
+                      active ? 'text-violet-900' : 'text-slate-800',
+                    ].join(' ')}
+                  >
+                    <Highlight text={p.name} query={query} />
+                  </span>
+                  <span className="block truncate text-xs text-slate-400">
+                    {role}
+                    {role && p.companyName ? ' · ' : ''}
+                  </span>
+                </span>
+              </button>
+              {/* The company is its own target: seeing it should mean being able
+                  to open it, without first opening the person. */}
+              {p.companyName && (
+                <button
+                  type="button"
+                  onClick={() => onOpenCompany(p.companyId)}
+                  title={`Open ${p.companyName}`}
+                  className="-ml-2 min-w-0 max-w-[45%] shrink truncate text-left text-xs text-violet-600 underline decoration-violet-200 underline-offset-2 transition hover:text-violet-800"
+                >
+                  {p.companyName}
+                </button>
+              )}
               {p.jobs.length > 0 && (
                 <span className="ml-auto shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
                   {p.jobs.length}
                 </span>
               )}
-            </button>
+            </div>
           </li>
         )
       })}
