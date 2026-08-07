@@ -586,7 +586,7 @@ function OrderDetail({
     ? peopleList.find((p) => p.name === order.photographer) ?? null
     : null
   const inventoryList = useStore((s) => s.inventory)
-  const setActiveView = useStore((s) => s.setActiveView)
+  const openScanning = useStore((s) => s.openScanning)
   // Count the rows the crew actually ticks (one per barcoded copy), not the order
   // lines — otherwise the card's "3/5 packed" disagrees with the checklist.
   const packProg = packingProgress(
@@ -1049,7 +1049,13 @@ function OrderDetail({
                 <div className="mt-3">
                   <button
                     type="button"
-                    onClick={() => setActiveView('scanning')}
+                    onClick={() =>
+                      openScanning(order.id, {
+                        view: 'orders',
+                        label: order.jobName || 'the order',
+                        focus: { orderId: order.id },
+                      })
+                    }
                     className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                   >
                     <ScanLine size={15} />

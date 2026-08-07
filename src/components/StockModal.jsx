@@ -112,10 +112,13 @@ export default function StockModal({ open, item, onClose, onSubmit }) {
             </span>
           </div>
 
-          {error && (
+          {/* Say WHY the button is dead. `error` is set in submit(), which a
+              disabled button can never reach — so an impossible amount used to
+              show a rose “—” and nothing else. */}
+          {(error || tooMany) && (
             <div className="flex items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              {error}
+              {error || `Only ${onHand} on hand — can't take ${n} out.`}
             </div>
           )}
         </div>

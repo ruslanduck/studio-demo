@@ -512,7 +512,14 @@ export default function Inventory() {
                 </button>
               ))}
             </div>
-            <FilterBar
+          </div>
+
+          {/* FilterBar carries its own p-3, so it sits as a SIBLING of the toggle's
+              padded wrapper, not inside it. Nested, the two paddings added up and
+              the search box was inset 24px against the toggle's 12px — narrower
+              than the same bar in Orders, with its divider stopping short of the
+              pane edge. */}
+          <FilterBar
               search={search}
               onSearch={setSearch}
               searchPlaceholder={
@@ -535,7 +542,7 @@ export default function Inventory() {
                 entryType === 'kits'
                   ? liveKits.length
                   : entryType === 'lists'
-                    ? liveScenarios.length
+                    ? liveLists.length
                     : liveInventory.length
               }
               noun={entryType === 'kits' ? 'kits' : entryType === 'lists' ? 'lists' : 'items'}
@@ -563,7 +570,6 @@ export default function Inventory() {
                 </div>
               )}
             </FilterBar>
-          </div>
 
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {entryType === 'lists' ? (

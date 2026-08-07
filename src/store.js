@@ -343,6 +343,12 @@ function buildSeedData() {
     companies,
     companyTypes,
     orders,
+    // A fresh demo has no hand-made history. Leaving the old array behind meant
+    // "Reset demo data" restored the numbers but kept a log describing writes it
+    // had just undone — an item back at 24 on hand with "added stock · 24 → 34"
+    // still in its feed. Seeded events (usage, repairs) live on the records
+    // themselves and render as "seed data".
+    activity: [],
   }
 }
 
@@ -839,6 +845,18 @@ export const useStore = create(
         })
       },
       clearOrderFocus: () => set({ orderFocus: null }),
+
+      // "Open the scanning station" from an order card means THAT order. The
+      // station keeps its selection in viewState (so a shift can leave it open
+      // and come back to it), which is exactly what this sets — otherwise the
+      // button switched views and landed on whichever confirmed order sorted
+      // first, and the crew would scan gear against the wrong job.
+      openScanning: (orderId, from = null) => {
+        if (get().isViewBlocked('order', orderId)) return
+        if (from) get().pushNav(from)
+        if (orderId) get().patchViewState('scanning', { orderId, search: '' })
+        set({ activeView: 'scanning', sidebarOpen: false, peekStack: [] })
+      },
 
       // Step one of creating an order, answered on the CALENDAR. Nothing is
       // written yet: the form's answers travel to the Orders view, which opens
@@ -2306,13 +2324,23 @@ export const useStore = create(
         const before = get().orders.find((o) => o.id === id)
         const statusMoved = changes.status && before && changes.status !== before.status
         const reopened = statusMoved && isClosedStatus(before?.status)
+        // Only a real MOVE gets a status event. The editor always submits the
+        // status, so keying on its value alone logged "confirmed the order" for
+        // an edit that just changed the date — the feed has to say what actually
+        // happened, or it is worse than no feed.
         const statusEvent = () => {
+          if (!statusMoved) return EVENT.ORDER_UPDATED
           if (isClosedStatus(changes.status)) return EVENT.ORDER_CLOSED
           if (reopened) return EVENT.ORDER_REOPENED
           if (changes.status === 'confirmed') return EVENT.ORDER_CONFIRMED
           if (changes.status === 'hold') return EVENT.ORDER_HELD
           return EVENT.ORDER_UPDATED
         }
+        // The form submits every field it holds, so listing its keys claimed all
+        // eight changed when only the date did. Diff against the record.
+        const reallyChanged = Object.keys(changes).filter(
+          (k) => !before || String(changes[k] ?? '') !== String(before[k] ?? ''),
+        )
         const logStatus = (res) =>
           get().logActivity({
             type: statusEvent(),
@@ -2322,7 +2350,7 @@ export const useStore = create(
               ? isClosedStatus(changes.status)
                 ? { released: res.released ?? 0 }
                 : { reserved: res.reserved ?? 0, short: res.short ?? 0 }
-              : { changed: Object.keys(changes) },
+              : { changed: reallyChanged },
           })
 
         if (usingSupabase) {
@@ -2338,13 +2366,6 @@ export const useStore = create(
             console.error('reservation sync failed:', e)
           }
           logStatus(statusMoved ? res : null)
-          // The gear saved but a typed price didn't, because this database is
-          // missing the per-line rate column. Say so instead of letting the
-          // number quietly disappear on the next reload.
-          if (wrote.rateNotStored)
-            return {
-              error: `The equipment saved, but ${wrote.rateNotStored} line price(s) did not: this database is missing the order-line rate column (migration 20260811120000). Apply it, then re-enter the price.`,
-            }
           return { ok: true, ...res }
         }
         const state = get()
@@ -2420,6 +2441,16 @@ export const useStore = create(
           } catch (e) {
             console.error('reservation sync failed:', e)
           }
+          // The gear saved but a typed price didn't, because this database is
+          // missing the per-line rate column. Say so instead of letting the
+          // number quietly disappear on the next reload. This belongs HERE, with
+          // the write that produced `wrote` — it had been pasted into
+          // updateOrder, which has no lines and no such variable, so every order
+          // edit in supabase mode threw a ReferenceError right after saving.
+          if (wrote.rateNotStored)
+            return {
+              error: `The equipment saved, but ${wrote.rateNotStored} line price(s) did not: this database is missing the order-line rate column (migration 20260811120000). Apply it, then re-enter the price.`,
+            }
           return { ok: true, ...res }
         }
         get().logActivity({

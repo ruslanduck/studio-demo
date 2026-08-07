@@ -170,8 +170,7 @@ export default function Archive() {
     archivedCompanies.length +
     archivedKits.length +
     archivedLists.length +
-    archivedTypes.length +
-    archivedAddons.length
+    archivedTypes.length
 
   const mayRestore = can(CAP.INVENTORY_EDIT)
 
@@ -359,9 +358,6 @@ export default function Archive() {
               onRestore={run(`scenario:${l.id}`, () => restoreRecord('scenario', l.id))}
               onOpen={() => focusInventory({ listId: l.id }, { view: 'archive', label: 'Archive' })}
             />
-          ))}
-        />
-
           ))}
         />
 

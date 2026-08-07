@@ -1281,14 +1281,29 @@ export async function setReservationsForSet(setId, unitIds, { from = null, to = 
   // closing an order and re-opening it the unit ids are identical, and skipping
   // the write would leave the gear marked back-on-the-shelf while the order says
   // it's confirmed.
+  //
+  // The WINDOW is part of the comparison for the same reason. Gear is held per
+  // day, so moving a confirmed order's set date changes nothing about WHICH
+  // units it holds — only WHEN. Comparing ids alone made that edit a no-op: the
+  // rows kept their old dates, so the stock stayed blocked on a day with no
+  // shoot and read as free on the day of the actual one.
   const { data: current } = await supabase
     .from('set_units')
-    .select('unit_id, status')
+    .select('unit_id, status, reserved_from, reserved_to')
     .eq('set_id', setId)
   const rowsNow = current || []
   const held = new Set(rowsNow.map((r) => r.unit_id))
   const allHolding = rowsNow.every((r) => r.status !== 'returned')
-  if (allHolding && held.size === wanted.length && wanted.every((id) => held.has(id)))
+  const day = (v) => (typeof v === 'string' ? v.slice(0, 10) : null)
+  const sameWindow = rowsNow.every(
+    (r) => day(r.reserved_from) === day(from) && day(r.reserved_to) === day(to),
+  )
+  if (
+    allHolding &&
+    sameWindow &&
+    held.size === wanted.length &&
+    wanted.every((id) => held.has(id))
+  )
     return wanted.length
 
   const { error: delErr } = await supabase.from('set_units').delete().eq('set_id', setId)
