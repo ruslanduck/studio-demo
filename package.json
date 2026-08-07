@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "seed:supabase": "node --env-file=.env.local scripts/seed-supabase.mjs",
     "backfill:attribution": "node --env-file=.env.local scripts/backfill-attribution.mjs",
+    "user:add": "node --env-file=.env.local scripts/add-user.mjs",
     "audit:jsx": "node scripts/audit-jsx-props.mjs"
   },
   "dependencies": {

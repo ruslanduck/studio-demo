@@ -1280,6 +1280,22 @@
 > ℹ️ **Still to do on prod:** the legacy "test 3107" order still spans 06→15 Aug. With the guard fixed, opening
 > it and re-saving collapses it to one day and rewrites its 69 `set_units` rows — that is the repair path, and
 > doing it through the UI both fixes the data and proves the fix. Everything else above is frontend-only.
+> **TOOLING — `npm run user:add` provisions ONE real account** (`scripts/add-user.mjs`, no migration).
+> `seed-users.mjs` hardcodes the three demo logins and their shared password, so it is the wrong tool for
+> adding a person later. The new script takes `--email` and `--name` (plus an optional `--role`, default
+> `equipment_team`) and reads the password from the **`NEW_USER_PASSWORD` env var** — never hardcoded, never
+> defaulted, never printed, so it stays with whoever runs it. It refuses without one, refuses under 10
+> characters, and refuses a malformed email. `email_confirm: true` because the app sends no mail and
+> self-registration was removed, so an unconfirmed account could never sign in. **Idempotent and deliberately
+> non-destructive:** an existing account keeps its password (silently rotating someone's credentials is worse
+> than doing nothing) and only its profile is upserted — password changes go through the Supabase dashboard.
+> `profiles.role` takes any string since `20260724140000_flat_role.sql` dropped the admin/crew check, and the
+> `fn_handle_new_user` trigger already inserts the row, so the upsert only corrects the name/role.
+> Verified without creating anything: all three guards fire; the lookup + profile upsert path ran against the
+> existing `ann.taylor@anntaylor.demo` ("exists — password left untouched") leaving prod at 6 profiles; and a
+> quoted `--name "Clay Rodriguez"` survives `npm run … --` intact (npm's echo drops the quotes in the DISPLAY
+> only, which looks like it split the argument and does not).
+> ⚠️ Claude does not create accounts or handle passwords — the command is for the studio to run.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
