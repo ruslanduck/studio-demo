@@ -1,0 +1,66 @@
+# Keep the Supabase project awake — and notice when it isn't.
+#
+# WHY: on Supabase's free plan a project with no activity for 7 days is paused
+# automatically, and this one is a sales demo — nobody visits it between
+# sessions, so it goes idle on its own and can be asleep exactly when it is
+# being shown to a client. One request a day is enough to count as activity.
+#
+# This is a workaround for an inactivity policy, not the supported fix: that is
+# the Pro plan, which disables auto-pausing outright. Delete this workflow if
+# the project moves to Pro.
+#
+# It is also a HEALTH CHECK. A live project answers 200; a paused or broken one
+# does not, and the job fails — which is a GitHub notification saying the demo
+# backend is down, before a client finds out instead.
+#
+# No secrets needed: the URL and the anon key are publishable and already
+# committed in .env.production (the security boundary is Row Level Security, not
+# the key). Reading them from that file rather than hardcoding keeps one source
+# of truth, so a rotated key needs no edit here.
+name: Keep Supabase awake
+
+on:
+  schedule:
+    # Daily at 06:17 UTC. Deliberately off the hour: scheduled runs queued at
+    # :00 are the most likely to be delayed.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ping the database through PostgREST
+        run: |
+          set -euo pipefail
+          url=$(grep '^VITE_SUPABASE_URL=' .env.production | cut -d= -f2-)
+          key=$(grep '^VITE_SUPABASE_ANON_KEY=' .env.production | cut -d= -f2-)
+          # An RLS-filtered SELECT still executes a query against Postgres, so
+          # this counts as database activity — which is what "inactivity" means.
+          # 0 rows come back for an anonymous caller, and that is correct.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+            -H "apikey: $key" -H "Authorization: Bearer $key" \
+            "$url/rest/v1/inventory_items?select=id&limit=1")
+          echo "PostgREST: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase did not answer 200 — the project may be paused. Unpause it at supabase.com/dashboard (project bowtxtapuxfohdhhakvg)."
+            exit 1
+          fi
+
+      - name: Check the auth endpoint the login screen uses
+        run: |
+          set -euo pipefail
+          url=$(grep '^VITE_SUPABASE_URL=' .env.production | cut -d= -f2-)
+          key=$(grep '^VITE_SUPABASE_ANON_KEY=' .env.production | cut -d= -f2-)
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+            -H "apikey: $key" "$url/auth/v1/health")
+          echo "Auth: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::Auth is not answering — sign-in on the live demo would fail."
+            exit 1
+          fi
