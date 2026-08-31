@@ -52,6 +52,12 @@ function bookedDates(unit) {
   return `· ${label(r.from)}${to}`
 }
 
+// Lowercased haystack for a field that may be missing. A migrated unit often has
+// NO serial (231 of 435 in the real register do), and `null.toLowerCase()` threw
+// inside the search's useMemo — which white-screened the whole Inventory view.
+// The demo seed always generated a serial, so this only ever showed on real data.
+const hay = (v) => String(v ?? '').toLowerCase()
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const STATUS_STYLES = {
@@ -299,11 +305,9 @@ export default function Inventory() {
       if (brand !== 'All' && item.brand !== brand) return false
       if (kind !== 'All' && item.kind !== kind) return false
       if (query === '') return true
-      if (item.name.toLowerCase().includes(query)) return true
+      if (hay(item.name).includes(query)) return true
       return activeUnits(item).some(
-        (u) =>
-          u.barcode.toLowerCase().includes(query) ||
-          u.serial.toLowerCase().includes(query),
+        (u) => hay(u.barcode).includes(query) || hay(u.serial).includes(query),
       )
     })
   }, [liveInventory, query, category, brand, kind])
@@ -514,8 +518,11 @@ export default function Inventory() {
                   ].join(' ')}
                 >
                   {lbl}
-                  {val === 'kits' && kits.length > 0 ? ` (${kits.length})` : ''}
-                  {val === 'lists' && scenarios.length > 0 ? ` (${scenarios.length})` : ''}
+                  {/* LIVE counts. Counting the raw collections included archived
+                      records, so the tab promised "Kits (4)" and opened an empty
+                      pane — and disagreed with the header right above it. */}
+                  {val === 'kits' && liveKits.length > 0 ? ` (${liveKits.length})` : ''}
+                  {val === 'lists' && liveLists.length > 0 ? ` (${liveLists.length})` : ''}
                 </button>
               ))}
             </div>
@@ -907,8 +914,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
 
   // A unit matches the search when its barcode or serial contains the query.
   const unitMatches = (u) =>
-    !!query &&
-    (u.barcode.toLowerCase().includes(query) || u.serial.toLowerCase().includes(query))
+    !!query && (hay(u.barcode).includes(query) || hay(u.serial).includes(query))
   const firstMatchId = isBarcoded
     ? units.find(unitMatches)?.id ?? null
     : null
