@@ -20,6 +20,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Guards a class the build cannot see: a hook initializer reading a const
+      # declared further down its own function body is a temporal-dead-zone
+      # crash that blanks the page. It has shipped three times.
+      - run: npm run audit:tdz
+      - run: npm run lint
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
