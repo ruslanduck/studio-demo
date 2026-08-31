@@ -6,7 +6,6 @@ import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 import DateField from './DateField'
-import SelectField from './SelectField'
 import ComboField from './ComboField'
 
 const MAX_QTY = 500
@@ -173,10 +172,15 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={label}>Category</label>
-              <SelectField
+              {/* Free text with suggestions, exactly like Subcategory below. A
+                  closed list meant the app could DISPLAY a category (imported,
+                  say) but never let anyone create one — and `category` is a plain
+                  text column, so nothing but this control was stopping it. */}
+              <ComboField
                 value={form.category}
                 onChange={set('category')}
                 options={categoryOptions}
+                placeholder="Select or type…"
                 className={field}
               />
             </div>

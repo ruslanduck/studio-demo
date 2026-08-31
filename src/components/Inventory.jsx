@@ -271,13 +271,15 @@ export default function Inventory() {
     clearInventoryFocus()
   }, [inventoryFocus, inventory, kits, scenarios, clearInventoryFocus])
 
-  // Distinct brands present in the inventory (for the Brand filter).
+  // Distinct brands present in the LIVE inventory (for the Brand filter).
+  // Built from `inventory` it also offered brands only archived stock used — the
+  // filter promised a value that could never match anything on screen.
   const brands = useMemo(
     () =>
-      [...new Set(inventory.map((i) => i.brand).filter(Boolean))].sort((a, b) =>
+      [...new Set(liveInventory.map((i) => i.brand).filter(Boolean))].sort((a, b) =>
         a.localeCompare(b),
       ),
-    [inventory],
+    [liveInventory],
   )
 
   // Companies we actually rent from — the only sensible sub-rental vendors (4.5).
