@@ -330,6 +330,13 @@ export default function Inventory() {
   // Group the list by category → subcategory in the predefined category order
   // (the same order items appear in an order). Categories are surfaced as
   // headers in the main view, not just the filter.
+  // Suggested categories plus every one the register actually uses — otherwise
+  // a filter built from a constant cannot find migrated stock.
+  const categoryOptions = useMemo(() => {
+    const inUse = liveInventory.map((i) => i.category).filter(Boolean)
+    return [...new Set([...CATEGORIES, ...inUse])]
+  }, [liveInventory])
+
   const groups = useMemo(() => {
     const catRank = (c) => {
       const i = CATEGORIES.indexOf(c)
@@ -552,7 +559,7 @@ export default function Inventory() {
                   <SelectField
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    options={[{ value: 'All', label: 'All categories' }, ...CATEGORIES]}
+                    options={[{ value: 'All', label: 'All categories' }, ...categoryOptions]}
                     className={FILTER_FIELD}
                   />
                   <SelectField

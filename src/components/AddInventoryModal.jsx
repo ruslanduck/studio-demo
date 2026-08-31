@@ -60,6 +60,15 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
     if (open) setForm(item ? fromItem(item) : BLANK)
   }, [open, item])
 
+  // Categories are offered the same way subcategories are: the suggested list
+  // merged with whatever the register actually uses. A migrated category that
+  // nobody added to the constant is still selectable, so the dropdown can never
+  // silently omit a value the data already holds.
+  const categoryOptions = useMemo(() => {
+    const inUse = inventory.map((i) => i.category).filter(Boolean)
+    return [...new Set([...CATEGORIES, ...inUse])]
+  }, [inventory])
+
   const subcategoryOptions = useMemo(() => {
     const fromTaxonomy = SUBCATEGORIES[form.category] ?? []
     const inUse = inventory
@@ -167,7 +176,7 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
               <SelectField
                 value={form.category}
                 onChange={set('category')}
-                options={CATEGORIES}
+                options={categoryOptions}
                 className={field}
               />
             </div>

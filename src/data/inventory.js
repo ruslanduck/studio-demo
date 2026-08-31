@@ -4,14 +4,33 @@
 // across reloads.
 
 // Ordered category list — drives the Inventory category dropdown.
+//
+// This is the STUDIO'S OWN taxonomy, taken from the inventory migrated out of
+// the old Mac system (18 exported top levels, normalised: "ORGANIZED" was a
+// shelf-status prefix rather than a category, and DIGITAL/GRIP/LIGHT MODIFIERS
+// were case variants of names already here). Ordered the way a shoot is built —
+// light, then grip, then set, then digital — not alphabetically.
+//
+// Not a closed list: every category dropdown merges this with whatever the
+// register actually uses, so a category that exists in the data is always
+// offered even if it was never added here.
 export const CATEGORIES = [
+  'Strobes',
+  'Lighting Modification',
+  'Continuous Lighting',
   'Grip',
-  'Electric/Lighting',
-  'Computers',
-  'Cables',
-  'Camera',
-  'Furniture',
-  'Audio',
+  'Stands',
+  'Set',
+  'Digital',
+  'Digital Cart',
+  'Camera Support',
+  'Rolling Monitor Accessories',
+  'Production',
+  'Front Desk',
+  'Crew',
+  'Tools',
+  'A/V / Events',
+  'Uncategorized',
 ]
 
 // Subcategories per category (the second level of the inventory tree). Offered
