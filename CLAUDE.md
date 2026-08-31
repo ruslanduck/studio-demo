@@ -1296,6 +1296,47 @@
 > quoted `--name "Clay Rodriguez"` survives `npm run … --` intact (npm's echo drops the quotes in the DISPLAY
 > only, which looks like it split the argument and does not).
 > ⚠️ Claude does not create accounts or handle passwords — the command is for the studio to run.
+> **MIGRATION — the studio's REAL inventory replaced the demo register** (no schema migration; data + one
+> constant). Source: `AnnTaylor_Inventory_Full.xlsx` exported from the old Mac system — 2 sheets, 2095 rows.
+> ⚠️ **The export lists every item ONCE PER LEVEL of its category tree** (the same lens appears under
+> `Strobes` and `Strobes - Profoto`), which is why the raw file looks like 734 items with 383 duplicate
+> barcodes. Checked strictly before trusting it: **224 of 224** duplicated names are nested-category
+> duplicates (one category is a prefix of the deepest), zero exceptions — so folding by name and keeping the
+> DEEPEST category is provably safe, not a guess. Real content: **274 items — 73 barcoded with 435 copies
+> (231 serials) and 201 counted with 1287 pieces on hand.**
+> Normalisations, each reported rather than assumed: `ORGANIZED` is a shelf-status PREFIX, not a category
+> (`ORGANIZED - GRIP - CLAMPS/PINS/PLATES` → Grip), so stripping it gave 41 items and 350 pieces a real home;
+> `DIGITAL`/`GRIP`/`LIGHT MODIFIERS` were case variants of names already present; the 2 items under `DELETE`
+> were dropped BY NAME in the report; a 4-level tree collapses to category + subcategory (levels 2..n joined
+> with " / "). `Location` in the export is a STATUS, not a shelf — only `Available`/`Broken`, one broken copy.
+> One genuine source error a human had to settle: barcode `0648` was on TWO items; kept on
+> `Profoto Air Remote Transceiver` (inside its contiguous 0641-0648 run), and `Profoto Air Remote, TTL-C`
+> imported with its other copy `0799` — the dropped copy is REPORTED, not silently lost, and needs a new label.
+> **CATEGORIES is now the studio's own taxonomy (16), not the 7 invented for the demo.** More important than
+> the constant: every category dropdown (filter + item editor) now MERGES it with the categories the register
+> actually uses, exactly as subcategories already did — a filter built from a constant cannot find migrated
+> stock, and this closes the class rather than the instance.
+> ⚠️ **Archiving does NOT free a barcode** — `units.barcode` is `not null unique` table-wide, archived rows
+> included. 100 imported barcodes were held by demo units, and they are physical labels on the client's gear,
+> so renumbering was not an option. ⚠️ And `order_lines.inventory_item_id` is **ON DELETE RESTRICT**: with 121
+> demo order lines alive, the demo ITEMS could not be deleted at all. Hence the shape of what was done, on the
+> client's explicit "delete only the inventory, keep the orders": all 47 demo items + 321 units ARCHIVED (they
+> leave every list, and their names still resolve on order lines — the archive architecture is built for this),
+> then ONLY the 100 colliding units hard-deleted, which first needed 50 `set_units` rows cleared and 1 kit slot
+> unpinned. ⚠️ That pin could not be nulled in place: a FIXED slot has a check constraint requiring a unit, so
+> the slot was converted to GENERIC. Cost, stated up front: 93 of 143 reservations remain, 1 kit slot lost its
+> pin, 2 demo repairs cascaded. Orders, lines, contacts, companies and accounts untouched.
+> `scripts/import-inventory.mjs` is **DRY-RUN BY DEFAULT** and refuses to write while any validation error or
+> barcode collision stands; it matches existing items by name among **LIVE rows only** — an archived namesake
+> is retired stock, and reusing it would attach the imported copies to a row no list shows (caught by the
+> dry-run: 4 demo items borrowed real names, including the 17-unit Magic Keyboard).
+> ⚠️ **The data file is deliberately NOT in this repo — the repo is PUBLIC**, and a studio's barcodes and serial
+> numbers have no business in it. The script takes `--file`. A full pre-flight backup of all 22 tables lives
+> outside the repo too (`Downloads/prod-backup-*.json`, 611 KB) — the free tier has no backups.
+> Verified on prod through the app's OWN richest `getInventory` select (whitespace-stripped, as supabase-js
+> sends it): 321 rows / 274 live items / 435 live copies, full `units → set_units → sets` embed intact.
+> ℹ️ **`day_rate` is null on all 274** — the export carried no price column, so estimates total $0.00 for
+> migrated gear until rates are entered. Nothing was invented.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
