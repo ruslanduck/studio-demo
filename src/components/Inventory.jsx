@@ -271,17 +271,6 @@ export default function Inventory() {
     clearInventoryFocus()
   }, [inventoryFocus, inventory, kits, scenarios, clearInventoryFocus])
 
-  // Distinct brands present in the LIVE inventory (for the Brand filter).
-  // Built from `inventory` it also offered brands only archived stock used — the
-  // filter promised a value that could never match anything on screen.
-  const brands = useMemo(
-    () =>
-      [...new Set(liveInventory.map((i) => i.brand).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b),
-      ),
-    [liveInventory],
-  )
-
   // Companies we actually rent from — the only sensible sub-rental vendors (4.5).
   const vendors = useMemo(
     // Any company can be one we rented from: the client/vendor/both axis was
@@ -296,6 +285,17 @@ export default function Inventory() {
   const liveInventory = useMemo(() => inventory.filter(notArchived), [inventory])
   const liveKits = useMemo(() => kits.filter(notArchived), [kits])
   const liveLists = useMemo(() => scenarios.filter(notArchived), [scenarios])
+
+  // Distinct brands present in the LIVE inventory (for the Brand filter).
+  // Built from `inventory` it also offered brands only archived stock used — the
+  // filter promised a value that could never match anything on screen.
+  const brands = useMemo(
+    () =>
+      [...new Set(liveInventory.map((i) => i.brand).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    [liveInventory],
+  )
 
   const query = search.trim().toLowerCase()
 
