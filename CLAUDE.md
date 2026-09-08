@@ -1337,6 +1337,53 @@
 > sends it): 321 rows / 274 live items / 435 live copies, full `units → set_units → sets` embed intact.
 > ℹ️ **`day_rate` is null on all 274** — the export carried no price column, so estimates total $0.00 for
 > migrated gear until rates are entered. Nothing was invented.
+> **RENAME + FEATURE — an Order is a JOB, and jobs filter by Brand and Type**
+> (`20260908120000_job_brand_type.sql`, applied and verified on prod).
+> **The rename is USER-FACING TEXT ONLY — 69 curated strings across 16 files.** The `orders` table,
+> `order_lines`, the `order.*` event types, `activeView: 'orders'`, the nav `id`, the `viewState` keys and every
+> identifier still say `order`: renaming those rewrites stored data for zero visible benefit. `ARCHIVE_KINDS`
+> keeps the KEY `order` and changes only its label, so `what: 'order'` in events already in the DB still renders.
+> ⚠️ A terminology COLLISION had to be settled first: "Job" already named the shoot, so a Job card would have
+> carried a "Job name" field inside a section called "The job". Settled as: the record is the **Job**, the field
+> stays **Job name**, and that section is **"The shoot"** — which is what it lists (set date, studio, Set,
+> photographer).
+> ⚠️ **A mechanical pass was written, dry-run and THROWN AWAY.** Its JSX-text regex (`>…<`) spanned CODE between
+> the brackets, so it would have turned `.order('name')` into `.job('name')` — breaking every PostgREST query in
+> `repository.js` — and `est.order.poNumber` into `est.job.poNumber`. It also rewrote comments and would have
+> produced "Build job #3". The curated list ASSERTS each of its 69 pairs, so a stale anchor is loud instead of
+> silently skipped (two indentation mismatches were caught exactly that way). Lesson: for a rename, review the
+> generated diff line by line before applying — the dry run is the deliverable, not the script.
+> **BRAND + TYPE.** Neither could be derived from existing data: `company_id` holds agencies and rental houses
+> (Atlas Model Management, Northlight Rentals), not the brand shot for, and the job-name convention
+> (`20260716_AT_MAIN_SepMM_Missy_OMSet1`) encodes season and line. Both columns are FREE TEXT, not check
+> constraints: `Editorial` and `PDP` ship as the offered types (`JOB_TYPES` in `lib/orderSearch.js`) but a closed
+> list has been a dead end twice here (item categories, subcategories). `brandsIn`/`jobTypesIn` build the filter
+> options from the REGISTER, so a dropdown can only offer a value that matches something, and both fields are in
+> the free-text haystack — "nike editorial" answers without picking a field. (The studio stays OUT of the
+> haystack, as before: a bare "2" matched every 2026 date.) Shown everywhere a job is: the form (ComboField with
+> suggestions), chips on the list row, rows in the card and the peek card, and the meta table of BOTH PDFs.
+> ⚠️ `getOrders`'s `withBrandType` is the OUTERMOST select layer — third time this rule has mattered: a column
+> added last must be the first dropped, or a database without the migration loses equipment it does have.
+> `createOrder`/`updateOrder` also strip the two newest columns and RETRY, because losing a brand is a missing
+> field while a rejected insert is a crew that cannot write the job down at all.
+> ⚠️ **`resolveOrder` in `store.js` is a WHITELIST.** The DB columns and the supabase path were correct and the
+> values still vanished in LOCAL mode until they were added there too. Caught in the browser, not by the build —
+> adding a column to `orders` means editing BOTH places.
+> Fixed while here: the empty list said "No jobs **yet**" whenever a filter hid everything, because it tested only
+> the search box and the status. It counts every filter now (studio, photographer and dates had the same flaw).
+> ⚠️ **TESTS ARE IN THE REPO NOW: `npm run test:lib` (`scripts/check-lib.mjs`, 116 assertions), in CI ahead of
+> the build** alongside `audit:tdz` and `lint`. The suites that would have caught a rename regression lived in the
+> scratchpad and vanished with the session — they protected the change that prompted them and nothing after it.
+> They pin the labels (every `EVENT` renders a title and none of them says "order"), the two new filters, the
+> money, both PDFs' meta rows, and the packing/availability/year rules. One assertion was MY error, worth
+> keeping: `packingRows` emits a THIRD row for a piece asked for beyond what is reserved — it must say
+> "no unit reserved", not vanish off the sheet.
+> Verified in local mode end-to-end (nav reads Jobs, zero "Order" in the DOM, section "THE SHOOT", brand+type
+> saved → chips on the row → rows in the card → brand filter gives 1 of 14, "Filters 1", demo data reseeded) and
+> on prod through PostgREST (columns accept and filter values, probe reverted — 0 jobs carry either field) plus
+> the served bundle (`Any brand`, `Any type`, `The shoot`, `Job ref`, `New job` present; `New order`, `Order ref`,
+> `No orders`, `Close order` absent).
+> ℹ️ `day_rate` is still null on all 274 migrated items, so estimates total $0.00 until rates are entered.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
