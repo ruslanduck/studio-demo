@@ -300,7 +300,7 @@ export default function OrderEditorModal({
               className={[field, 'font-mono'].join(' ')}
             />
             <p className="mt-1 text-[11px] text-slate-400">
-              Typed in from accounting — it must match their PO for this job. Not generated.
+              Must match the PO accounting issued — not generated.
             </p>
           </div>
 

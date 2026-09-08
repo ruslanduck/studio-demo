@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Search,
   Plus,
   ClipboardList,
   ChevronLeft,
   Pencil,
-  X,
   Camera,
   CalendarRange,
   Package,
@@ -14,14 +12,9 @@ import {
   Clock3,
   FileDown,
   Boxes,
-  SlidersHorizontal,
-  CheckCircle2,
-  Undo2,
   Truck,
   Briefcase,
-  PackageCheck,
   Layers,
-  ScanLine,
   Lock,
   Tag,
 } from 'lucide-react'
@@ -40,7 +33,6 @@ import {
 import {
   searchOrders,
   poCounts,
-  photographersIn,
   studiosIn,
   brandsIn,
   jobTypesIn,
@@ -59,7 +51,7 @@ import { buildEstimate, money } from '../lib/estimate'
 import { downloadEstimatePdf } from '../lib/estimatePdf'
 import { downloadPackingListPdf } from '../lib/packingListPdf'
 import { packingProgress, packingRows } from '../lib/packing'
-import { expectedUnits, scanProgress, outstandingUnits } from '../lib/scanning'
+import { expectedUnits, outstandingUnits } from '../lib/scanning'
 
 // Orders / Estimates (epic #5, 5.1 + 5.2).
 //
@@ -73,18 +65,43 @@ import { expectedUnits, scanProgress, outstandingUnits } from '../lib/scanning'
 // the costed estimate are the later sub-items of this epic — the detail pane
 // shows what an order already carries and says so.
 
-function StatusPill({ status }) {
+const PILL = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1'
+
+// The status pill, and — when `onChange` is given — the CONTROL that moves the
+// job. Clicking the status is how you change it, so the separate STATUS block
+// with its three buttons is gone: one thing in one place, and the chevron is
+// what says it can be clicked. Without `onChange` (a list row, or an account
+// without ORDER_MANAGE) it stays a plain badge.
+function StatusPill({ status, onChange = null, closedBlockedBy = null }) {
   const s = orderStatusMeta(status)
+  if (!onChange)
+    return (
+      <span className={[PILL, s.pill].join(' ')}>
+        <span className={['h-1.5 w-1.5 rounded-full', s.dot].join(' ')} />
+        {s.label}
+      </span>
+    )
+  // Every state the job can be moved to, plus its CURRENT one even when that is
+  // a legacy value (draft / canceled) — a dropdown that cannot show where you
+  // already are reads as broken.
+  const flow = [...ORDER_FLOW, CLOSED_STATUS]
+  const values = flow.includes(status) ? flow : [status, ...flow]
   return (
-    <span
-      className={[
-        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1',
-        s.pill,
-      ].join(' ')}
-    >
-      <span className={['h-1.5 w-1.5 rounded-full', s.dot].join(' ')} />
-      {s.label}
-    </span>
+    <SelectField
+      value={status}
+      onChange={(e) => onChange(e.target.value)}
+      ariaLabel="Job status — click to change"
+      options={values.map((v) => ({
+        value: v,
+        // A disabled row with no reason is the dead-button trap: say why.
+        label:
+          v === CLOSED_STATUS && closedBlockedBy
+            ? `${ORDER_STATUS[v]?.label ?? v} — ${closedBlockedBy}`
+            : ORDER_STATUS[v]?.label ?? v,
+        disabled: v === CLOSED_STATUS && !!closedBlockedBy,
+      }))}
+      className={[PILL, s.pill, 'cursor-pointer transition hover:ring-2'].join(' ')}
+    />
   )
 }
 
@@ -131,7 +148,6 @@ export default function Orders() {
   const [status, setStatus] = usePersisted('orders', 'status', 'All')
   // 5.7 — job search: free text plus explicit photographer / studio / date-range
   // filters and a sort. All matching lives in lib/orderSearch.
-  const [photographer, setPhotographer] = usePersisted('orders', 'photographer', 'All')
   const [studioFilter, setStudioFilter] = usePersisted('orders', 'studio', 'All')
   const [brandFilter, setBrandFilter] = usePersisted('orders', 'brand', 'All')
   const [typeFilter, setTypeFilter] = usePersisted('orders', 'jobType', 'All')
@@ -195,43 +211,48 @@ export default function Orders() {
   const liveOrders = useMemo(() => orders.filter(notArchived), [orders])
   const liveCompanies = useMemo(() => (companies || []).filter(notArchived), [companies])
 
+  const studioOptions = useMemo(() => studiosIn(liveOrders), [liveOrders])
+  const brandOptions = useMemo(() => brandsIn(liveOrders), [liveOrders])
+  const typeOptions = useMemo(() => jobTypesIn(liveOrders), [liveOrders])
+
+  // A persisted filter whose value is no longer IN the data would hide every row
+  // forever, with the dropdown showing its placeholder instead of a value — the
+  // brand you filtered by last week, on a register that has since changed.
+  // Same recovery as a stale selection: fall back to "All".
+  const usable = (v, options) => (v === 'All' || options.includes(v) ? v : 'All')
+  const studioValue = usable(studioFilter, studioOptions)
+  const brandValue = usable(brandFilter, brandOptions)
+  const typeValue = usable(typeFilter, typeOptions)
+
   const filtered = useMemo(
     () =>
       searchOrders(liveOrders, {
         text: search,
         status,
-        photographer,
-        studio: studioFilter,
-        brand: brandFilter,
-        jobType: typeFilter,
+        studio: studioValue,
+        brand: brandValue,
+        jobType: typeValue,
         from,
         to,
         sort,
       }),
-    [liveOrders, search, status, photographer, studioFilter, brandFilter, typeFilter, from, to, sort],
+    [liveOrders, search, status, studioValue, brandValue, typeValue, from, to, sort],
   )
 
   // How many orders share each PO — one job's PO covers every order raised
   // against it, so this is the job-history hint on a row.
   const sharedPo = useMemo(() => poCounts(liveOrders), [liveOrders])
-  const photographerOptions = useMemo(() => photographersIn(liveOrders), [liveOrders])
-  const studioOptions = useMemo(() => studiosIn(liveOrders), [liveOrders])
-  const brandOptions = useMemo(() => brandsIn(liveOrders), [liveOrders])
-  const typeOptions = useMemo(() => jobTypesIn(liveOrders), [liveOrders])
-
   const activeFilters =
     (status !== 'All' ? 1 : 0) +
-    (photographer !== 'All' ? 1 : 0) +
-    (studioFilter !== 'All' ? 1 : 0) +
-    (brandFilter !== 'All' ? 1 : 0) +
-    (typeFilter !== 'All' ? 1 : 0) +
+    (studioValue !== 'All' ? 1 : 0) +
+    (brandValue !== 'All' ? 1 : 0) +
+    (typeValue !== 'All' ? 1 : 0) +
     (from ? 1 : 0) +
     (to ? 1 : 0)
 
   function clearAll() {
     setSearch('')
     setStatus('All')
-    setPhotographer('All')
     setStudioFilter('All')
     setBrandFilter('All')
     setTypeFilter('All')
@@ -297,7 +318,7 @@ export default function Orders() {
           <FilterBar
             search={search}
             onSearch={setSearch}
-            searchPlaceholder="PO, job, photographer… (every word must match)"
+            searchPlaceholder="PO, job, photographer…"
             activeCount={activeFilters}
             onClear={clearAll}
             count={filtered.length}
@@ -326,7 +347,7 @@ export default function Orders() {
                 className={FILTER_FIELD}
               />
               <SelectField
-                value={studioFilter}
+                value={studioValue}
                 onChange={(e) => setStudioFilter(e.target.value)}
                 options={[
                   { value: 'All', label: 'Any studio' },
@@ -337,31 +358,22 @@ export default function Orders() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <SelectField
-                value={brandFilter}
+                value={brandValue}
                 onChange={(e) => setBrandFilter(e.target.value)}
                 options={[{ value: 'All', label: 'Any brand' }, ...brandOptions]}
                 className={FILTER_FIELD}
               />
               <SelectField
-                value={typeFilter}
+                value={typeValue}
                 onChange={(e) => setTypeFilter(e.target.value)}
                 options={[{ value: 'All', label: 'Any type' }, ...typeOptions]}
                 className={FILTER_FIELD}
               />
             </div>
-            <SelectField
-              value={photographer}
-              onChange={(e) => setPhotographer(e.target.value)}
-              options={[{ value: 'All', label: 'Any photographer' }, ...photographerOptions]}
-              className={[FILTER_FIELD, 'w-full'].join(' ')}
-            />
             <div className="grid grid-cols-2 gap-2">
               <DateField value={from} onChange={(e) => setFrom(e.target.value)} className={FILTER_FIELD} />
               <DateField value={to} onChange={(e) => setTo(e.target.value)} className={FILTER_FIELD} />
             </div>
-            <p className="text-[11px] text-slate-400">
-              Dates match any job whose working window overlaps them.
-            </p>
           </FilterBar>
 
           <div className="min-h-0 flex-1 overflow-auto p-2">
@@ -631,7 +643,6 @@ function OrderDetail({
     ? peopleList.find((p) => p.name === order.photographer) ?? null
     : null
   const inventoryList = useStore((s) => s.inventory)
-  const openScanning = useStore((s) => s.openScanning)
   // Count the rows the crew actually ticks (one per barcoded copy), not the order
   // lines — otherwise the card's "3/5 packed" disagrees with the checklist.
   const packProg = packingProgress(
@@ -641,7 +652,6 @@ function OrderDetail({
   // Scanning (epic #6). The scan log is what says the gear physically came back,
   // which is what closing the order is allowed to depend on.
   const scanExpected = expectedUnits(order, booking, inventoryList)
-  const scanProg = scanProgress(scanExpected, order.scans ?? [])
   const stillOut = outstandingUnits(scanExpected, order.scans ?? [])
   return (
     <>
@@ -651,7 +661,13 @@ function OrderDetail({
             <h3 className="truncate text-lg font-semibold text-slate-900">
               {order.jobName ?? order.setTitle ?? 'Untitled job'}
             </h3>
-            <StatusPill status={order.status} />
+            <StatusPill
+              status={order.status}
+              onChange={canManage ? onSetStatus : null}
+              closedBlockedBy={
+                stillOut.length > 0 ? `${stillOut.length} piece(s) still scanned out` : null
+              }
+            />
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {order.poNumber ? (
@@ -675,94 +691,24 @@ function OrderDetail({
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
-        {/* 5.5 — the Hold → Confirmed move. Confirming is what opens packing /
-            scanning (epic #6); the pill colour is what epic #7 pulls into the
-            calendar. */}
-        {canManage && (ORDER_FLOW.includes(order.status) || isClosedStatus(order.status)) && (
-          <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Status
-                </div>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {orderStatusMeta(order.status).meaning}
-                </p>
-              </div>
-              {isClosedStatus(order.status) ? (
-                <button
-                  type="button"
-                  onClick={() => onSetStatus('confirmed')}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700"
-                >
-                  <Undo2 size={15} />
-                  Re-open job
-                </button>
-              ) : order.status === 'hold' ? (
-                <button
-                  type="button"
-                  onClick={() => onSetStatus('confirmed')}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
-                >
-                  <CheckCircle2 size={15} />
-                  Confirm job
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => onSetStatus('hold')}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-amber-300 hover:text-amber-700"
-                  >
-                    <Undo2 size={15} />
-                    Back to hold
-                  </button>
-                  {/* Closing is what frees the stock: the shoot happened and the
-                      gear came back, so it stops being held while the job stays
-                      on every unit's history. */}
-                  <button
-                    type="button"
-                    onClick={() => onSetStatus(CLOSED_STATUS)}
-                    disabled={stillOut.length > 0}
-                    title={
-                      stillOut.length > 0
-                        ? `${stillOut.length} piece(s) are still scanned out — bring them back first`
-                        : 'The shoot is done and the gear is back'
-                    }
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <PackageCheck size={15} />
-                    Close job
-                  </button>
-                </>
-              )}
-            </div>
-            {order.status === 'hold' && estimate.lineCount === 0 && (
-              <p className="mt-2 text-xs text-amber-600">
-                No equipment on this job yet — confirming an empty job is allowed, but packing
-                will have nothing to pull.
-              </p>
-            )}
-            {/* What confirming actually did to the stock. A shortfall means the
-                paperwork asks for more than was free — say so rather than let the
-                pull sheet imply gear that isn't held. */}
-            {reserveNote && (
-              <p
-                className={[
-                  'mt-2 text-xs',
-                  reserveNote.short > 0 ? 'text-amber-600' : 'text-emerald-600',
-                ].join(' ')}
-              >
-                {reserveNote.closed
-                  ? `Closed — ${reserveNote.released ?? 0} piece(s) are back on the shelf and bookable again. The job stays on each unit's history.`
-                  : reserveNote.short > 0
-                    ? `${reserveNote.reserved} piece(s) reserved · ${reserveNote.short} could not be — nothing free for those lines. Free them from another job, or raise them as a sub-rental.`
-                    : reserveNote.reserved > 0
-                      ? `${reserveNote.reserved} piece(s) reserved for this job.`
-                      : 'Reservations released — nothing is held for this job now.'}
-              </p>
-            )}
-          </section>
+        {/* What a status change did to the stock. A shortfall means the paperwork
+            asks for more than was free — say so rather than let the pull sheet
+            imply gear that isn't held. */}
+        {reserveNote && (
+          <p
+            className={[
+              'text-xs',
+              reserveNote.short > 0 ? 'text-amber-600' : 'text-emerald-600',
+            ].join(' ')}
+          >
+            {reserveNote.closed
+              ? `Closed — ${reserveNote.released ?? 0} piece(s) are back on the shelf and bookable again.`
+              : reserveNote.short > 0
+                ? `${reserveNote.reserved} piece(s) reserved · ${reserveNote.short} could not be — nothing free for those lines.`
+                : reserveNote.reserved > 0
+                  ? `${reserveNote.reserved} piece(s) reserved for this job.`
+                  : 'Reservations released — nothing is held for this job now.'}
+          </p>
         )}
 
         <section className="space-y-1.5">
@@ -1064,59 +1010,6 @@ function OrderDetail({
             </p>
           )}
         </section>
-
-        {/* The scanning station's side of the story: what has physically left the
-            building. Shown only once the order is confirmed, because that's the
-            only state that holds gear. */}
-        {(order.status === 'confirmed' || isClosedStatus(order.status)) && (
-          <section className="rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center gap-2">
-              <ScanLine size={15} className="text-slate-500" />
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Scanning
-              </h4>
-            </div>
-            {scanProg.total === 0 ? (
-              <p className="mt-1 text-xs text-slate-500">
-                No gear is reserved for this job, so there is nothing to scan.
-              </p>
-            ) : (
-              <>
-                <p className="mt-1.5 text-xs text-slate-500">
-                  <span className="font-medium text-amber-600">{scanProg.out}</span> out ·{' '}
-                  <span className="font-medium text-emerald-600">{scanProg.back}</span> back ·{' '}
-                  {scanProg.pending} still on the shelf · {scanProg.total} total
-                </p>
-                {stillOut.length > 0 && (
-                  <p className="mt-1 text-xs text-amber-600">
-                    {stillOut.length} piece(s) are still out — the job can't be closed until they
-                    are scanned back in ({stillOut
-                      .slice(0, 4)
-                      .map((u) => `#${u.barcode}`)
-                      .join(', ')}
-                    {stillOut.length > 4 ? '…' : ''}).
-                  </p>
-                )}
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openScanning(order.id, {
-                        view: 'orders',
-                        label: order.jobName || 'the job',
-                        focus: { orderId: order.id },
-                      })
-                    }
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                  >
-                    <ScanLine size={15} />
-                    Open the scanning station
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-        )}
 
         {/* Who changed what on this order. Reservation churn is filtered out —
             confirming rewrites every set_units row, which would bury the feed. */}

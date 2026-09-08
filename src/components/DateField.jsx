@@ -115,7 +115,11 @@ export default function DateField({ value, onChange, className }) {
   const flip = useCalendarFlip(monthKey)
 
   return (
-    <div className="relative" ref={wrapRef}>
+    // `min-w-0` + a full-width input: without them a bare <input> keeps its
+    // intrinsic size (~20 characters) and overflows this wrapper, so the
+    // calendar button — positioned against the WRAPPER's right edge — landed
+    // 23px INSIDE the field, on top of the text. Measured, not guessed.
+    <div className="relative min-w-0" ref={wrapRef}>
       <input
         ref={inputRef}
         type="text"
@@ -127,7 +131,10 @@ export default function DateField({ value, onChange, className }) {
         onChange={onChange}
         onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)}
-        className={className}
+        // Room for the calendar button, which is absolutely positioned over the
+        // right edge — without this the value and the placeholder run underneath
+        // it. ComboField reserves its chevron the same way.
+        className={[className, 'w-full pr-8'].filter(Boolean).join(' ')}
       />
       <button
         type="button"

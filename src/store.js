@@ -851,18 +851,6 @@ export const useStore = create(
       },
       clearOrderFocus: () => set({ orderFocus: null }),
 
-      // "Open the scanning station" from an order card means THAT order. The
-      // station keeps its selection in viewState (so a shift can leave it open
-      // and come back to it), which is exactly what this sets — otherwise the
-      // button switched views and landed on whichever confirmed order sorted
-      // first, and the crew would scan gear against the wrong job.
-      openScanning: (orderId, from = null) => {
-        if (get().isViewBlocked('order', orderId)) return
-        if (from) get().pushNav(from)
-        if (orderId) get().patchViewState('scanning', { orderId, search: '' })
-        set({ activeView: 'scanning', sidebarOpen: false, peekStack: [] })
-      },
-
       // Step one of creating an order, answered on the CALENDAR. Nothing is
       // written yet: the form's answers travel to the Orders view, which opens
       // the equipment window, and THAT is what creates the order. Backing out

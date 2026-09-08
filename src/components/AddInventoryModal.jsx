@@ -212,11 +212,11 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
             <div>
               <label className={label}>Storage location</label>
               <input type="text" value={form.placement} onChange={set('placement')} placeholder="e.g. Grip room · Shelf B3" className={field} />
-              <p className="mt-1.5 text-xs text-slate-400">
-                {isBarcoded
-                  ? 'Where it lives on the shelf. Every unit inherits it unless that copy gets its own.'
-                  : 'Where this stock is kept.'}
-              </p>
+              {isBarcoded && (
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Units inherit it unless a copy has its own.
+                </p>
+              )}
             </div>
             <div>
               <label className={label}>Replacement price</label>

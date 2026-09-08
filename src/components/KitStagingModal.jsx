@@ -520,8 +520,7 @@ export default function KitStagingModal({
             </button>
           </div>
           <p className="mt-1 text-[11px] text-slate-400">
-            A barcode belongs to one copy only, so the scan fills whichever slot expects that item —
-            the crew can work through the case in any order.
+            A scan fills whichever slot expects that item.
           </p>
           {scanError && (
             <div className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-rose-600">

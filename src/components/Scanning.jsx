@@ -210,7 +210,7 @@ export default function Scanning() {
               <ScanLine size={28} className="mx-auto mb-3 text-slate-300" />
               <p className="text-sm font-medium text-slate-600">No confirmed job selected</p>
               <p className="mt-1 text-xs text-slate-400">
-                Gear moves against a confirmed job, so that is what the station scans against.
+                Pick one on the left.
               </p>
             </div>
           </div>
@@ -419,7 +419,7 @@ export default function Scanning() {
                 </div>
                 {scans.length === 0 ? (
                   <p className="py-3 text-xs text-slate-400">
-                    Nothing scanned yet. Every scan is recorded with the account that made it.
+                    Nothing scanned yet.
                   </p>
                 ) : (
                   <ul className="space-y-1">
