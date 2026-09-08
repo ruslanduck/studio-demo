@@ -25,6 +25,10 @@ jobs:
       # crash that blanks the page. It has shipped three times.
       - run: npm run audit:tdz
       - run: npm run lint
+      # Assertions over the pure modules in src/lib. They used to live in a
+      # scratchpad and vanish with the session, so they protected the change
+      # that prompted them and nothing after it.
+      - run: npm run test:lib
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

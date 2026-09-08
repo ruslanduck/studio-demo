@@ -35,6 +35,12 @@ function haystack(order) {
     // the point of pulling it out of the job name.
     order.setLabel,
     order.photographer,
+    // Brand and shoot type are BOTH dropdowns AND free text: "nike editorial"
+    // should answer without picking two fields first. Unlike the studio (which
+    // was pulled OUT of the haystack because a bare "2" matched every 2026
+    // date), these are words, so they can't swamp a numeric search.
+    order.brand,
+    order.jobType,
     order.number,
     order.startsOn,
     order.endsOn,
@@ -58,11 +64,22 @@ function windowsOverlap(aFrom, aTo, bFrom, bTo) {
 
 export function matchesOrder(
   order,
-  { text = '', status = 'All', photographer = 'All', studio = 'All', from = '', to = '' } = {},
+  {
+    text = '',
+    status = 'All',
+    photographer = 'All',
+    studio = 'All',
+    brand = 'All',
+    jobType = 'All',
+    from = '',
+    to = '',
+  } = {},
 ) {
   if (status !== 'All' && order.status !== status) return false
   if (photographer !== 'All' && (order.photographer ?? '') !== photographer) return false
   if (studio !== 'All' && (order.studioId ?? '') !== studio) return false
+  if (brand !== 'All' && (order.brand ?? '') !== brand) return false
+  if (jobType !== 'All' && (order.jobType ?? '') !== jobType) return false
   if ((from || to) && !windowsOverlap(order.startsOn, order.endsOn, from, to)) return false
 
   const terms = String(text).toLowerCase().split(/\s+/).filter(Boolean)
@@ -97,6 +114,24 @@ export function searchOrders(orders, criteria = {}) {
 // Distinct studios present, for the filter dropdown.
 export function studiosIn(orders) {
   return [...new Set((orders ?? []).map((o) => o.studioId).filter(Boolean))].sort()
+}
+
+// Distinct brands present, for the filter dropdown. Built from the DATA, so it
+// can only ever offer a value that matches something — the lesson from the
+// inventory filters, which used to list brands only archived stock had.
+export function brandsIn(orders) {
+  return [...new Set((orders ?? []).map((o) => o.brand).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b),
+  )
+}
+
+// Shoot types present, with the two the studio asked for offered even before a
+// job uses them — otherwise the filter is empty on day one and reads as broken.
+export const JOB_TYPES = ['Editorial', 'PDP']
+
+export function jobTypesIn(orders) {
+  const used = (orders ?? []).map((o) => o.jobType).filter(Boolean)
+  return [...new Set([...JOB_TYPES, ...used])]
 }
 
 // Distinct photographers present, for the filter dropdown.

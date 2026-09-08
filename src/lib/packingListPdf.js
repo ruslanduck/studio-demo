@@ -41,7 +41,7 @@ const slug = (s) =>
     .replace(/^-+|-+$/g, '')
 
 export function packingListFileName(order, opts = {}) {
-  const job = slug(order.jobName || order.setTitle || 'order') || 'order'
+  const job = slug(order.jobName || order.setTitle || 'job') || 'job'
   const po = order.poNumber ? `-${order.poNumber}` : ''
   return `packing-list-${job}${po}.pdf`.replace(/--+/g, '-')
 }
@@ -120,10 +120,12 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
 
   const meta = [
     ['PO number', est.order.poNumber || '—'],
-    ['Order ref', est.order.number || '—'],
+    ['Job ref', est.order.number || '—'],
     ['Studio', est.order.studioId ? studioLabel(est.order.studioId) : '—'],
     // The crew pulling gear needs to know WHICH set of the day it's for.
     ['Set', est.order.setLabel || '—'],
+    ['Brand', est.order.brand || '—'],
+    ['Type', est.order.jobType || '—'],
     [
       'Set date',
       est.order.startsOn

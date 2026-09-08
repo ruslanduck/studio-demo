@@ -1146,13 +1146,18 @@ export async function getOrders() {
     'order_lines ( id, quantity,',
     'order_lines ( id, quantity, day_rate,',
   )
+  // Brand + shoot type (20260908120000) go OUTSIDE everything, same rule as the
+  // two layers above: a column added last must be the first thing dropped, or a
+  // database that hasn't run this migration loses equipment it does have.
+  const withBrandType = `${withLineRate}, brand, job_type`
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
      order_lines ( quantity, item:inventory_items ( id, name ) ),
      sets ( id, title, date )`
   const withoutKind = withKind.replace('kind, ', '')
 
-  let { data, error } = await supabase.from('orders').select(withLineRate).order('ordered_at')
+  let { data, error } = await supabase.from('orders').select(withBrandType).order('ordered_at')
+  if (error) ({ data, error } = await supabase.from('orders').select(withLineRate).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withSetLabel).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withArchive).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(full).order('ordered_at'))
@@ -1180,6 +1185,10 @@ export async function getOrders() {
     endsOn: o.ends_on ?? null,
     poNumber: o.po_number ?? null,
     setLabel: o.set_label ?? null,
+    // 20260908120000 — null on a database that hasn't run it, which the UI
+    // renders as "—" rather than inventing a brand or a shoot type.
+    brand: o.brand ?? null,
+    jobType: o.job_type ?? null,
     photographerId: o.photographer?.id ?? null,
     photographer: o.photographer?.full_name ?? null,
     createdBy: o.creator?.full_name ?? null,
@@ -1205,6 +1214,8 @@ function orderColumns(o) {
   if (o.photographerId !== undefined) row.photographer_contact_id = o.photographerId || null
   if (o.poNumber !== undefined) row.po_number = o.poNumber?.trim() || null
   if (o.setLabel !== undefined) row.set_label = o.setLabel?.trim() || null
+  if (o.brand !== undefined) row.brand = o.brand?.trim() || null
+  if (o.jobType !== undefined) row.job_type = o.jobType?.trim() || null
   if (o.status !== undefined) row.status = o.status
   if (o.kind !== undefined) row.kind = o.kind
   if (o.companyId !== undefined) row.company_id = o.companyId || null
@@ -1214,18 +1225,34 @@ function orderColumns(o) {
   return row
 }
 
+// A database that hasn't run 20260908120000 must still be able to SAVE a job —
+// losing the brand and the shoot type is a missing field, while a rejected
+// insert is a crew that cannot write the job down at all. So the newest two
+// columns are dropped and the write retried, like the reads' outermost layer.
+const withoutNewestColumns = (row) => {
+  const { brand, job_type, ...rest } = row
+  return rest
+}
+const isUndefinedColumn = (e) => e?.code === '42703' || /column .* does not exist/i.test(e?.message || '')
+
 export async function createOrder(order) {
-  const { data, error } = await supabase
-    .from('orders')
-    .insert(orderColumns(order))
-    .select('id')
-    .single()
+  const row = orderColumns(order)
+  let { data, error } = await supabase.from('orders').insert(row).select('id').single()
+  if (error && isUndefinedColumn(error))
+    ({ data, error } = await supabase
+      .from('orders')
+      .insert(withoutNewestColumns(row))
+      .select('id')
+      .single())
   if (error) throw error
   return data.id
 }
 
 export async function updateOrder(id, changes) {
-  const { error } = await supabase.from('orders').update(orderColumns(changes)).eq('id', id)
+  const row = orderColumns(changes)
+  let { error } = await supabase.from('orders').update(row).eq('id', id)
+  if (error && isUndefinedColumn(error))
+    ({ error } = await supabase.from('orders').update(withoutNewestColumns(row)).eq('id', id))
   if (error) throw error
 }
 

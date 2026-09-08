@@ -12,7 +12,8 @@
     "backfill:attribution": "node --env-file=.env.local scripts/backfill-attribution.mjs",
     "user:add": "node --env-file=.env.local scripts/add-user.mjs",
     "audit:jsx": "node scripts/audit-jsx-props.mjs",
-    "audit:tdz": "node scripts/audit-tdz.mjs"
+    "audit:tdz": "node scripts/audit-tdz.mjs",
+    "test:lib": "node scripts/check-lib.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

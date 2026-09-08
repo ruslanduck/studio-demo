@@ -84,7 +84,7 @@ export default function PeekPanel() {
 /* --------------------------------- header --------------------------------- */
 
 const TYPE_META = {
-  order: { icon: ClipboardList, label: 'Order' },
+  order: { icon: ClipboardList, label: 'Job' },
   item: { icon: Boxes, label: 'Inventory item' },
   person: { icon: User, label: 'Person' },
   company: { icon: Building2, label: 'Company' },
@@ -252,7 +252,7 @@ function OrderPeek({ id }) {
     () => (order ? buildEstimate(order, { inventory, kits, booking }) : null),
     [order, inventory, kits, booking],
   )
-  if (!order) return <div className="p-4"><Empty text="This order is gone." /></div>
+  if (!order) return <div className="p-4"><Empty text="This job is gone." /></div>
 
   const photographer = order.photographer
     ? people.find((p) => p.name === order.photographer)
@@ -263,7 +263,7 @@ function OrderPeek({ id }) {
     <>
       <PeekTitle
         icon={ClipboardList}
-        title={order.jobName || 'Order'}
+        title={order.jobName || 'Job'}
         badges={
           <>
             <StatusPill status={order.status} />
@@ -275,7 +275,7 @@ function OrderPeek({ id }) {
         onOpenFull={() => openOrder(order.id)}
       />
 
-      <Section title="The job">
+      <Section title="The shoot">
         <div className="space-y-1.5">
           <Field label="Set date">
             {order.startsOn === order.endsOn
@@ -284,6 +284,8 @@ function OrderPeek({ id }) {
           </Field>
           <Field label="Studio">{order.studioId ? studioLabel(order.studioId) : '—'}</Field>
           <Field label="Set">{order.setLabel || '—'}</Field>
+          <Field label="Brand">{order.brand || '—'}</Field>
+          <Field label="Type">{order.jobType || '—'}</Field>
           <Field label="Photographer">
             {order.photographer ? (
               photographer ? (
@@ -522,7 +524,7 @@ function ItemPeek({ id, unitId }) {
 
       <ItemActivitySection itemId={item.id} unitIds={(item.units || []).map((u) => u.id)} />
 
-      <Section title="On orders" count={usedByOrders.length}>
+      <Section title="On jobs" count={usedByOrders.length}>
         {usedByOrders.length === 0 ? (
           <Empty text="Not on any order." />
         ) : (
@@ -747,7 +749,7 @@ function CompanyPeek({ id }) {
 
       <Section title="Orders" count={companyOrders.length}>
         {companyOrders.length === 0 ? (
-          <Empty text="No orders yet." />
+          <Empty text="No jobs yet." />
         ) : (
           <div className="space-y-1.5">
             {companyOrders.map((o) => (
@@ -866,7 +868,7 @@ function JobPeek({ id }) {
         )}
       </Section>
 
-      <Section title="Order">
+      <Section title="Job">
         {order ? (
           <LinkRow
             icon={ClipboardList}
@@ -878,7 +880,7 @@ function JobPeek({ id }) {
             onClick={() => peek({ type: 'order', id: order.id })}
           />
         ) : (
-          <Empty text="No order on this shoot — nothing is reserved for it." />
+          <Empty text="No job on this shoot — nothing is reserved for it." />
         )}
       </Section>
 

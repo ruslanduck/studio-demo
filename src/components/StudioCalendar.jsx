@@ -19,6 +19,7 @@ import {
   setYear,
 } from 'date-fns'
 import { useStore } from '../store'
+import { brandsIn, jobTypesIn } from '../lib/orderSearch'
 import { studioLabel, studioColor } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { useCalendarFlip } from '../lib/useCalendarFlip'
@@ -65,6 +66,11 @@ export default function StudioCalendar() {
   // Step one of creating an order is answered here; the Orders view's equipment
   // window is what actually writes it. Equipment is NOT picked on the calendar,
   // so none of the stock collections are read here any more.
+  // Suggestion lists for the job form. The calendar renders the SAME editor, and
+  // a shared modal's new props have to be fed from every call site — forgetting
+  // that is exactly how `companies={companies}` white-screened this view.
+  const brandOptions = useMemo(() => brandsIn(orders), [orders])
+  const typeOptions = useMemo(() => jobTypesIn(orders), [orders])
   const openOrderDraft = useStore((s) => s.openOrderDraft)
   const openOrder = useStore((s) => s.openOrder)
   const peek = useStore((s) => s.peek)
@@ -250,7 +256,7 @@ export default function StudioCalendar() {
               className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
             >
               <Plus size={16} />
-              New order
+              New job
             </button>
           )}
           <button
@@ -344,6 +350,8 @@ export default function StudioCalendar() {
         prefill={orderEditor.prefill}
         studios={studios}
         photographers={photographers}
+        brands={brandOptions}
+        jobTypes={typeOptions}
         onClose={() => setOrderEditor({ open: false, prefill: null })}
         onProceed={(payload) => {
           openOrderDraft(payload, { view: 'calendar', label: 'Studio Calendar', focus: {} })
@@ -459,7 +467,7 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
           <div
             key={day.iso}
             onClick={() => onOpenCreate(studioId, day.iso)}
-            title={`New order · ${studioLabel(studioId)} · ${day.iso}`}
+            title={`New job · ${studioLabel(studioId)} · ${day.iso}`}
             className={[
               'group relative min-h-[92px] cursor-pointer space-y-1 border-b border-r border-slate-200 p-1.5 transition hover:bg-slate-50/70',
               colTint(day),

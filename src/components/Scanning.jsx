@@ -131,7 +131,7 @@ export default function Scanning() {
       <aside className="flex min-h-0 shrink-0 flex-col lg:w-72">
         <h1 className="text-lg font-semibold text-slate-900">Scanning</h1>
         <p className="mb-3 text-xs text-slate-500">
-          {scannable.length} confirmed order{scannable.length === 1 ? '' : 's'} can be scanned
+          {scannable.length} confirmed job{scannable.length === 1 ? '' : 's'} can be scanned
         </p>
         <div className="relative mb-2">
           <Search
@@ -195,8 +195,8 @@ export default function Scanning() {
           {filtered.length === 0 && (
             <li className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
               {scannable.length === 0
-                ? 'Nothing to scan — only a confirmed order holds gear. Confirm one in Orders.'
-                : 'No order matches that.'}
+                ? 'Nothing to scan — only a confirmed job holds gear. Confirm one in Jobs.'
+                : 'No job matches that.'}
             </li>
           )}
         </ul>
@@ -208,9 +208,9 @@ export default function Scanning() {
           <div className="grid flex-1 place-items-center p-10 text-center">
             <div>
               <ScanLine size={28} className="mx-auto mb-3 text-slate-300" />
-              <p className="text-sm font-medium text-slate-600">No confirmed order selected</p>
+              <p className="text-sm font-medium text-slate-600">No confirmed job selected</p>
               <p className="mt-1 text-xs text-slate-400">
-                Gear moves against a confirmed order, so that is what the station scans against.
+                Gear moves against a confirmed job, so that is what the station scans against.
               </p>
             </div>
           </div>
@@ -240,7 +240,7 @@ export default function Scanning() {
                   }
                   className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-violet-600 transition hover:bg-violet-50"
                 >
-                  Open the order
+                  Open the job
                 </button>
               </div>
 
@@ -352,7 +352,7 @@ export default function Scanning() {
 
               <div className="mt-2 text-xs font-medium text-slate-500">
                 {progress.total === 0 ? (
-                  'This order holds no gear yet — add equipment and confirm it.'
+                  'This job holds no gear yet — add equipment and confirm it.'
                 ) : (
                   <>
                     <span className="text-amber-600">{progress.out} out</span> ·{' '}

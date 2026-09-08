@@ -335,7 +335,7 @@ export default function ItemAvailability({ item }) {
         )}
 
         <p className="mt-2 text-[11px] text-slate-400">
-          Only CONFIRMED orders hold gear. A job still on hold is pencilled in and doesn&apos;t
+          Only CONFIRMED jobs hold gear. A job still on hold is pencilled in and doesn&apos;t
           show here.
         </p>
       </div>

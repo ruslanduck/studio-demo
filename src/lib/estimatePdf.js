@@ -61,7 +61,7 @@ export function estimateFileName(estimate) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
   const po = estimate.order.poNumber ? `-${estimate.order.poNumber}` : ''
-  return `estimate-${job || 'order'}${po}.pdf`.replace(/--+/g, '-')
+  return `estimate-${job || 'job'}${po}.pdf`.replace(/--+/g, '-')
 }
 
 export function buildEstimatePdf(estimateOrOrder, context) {
@@ -126,9 +126,11 @@ export function buildEstimatePdf(estimateOrOrder, context) {
 
   const meta = [
     ['PO number', est.order.poNumber || '—'],
-    ['Order ref', est.order.number || '—'],
+    ['Job ref', est.order.number || '—'],
     ['Studio', est.order.studioId ? studioLabel(est.order.studioId) : '—'],
     ['Set', est.order.setLabel || '—'],
+    ['Brand', est.order.brand || '—'],
+    ['Type', est.order.jobType || '—'],
     [
       'Set date',
       est.order.startsOn
@@ -194,7 +196,7 @@ export function buildEstimatePdf(estimateOrOrder, context) {
     doc.setFont('helvetica', 'italic')
     doc.setFontSize(9)
     setInk(INK.muted)
-    text('No equipment assigned to this order yet.', COL.item, y)
+    text('No equipment assigned to this job yet.', COL.item, y)
     y += 18
   }
 

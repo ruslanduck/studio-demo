@@ -36,6 +36,8 @@ import { studioLabel } from '../data/studios'
 const blank = {
   jobName: '',
   setLabel: '',
+  brand: '',
+  jobType: '',
   studioId: '1',
   startsOn: '',
   photographer: '',
@@ -116,6 +118,8 @@ export default function OrderEditorModal({
   prefill,
   studios,
   photographers,
+  brands = [],
+  jobTypes = [],
   onClose,
   onProceed,
   onSave,
@@ -134,6 +138,8 @@ export default function OrderEditorModal({
         ? {
             jobName: order.jobName ?? '',
             setLabel: order.setLabel ?? '',
+            brand: order.brand ?? '',
+            jobType: order.jobType ?? '',
             studioId: order.studioId ?? '1',
             startsOn: order.startsOn ?? '',
             photographer: order.photographer ?? '',
@@ -159,6 +165,8 @@ export default function OrderEditorModal({
       ...form,
       jobName: form.jobName.trim(),
       setLabel: form.setLabel.trim(),
+      brand: form.brand.trim(),
+      jobType: form.jobType.trim(),
       // One-day shoot: the window closes on the same date it opens.
       endsOn: form.startsOn,
     }
@@ -176,14 +184,14 @@ export default function OrderEditorModal({
     'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
 
   return (
-    <Modal open={open} onClose={onClose} size="lg" title={isEdit ? 'Edit order' : 'New order'}>
+    <Modal open={open} onClose={onClose} size="lg" title={isEdit ? 'Edit job' : 'New job'}>
       <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
           {!isEdit && (
             <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-800 ring-1 ring-amber-200">
               <Info size={14} className="mt-0.5 shrink-0" />
               <span>
-                The order starts on <strong>Hold</strong> and books the studio for this job.
+                The job starts on <strong>Hold</strong> and books the studio for the day.
                 Equipment comes next, in the window that opens after this one.
               </span>
             </div>
@@ -247,6 +255,35 @@ export default function OrderEditorModal({
               <DateField
                 value={form.startsOn}
                 onChange={(e) => set({ startsOn: e.target.value })}
+                className={field}
+              />
+            </div>
+          </div>
+
+          {/* Brand + shoot type (20260908120000). Both free text with
+              suggestions, NOT closed dropdowns: a new client arrives and a third
+              kind of shoot appears, and refusing to book either is absurd. The
+              suggestion lists are built from what the register already uses (the
+              types also always offer Editorial / PDP), so the filters on the list
+              can only ever offer values that match something. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className={label}>Brand</label>
+              <ComboField
+                value={form.brand}
+                onChange={(e) => set({ brand: e.target.value })}
+                options={brands}
+                placeholder="Who is it for…"
+                className={field}
+              />
+            </div>
+            <div>
+              <label className={label}>Type</label>
+              <ComboField
+                value={form.jobType}
+                onChange={(e) => set({ jobType: e.target.value })}
+                options={jobTypes}
+                placeholder="Editorial, PDP…"
                 className={field}
               />
             </div>
@@ -356,7 +393,7 @@ export default function OrderEditorModal({
               className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
             >
               {isEdit ? <Check size={15} /> : <Boxes size={15} />}
-              {isEdit ? 'Save order' : 'Select equipment'}
+              {isEdit ? 'Save job' : 'Select equipment'}
             </button>
           </div>
         </div>

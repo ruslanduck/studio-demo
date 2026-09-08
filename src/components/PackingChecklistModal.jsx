@@ -85,7 +85,7 @@ export default function PackingChecklistModal({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-4 py-3">
             <div className="min-w-0">
               <div className="truncate font-semibold text-slate-900">
-                {order.jobName ?? order.setTitle ?? 'Order'}
+                {order.jobName ?? order.setTitle ?? 'Job'}
               </div>
               <div className="mt-0.5 text-xs text-slate-500">
                 {order.poNumber ? `PO ${order.poNumber} · ` : ''}
@@ -104,7 +104,7 @@ export default function PackingChecklistModal({
 
         {allLines.length === 0 ? (
           <p className="py-10 text-center text-sm text-slate-400">
-            No equipment on this order to pack.
+            No equipment on this job to pack.
           </p>
         ) : (
           <>

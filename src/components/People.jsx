@@ -984,7 +984,7 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
 // labelled "Client" — a bare noun read like a customer segment. Status colours
 // come from the shared vocabulary so a confirmed order is green here too.
 function OrderList({ orders, showCompany = false, onOpen }) {
-  if (orders.length === 0) return <p className="text-sm text-slate-400">No orders yet.</p>
+  if (orders.length === 0) return <p className="text-sm text-slate-400">No jobs yet.</p>
   return (
     <ul className="space-y-1.5">
       {orders.map((o) => {
@@ -995,7 +995,7 @@ function OrderList({ orders, showCompany = false, onOpen }) {
             <button
               type="button"
               onClick={() => onOpen?.(o)}
-              title="Open this order"
+              title="Open this job"
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50/40"
             >
             <div className="flex items-center gap-2">
@@ -1058,7 +1058,7 @@ function JobList({ jobs, showWho = false, emptyText, orderForSet, onOpenJob }) {
             <button
               type="button"
               onClick={() => onOpenJob?.(j, order)}
-              title={order ? 'Open this job’s order' : 'Show this shoot on the calendar'}
+              title={order ? 'Open this job' : 'Show this shoot on the calendar'}
               className="flex w-full items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-left transition hover:border-violet-300 hover:bg-violet-50/40"
             >
               <Briefcase size={14} className="shrink-0 text-slate-400" />

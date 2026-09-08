@@ -204,14 +204,14 @@ export default function Archive() {
           <div className="grid place-items-center rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center">
             <ArchiveIcon size={28} className="text-slate-300" />
             <p className="mt-3 max-w-sm text-sm text-slate-500">
-              Deleting is off by design: archiving an order, a shoot, a person, a company or a piece
+              Deleting is off by design: archiving a job, a shoot, a person, a company or a piece
               of gear keeps every row and every link in the database. This screen is where it waits.
             </p>
           </div>
         )}
 
         <Section
-          title="Orders"
+          title="Jobs"
           hint="restoring re-checks what gear is still free"
           rows={archivedOrders.map((o) => (
             <Row
@@ -233,7 +233,7 @@ export default function Archive() {
 
         <Section
           title="Shoots"
-          hint="order-less bookings"
+          hint="job-less bookings"
           rows={archivedBookings.map((b) => (
             <Row
               key={b.id}
@@ -311,7 +311,7 @@ export default function Archive() {
         <Section
           icon={Building2}
           title="Companies"
-          hint="people and orders stayed attached"
+          hint="people and jobs stayed attached"
           rows={archivedCompanies.map((c) => (
             <Row
               key={c.id}

@@ -46,7 +46,7 @@ export const EVENT = {
 
 // How each archivable thing is named in the feed and on the Archive screen.
 export const ARCHIVE_KINDS = {
-  order: 'order',
+  order: 'job',
   booking: 'shoot',
   item: 'inventory item',
   unit: 'unit',
@@ -140,7 +140,7 @@ export function describeEvent(ev) {
     case EVENT.ORDER_CONFIRMED:
       return {
         icon: 'check',
-        title: 'Confirmed the order',
+        title: 'Confirmed the job',
         detail:
           d.reserved != null
             ? `${d.reserved} piece(s) reserved${d.short ? ` · ${d.short} short` : ''}`
@@ -151,7 +151,7 @@ export function describeEvent(ev) {
     case EVENT.ORDER_CLOSED:
       return {
         icon: 'check',
-        title: 'Closed the order',
+        title: 'Closed the job',
         detail:
           d.released != null
             ? `${d.released} piece(s) back on the shelf`
@@ -160,22 +160,22 @@ export function describeEvent(ev) {
     case EVENT.ORDER_REOPENED:
       return {
         icon: 'undo',
-        title: 'Re-opened the order',
+        title: 'Re-opened the job',
         detail:
           d.reserved != null
             ? `${d.reserved} piece(s) reserved again${d.short ? ` · ${d.short} short` : ''}`
             : 'Gear reserved again',
       }
     case EVENT.ORDER_CREATED:
-      return { icon: 'clipboard', title: 'Created the order', detail: d.jobName ?? null }
+      return { icon: 'clipboard', title: 'Created the job', detail: d.jobName ?? null }
     case EVENT.ORDER_UPDATED:
       return {
         icon: 'pencil',
-        title: 'Edited the order',
+        title: 'Edited the job',
         detail: d.changed?.length ? d.changed.join(', ') : null,
       }
     case EVENT.ORDER_DELETED:
-      return { icon: 'trash', title: 'Scrapped the order', detail: d.jobName ?? null }
+      return { icon: 'trash', title: 'Scrapped the job', detail: d.jobName ?? null }
     case EVENT.PACKING_SIGNED:
       return {
         icon: 'signature',

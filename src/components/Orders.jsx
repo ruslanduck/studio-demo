@@ -23,6 +23,7 @@ import {
   Layers,
   ScanLine,
   Lock,
+  Tag,
 } from 'lucide-react'
 import { useStore, notArchived, MAX_SETS_PER_DAY } from '../store'
 import { usePersisted } from '../lib/usePersisted'
@@ -41,6 +42,8 @@ import {
   poCounts,
   photographersIn,
   studiosIn,
+  brandsIn,
+  jobTypesIn,
   SORTS,
 } from '../lib/orderSearch'
 import DateField from './DateField'
@@ -130,6 +133,8 @@ export default function Orders() {
   // filters and a sort. All matching lives in lib/orderSearch.
   const [photographer, setPhotographer] = usePersisted('orders', 'photographer', 'All')
   const [studioFilter, setStudioFilter] = usePersisted('orders', 'studio', 'All')
+  const [brandFilter, setBrandFilter] = usePersisted('orders', 'brand', 'All')
+  const [typeFilter, setTypeFilter] = usePersisted('orders', 'jobType', 'All')
   const [from, setFrom] = usePersisted('orders', 'from', '')
   const [to, setTo] = usePersisted('orders', 'to', '')
   const [sort, setSort] = usePersisted('orders', 'sort', 'newest')
@@ -197,11 +202,13 @@ export default function Orders() {
         status,
         photographer,
         studio: studioFilter,
+        brand: brandFilter,
+        jobType: typeFilter,
         from,
         to,
         sort,
       }),
-    [liveOrders, search, status, photographer, studioFilter, from, to, sort],
+    [liveOrders, search, status, photographer, studioFilter, brandFilter, typeFilter, from, to, sort],
   )
 
   // How many orders share each PO — one job's PO covers every order raised
@@ -209,11 +216,15 @@ export default function Orders() {
   const sharedPo = useMemo(() => poCounts(liveOrders), [liveOrders])
   const photographerOptions = useMemo(() => photographersIn(liveOrders), [liveOrders])
   const studioOptions = useMemo(() => studiosIn(liveOrders), [liveOrders])
+  const brandOptions = useMemo(() => brandsIn(liveOrders), [liveOrders])
+  const typeOptions = useMemo(() => jobTypesIn(liveOrders), [liveOrders])
 
   const activeFilters =
     (status !== 'All' ? 1 : 0) +
     (photographer !== 'All' ? 1 : 0) +
     (studioFilter !== 'All' ? 1 : 0) +
+    (brandFilter !== 'All' ? 1 : 0) +
+    (typeFilter !== 'All' ? 1 : 0) +
     (from ? 1 : 0) +
     (to ? 1 : 0)
 
@@ -222,6 +233,8 @@ export default function Orders() {
     setStatus('All')
     setPhotographer('All')
     setStudioFilter('All')
+    setBrandFilter('All')
+    setTypeFilter('All')
     setFrom('')
     setTo('')
   }
@@ -255,7 +268,7 @@ export default function Orders() {
     <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight text-slate-900">Orders</h2>
+          <h2 className="text-xl font-semibold tracking-tight text-slate-900">Jobs</h2>
           <p className="text-sm text-slate-500">
             {liveOrders.length} orders
             {holdCount > 0 && ` · ${holdCount} on hold`}
@@ -268,7 +281,7 @@ export default function Orders() {
             className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
           >
             <Plus size={16} />
-            New order
+            New job
           </button>
         )}
       </div>
@@ -289,7 +302,7 @@ export default function Orders() {
             onClear={clearAll}
             count={filtered.length}
             total={liveOrders.length}
-            noun="orders"
+            noun="jobs"
             trailing={
               <SelectField
                 value={sort}
@@ -322,6 +335,20 @@ export default function Orders() {
                 className={FILTER_FIELD}
               />
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <SelectField
+                value={brandFilter}
+                onChange={(e) => setBrandFilter(e.target.value)}
+                options={[{ value: 'All', label: 'Any brand' }, ...brandOptions]}
+                className={FILTER_FIELD}
+              />
+              <SelectField
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                options={[{ value: 'All', label: 'Any type' }, ...typeOptions]}
+                className={FILTER_FIELD}
+              />
+            </div>
             <SelectField
               value={photographer}
               onChange={(e) => setPhotographer(e.target.value)}
@@ -340,7 +367,11 @@ export default function Orders() {
           <div className="min-h-0 flex-1 overflow-auto p-2">
             {filtered.length === 0 ? (
               <p className="px-3 py-10 text-center text-sm text-slate-400">
-                {query || status !== 'All' ? 'No orders match.' : 'No orders yet.'}
+                {/* "yet" vs "match" is the difference between an empty register and a
+                    filter hiding everything. It used to test only the search box
+                    and the status, so narrowing by studio, photographer, dates —
+                    or now brand and type — claimed there were no jobs at all. */}
+                {query || activeFilters > 0 ? 'No jobs match.' : 'No jobs yet.'}
               </p>
             ) : (
               <ul className="space-y-0.5">
@@ -391,9 +422,21 @@ export default function Orders() {
                               <Highlight text={o.setLabel} query={query} />
                             </span>
                           )}
+                          {/* Brand and shoot type: the two things the studio
+                              filters by, so they belong on the row you scan. */}
+                          {o.brand && (
+                            <span className="shrink-0 rounded bg-violet-50 px-1.5 text-[10px] font-medium text-violet-700">
+                              <Highlight text={o.brand} query={query} />
+                            </span>
+                          )}
+                          {o.jobType && (
+                            <span className="shrink-0 rounded bg-sky-50 px-1.5 text-[10px] font-medium text-sky-700">
+                              <Highlight text={o.jobType} query={query} />
+                            </span>
+                          )}
                           {o.poNumber && sharedPo[o.poNumber] > 1 && (
                             <span
-                              title={`${sharedPo[o.poNumber]} orders share ${o.poNumber} — same job`}
+                              title={`${sharedPo[o.poNumber]} jobs share ${o.poNumber}`}
                               className="ml-auto shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] font-medium text-slate-500"
                             >
                               {sharedPo[o.poNumber]}× PO
@@ -424,7 +467,7 @@ export default function Orders() {
                 className="flex shrink-0 items-center gap-1 border-b border-slate-200 px-3 py-2 text-sm font-medium text-violet-600 lg:hidden"
               >
                 <ChevronLeft size={16} />
-                Back to orders
+                Back to jobs
               </button>
               <OrderDetail
                 order={selected}
@@ -455,7 +498,7 @@ export default function Orders() {
           ) : (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <ClipboardList size={36} className="mb-3 text-slate-300" />
-              <p className="text-sm text-slate-400">Select an order to see its estimate.</p>
+              <p className="text-sm text-slate-400">Select a job to see its estimate.</p>
             </div>
           )}
         </div>
@@ -466,6 +509,8 @@ export default function Orders() {
         order={editor.order}
         studios={studios}
         photographers={photographerNames}
+        brands={brandOptions}
+        jobTypes={typeOptions}
         onClose={() => setEditor({ open: false, order: null })}
         onProceed={(payload) => {
           // The studio/day capacity is checked HERE, before the crew spends time
@@ -651,7 +696,7 @@ function OrderDetail({
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700"
                 >
                   <Undo2 size={15} />
-                  Re-open order
+                  Re-open job
                 </button>
               ) : order.status === 'hold' ? (
                 <button
@@ -660,7 +705,7 @@ function OrderDetail({
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
                 >
                   <CheckCircle2 size={15} />
-                  Confirm order
+                  Confirm job
                 </button>
               ) : (
                 <>
@@ -687,14 +732,14 @@ function OrderDetail({
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <PackageCheck size={15} />
-                    Close order
+                    Close job
                   </button>
                 </>
               )}
             </div>
             {order.status === 'hold' && estimate.lineCount === 0 && (
               <p className="mt-2 text-xs text-amber-600">
-                No equipment on this order yet — confirming an empty order is allowed, but packing
+                No equipment on this job yet — confirming an empty job is allowed, but packing
                 will have nothing to pull.
               </p>
             )}
@@ -722,7 +767,7 @@ function OrderDetail({
 
         <section className="space-y-1.5">
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-            The job
+            The shoot
           </h4>
           <Row icon={CalendarRange} label="Set date">
             {order.startsOn ? dateRange(order.startsOn, order.endsOn) : '—'}
@@ -732,6 +777,12 @@ function OrderDetail({
           </Row>
           <Row icon={Layers} label="Set">
             {order.setLabel || <span className="text-slate-400">not named</span>}
+          </Row>
+          <Row icon={Tag} label="Brand">
+            {order.brand || <span className="text-slate-400">—</span>}
+          </Row>
+          <Row icon={Briefcase} label="Type">
+            {order.jobType || <span className="text-slate-400">—</span>}
           </Row>
           <Row icon={Camera} label="Photographer">
             {order.photographer ? (
@@ -812,7 +863,7 @@ function OrderDetail({
               (isClosedStatus(order.status) ? (
                 <span
                   className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-400"
-                  title="Closed orders keep the gear they went out with. Re-open the order to change it."
+                  title="Closed jobs keep the gear they went out with. Re-open the job to change it."
                 >
                   <Lock size={12} />
                   Closed — locked
@@ -978,7 +1029,7 @@ function OrderDetail({
               <p className="mt-1 text-xs text-slate-500">
                 Two forms of the same pull sheet: print a PDF, or run the digital checklist on the
                 iPad. One row per barcoded copy, one tick each. Returns are recorded by scanning.
-                {estimate.lineCount === 0 && ' This order has no equipment yet.'}
+                {estimate.lineCount === 0 && ' This job has no equipment yet.'}
               </p>
               {estimate.lineCount > 0 && (
                 <p className="mt-1.5 text-xs text-slate-500">
@@ -1009,7 +1060,7 @@ function OrderDetail({
             </>
           ) : (
             <p className="mt-1 text-xs text-amber-600">
-              Confirm the order to generate its packing list.
+              Confirm the job to generate its packing list.
             </p>
           )}
         </section>
@@ -1027,7 +1078,7 @@ function OrderDetail({
             </div>
             {scanProg.total === 0 ? (
               <p className="mt-1 text-xs text-slate-500">
-                No gear is reserved for this order, so there is nothing to scan.
+                No gear is reserved for this job, so there is nothing to scan.
               </p>
             ) : (
               <>
@@ -1038,7 +1089,7 @@ function OrderDetail({
                 </p>
                 {stillOut.length > 0 && (
                   <p className="mt-1 text-xs text-amber-600">
-                    {stillOut.length} piece(s) are still out — the order can't be closed until they
+                    {stillOut.length} piece(s) are still out — the job can't be closed until they
                     are scanned back in ({stillOut
                       .slice(0, 4)
                       .map((u) => `#${u.barcode}`)
@@ -1052,7 +1103,7 @@ function OrderDetail({
                     onClick={() =>
                       openScanning(order.id, {
                         view: 'orders',
-                        label: order.jobName || 'the order',
+                        label: order.jobName || 'the job',
                         focus: { orderId: order.id },
                       })
                     }

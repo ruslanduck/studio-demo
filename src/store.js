@@ -462,6 +462,11 @@ function resolveOrder(o, companies) {
     number: trimmed(o.number),
     poNumber: trimmed(o.poNumber),
     setLabel: trimmed(o.setLabel),
+    // ⚠️ This shaper is a WHITELIST: a field missing here is silently dropped in
+    // local mode, however correctly the DB column and the supabase path handle
+    // it. Adding a column to `orders` means adding it in BOTH places.
+    brand: trimmed(o.brand),
+    jobType: trimmed(o.jobType),
     status: o.status || 'hold',
     kind: o.kind || 'client',
     orderedAt: startsOn,
@@ -2415,7 +2420,7 @@ export const useStore = create(
         if (order && isClosedStatus(order.status))
           return {
             error:
-              'This order is closed — its equipment is the record of what went out. Re-open it to change the gear.',
+              'This job is closed — its equipment is the record of what went out. Re-open it to change the gear.',
           }
         // "The order is attributed to whoever last added inventory to it" — this
         // is that moment, and until now it left no trace at all. The lines are
@@ -2449,7 +2454,7 @@ export const useStore = create(
           // edit in supabase mode threw a ReferenceError right after saving.
           if (wrote.rateNotStored)
             return {
-              error: `The equipment saved, but ${wrote.rateNotStored} line price(s) did not: this database is missing the order-line rate column (migration 20260811120000). Apply it, then re-enter the price.`,
+              error: `The equipment saved, but ${wrote.rateNotStored} line price(s) did not: this database is missing the per-line rate column (migration 20260811120000). Apply it, then re-enter the price.`,
             }
           return { ok: true, ...res }
         }
@@ -2584,7 +2589,7 @@ export const useStore = create(
       scanUnit: (orderId, code, direction) => {
         const state = get()
         const order = state.orders.find((o) => o.id === orderId)
-        if (!order) return { error: 'That order is gone — reload.' }
+        if (!order) return { error: 'That job is gone — reload.' }
         const booking = state.bookings.find((b) => b.id === order.setId)
         const expected = expectedUnits(order, booking, state.inventory)
         const res = resolveScan(code, {
@@ -2668,7 +2673,7 @@ export const useStore = create(
       // Its lines and packing sign-offs are all kept.
       archiveOrder: async (id) => {
         const order = get().orders.find((o) => o.id === id)
-        if (!order) return { error: 'Order not found.' }
+        if (!order) return { error: 'Job not found.' }
         const held = get().bookings.find((b) => b.id === order.setId)?.unitIds?.length ?? 0
         const logIt = () =>
           get().logActivity({
@@ -2717,7 +2722,7 @@ export const useStore = create(
       restoreOrder: async (id) => {
         const state = get()
         const order = state.orders.find((o) => o.id === id)
-        if (!order) return { error: 'Order not found.' }
+        if (!order) return { error: 'Job not found.' }
         const stamp = order.archivedAt
         get().logActivity({
           type: EVENT.RESTORED,

@@ -508,7 +508,7 @@ export default function OrderEquipmentModal({
 
   return (
     <>
-      <Modal open={open} onClose={onClose} size="lg" title={isNew ? 'New order — equipment' : 'Order equipment'}>
+      <Modal open={open} onClose={onClose} size="lg" title={isNew ? 'New job — equipment' : 'Job equipment'}>
         <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
           {/* Step one's form is gone by now, so restate what this gear is for.
               An existing order has its detail card right behind this window. */}
@@ -519,7 +519,7 @@ export default function OrderEquipmentModal({
               {order?.studioId ? ` · ${studioLabel(order.studioId)}` : ''}
               {order?.startsOn ? ` · ${order.startsOn}` : ''}
               <span className="mt-1 block text-slate-500">
-                Nothing is saved yet — <strong>Create order</strong> writes the order and this
+                Nothing is saved yet — <strong>Create job</strong> writes the job and this
                 equipment together. Gear can be changed later.
               </span>
             </div>
@@ -565,7 +565,7 @@ export default function OrderEquipmentModal({
                 <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                 <span>
                   <strong>{blocked.name}</strong> has 0 available for these dates. Raise it as a
-                  sub-rental, pick a different item — or put it on the order anyway and settle the
+                  sub-rental, pick a different item — or put it on the job anyway and settle the
                   shortfall later.
                 </span>
               </div>
@@ -850,7 +850,7 @@ export default function OrderEquipmentModal({
                           {l.quantity - (l.units ?? []).length > 0 && (
                             <span
                               className="text-[11px] text-slate-400"
-                              title="Resolved from what's free when the order is confirmed"
+                              title="Resolved from what's free when the job is confirmed"
                             >
                               {l.quantity - (l.units ?? []).length} × any free copy
                             </span>
@@ -1014,7 +1014,7 @@ export default function OrderEquipmentModal({
               className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
             >
               <Check size={15} />
-              {isNew ? 'Create order' : 'Save equipment'}
+              {isNew ? 'Create job' : 'Save equipment'}
             </button>
           </div>
         </div>

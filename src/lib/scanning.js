@@ -126,8 +126,8 @@ export function resolveScan(rawCode, { order, expected = [], scans = [], directi
   if (!isScannable(order))
     return {
       error: order?.status
-        ? `This order is ${order.status} — only a confirmed order can be scanned.`
-        : 'Pick a confirmed order first.',
+        ? `This job is ${order.status} — only a confirmed job can be scanned.`
+        : 'Pick a confirmed job first.',
     }
 
   const match = expected.find((e) => e.barcode === code)

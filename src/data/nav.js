@@ -9,7 +9,7 @@ import { CalendarRange, Boxes, Users, ClipboardList, ScanLine } from 'lucide-rea
 // a not-yet-shipped tab back is a one-line change.
 export const WORKSPACE_NAV = [
   { id: 'calendar', label: 'Studio Calendar', short: 'Calendar', icon: CalendarRange },
-  { id: 'orders', label: 'Orders', short: 'Orders', icon: ClipboardList },
+  { id: 'orders', label: 'Jobs', short: 'Jobs', icon: ClipboardList },
   { id: 'inventory', label: 'Inventory', short: 'Inventory', icon: Boxes },
   { id: 'people', label: 'People', short: 'People', icon: Users },
   // The packing station (epic #6). Its own tab because it stays open by the
