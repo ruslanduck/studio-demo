@@ -1384,6 +1384,23 @@
 > the served bundle (`Any brand`, `Any type`, `The shoot`, `Job ref`, `New job` present; `New order`, `Order ref`,
 > `No orders`, `Close order` absent).
 > ℹ️ `day_rate` is still null on all 274 migrated items, so estimates total $0.00 until rates are entered.
+> **DECISION — the DATABASE keeps saying `order`, deliberately.** Asked whether renaming the columns too
+> matters "for scalability". It does not: a table name has no effect on capacity, integrity or performance —
+> it affects human comprehension, which is a different axis. The mismatch is ONE word (`orders` = Job), it is
+> documented, and the cost is ~40 queries, every FK (`order_lines.order_id`, `sets.order_id`,
+> `packing_signoffs.order_id`, `scans.order_id`), a data migration for the `order.*` event types (69 rows) and a
+> reset of every client's persisted `viewState`/`activeView` keys — each one a chance to break working software.
+> **Do it only when it becomes cheap or necessary**, and then bundle it with a migration that is already
+> touching the schema. Two triggers to watch for: PostgREST exposes table names AS endpoints, so
+> `/rest/v1/orders` leaks the old word the moment a partner gets API access; and an analyst reading the DB
+> without the app would meet it too.
+> ⚠️ **What actually limits growth — measured, not guessed:** there is NO multi-tenancy (zero mentions of
+> tenant/organization/org_id across 30 migrations) and **62 RLS policies are `using (true)`**, so a second
+> studio would see the first one's gear — that is the real wall, and the migration is cheapest while the row
+> counts are small. Second: the SAME logic is written twice (**54 `usingSupabase` branches** in store.js), which
+> has already produced three one-mode-only bugs (the reservation-window guard, `resolveOrder`'s whitelist, live
+> confirm→reserve). Third: one free-tier database serves both the demo and real data, with no backups. Fourth:
+> one flat role. All four outrank the naming.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
