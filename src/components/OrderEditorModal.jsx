@@ -1,20 +1,11 @@
 import { useEffect, useState } from 'react'
-import {
-  Check,
-  AlertTriangle,
-  Info,
-  Archive as ArchiveIcon,
-  Layers,
-  Minus,
-  Plus,
-  X,
-  Boxes,
-} from 'lucide-react'
+import { Check, AlertTriangle, Info, Archive as ArchiveIcon, Boxes } from 'lucide-react'
 import Modal from './Modal'
 import DateField from './DateField'
 import SelectField from './SelectField'
 import ComboField from './ComboField'
 import { studioLabel } from '../data/studios'
+import { MAX_SET_DAYS, setSpanDays, spanLabel } from '../lib/setDays'
 
 // Order (Estimate) creation form — epic #5, 5.1 + 5.2.
 //
@@ -25,7 +16,7 @@ import { studioLabel } from '../data/studios'
 //           the store refuses the 6th and the error lands here.
 //   Order = the equipment list for that set. Starts as HOLD.
 //
-// Creating one is TWO steps: this form settles the job (studio, set date, job
+// Creating one is TWO steps: this form settles the job (studio, set dates, job
 // name, photographer, PO) and its button leads to the equipment window, which
 // is where the order is actually created. Equipment used to be pickable here
 // too; that duplicated the fuller picker, so it was removed.
@@ -33,6 +24,12 @@ import { studioLabel } from '../data/studios'
 // 5.2: PO number is typed in by hand — deliberately NOT generated — because it
 // has to match the number accounting already issued for the job. The client
 // outline said "generate automatic PO"; the last call overrode that.
+//
+// A shoot books WHOLE DAYS and may book several of them, so the form asks for a
+// start date and an end date. It used to ask for one date plus a start and end
+// TIME, and those times were fiction: the grid is studio × day, not hourly, and
+// an order-created set got a hardcoded 09:00–18:00 because nothing collected
+// one. The range is what the crew actually needs to say.
 const blank = {
   jobName: '',
   setLabel: '',
@@ -40,76 +37,10 @@ const blank = {
   jobType: '',
   studioId: '1',
   startsOn: '',
+  endsOn: '',
   photographer: '',
   poNumber: '',
   status: 'hold',
-}
-
-// One staged kit, as a row. Rendered both inside a preset's frame and on its own,
-// so it lives here rather than being written twice.
-function KitRow({ kitName, units, onRemove }) {
-  return (
-    <li className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-violet-200">
-      <span className="inline-flex min-w-0 items-center gap-1.5">
-        <Layers size={13} className="shrink-0 text-violet-500" />
-        <span className="truncate font-medium text-slate-700">{kitName}</span>
-        <span className="shrink-0 text-slate-400">
-          {units.filter((u) => u.kitName === kitName).length} unit(s)
-        </span>
-      </span>
-      <button
-        type="button"
-        onClick={onRemove}
-        title="Remove this kit"
-        className="shrink-0 rounded p-0.5 text-slate-400 hover:text-rose-500"
-      >
-        <X size={13} />
-      </button>
-    </li>
-  )
-}
-
-// One a-la-carte line: quantity steppers and what's actually free behind it.
-// Over-capacity is shown, never refused (same rule as the booking modal).
-function ItemLine({ item, itemId, qty, free, onLess, onMore, onRemove }) {
-  const over = item?.kind === 'barcoded' ? Math.max(0, qty - free) : 0
-  return (
-    <li className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-slate-200">
-      <span className="min-w-0 flex-1 truncate text-slate-700">{item?.name ?? itemId}</span>
-      <span className="inline-flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={onLess}
-          className="grid h-5 w-5 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-slate-100"
-        >
-          <Minus size={11} />
-        </button>
-        <span className="w-5 text-center font-medium text-slate-800">{qty}</span>
-        <button
-          type="button"
-          onClick={onMore}
-          className="grid h-5 w-5 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-slate-100"
-        >
-          <Plus size={11} />
-        </button>
-      </span>
-      <span
-        className={[
-          'w-24 shrink-0 text-right',
-          over > 0 ? 'font-medium text-amber-700' : 'text-slate-400',
-        ].join(' ')}
-      >
-        {over > 0 ? `/${free} free · ${over} short` : `/${free} free`}
-      </span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="shrink-0 rounded p-0.5 text-slate-400 hover:text-rose-500"
-      >
-        <X size={13} />
-      </button>
-    </li>
-  )
 }
 
 export default function OrderEditorModal({
@@ -142,6 +73,7 @@ export default function OrderEditorModal({
             jobType: order.jobType ?? '',
             studioId: order.studioId ?? '1',
             startsOn: order.startsOn ?? '',
+            endsOn: order.endsOn ?? order.startsOn ?? '',
             photographer: order.photographer ?? '',
             poNumber: order.poNumber ?? '',
             status: order.status ?? 'hold',
@@ -156,10 +88,27 @@ export default function OrderEditorModal({
 
   const set = (changes) => setForm((f) => ({ ...f, ...changes }))
 
+  // Picking a start pulls an empty or earlier end along with it, so the common
+  // case (a one-day shoot) is one click and the range can never read backwards
+  // just because the fields were filled in an awkward order.
+  const setStart = (startsOn) =>
+    setForm((f) => ({
+      ...f,
+      startsOn,
+      endsOn: !f.endsOn || f.endsOn < startsOn ? startsOn : f.endsOn,
+    }))
+
+  const days = setSpanDays(form.startsOn, form.endsOn)
+
   async function submit(e) {
     e?.preventDefault()
     if (!form.jobName.trim()) return setError('Give the job a name — what are we shooting?')
-    if (!form.startsOn) return setError('Pick the set date.')
+    if (!form.startsOn) return setError('Pick the start date.')
+    // Clamping a backwards range silently would book days nobody asked for.
+    if (form.endsOn && form.endsOn < form.startsOn)
+      return setError('The last day is before the first one — check the dates.')
+    if (days > MAX_SET_DAYS)
+      return setError(`${days} days is longer than a shoot gets (max ${MAX_SET_DAYS}) — check the year.`)
     setBusy(true)
     const payload = {
       ...form,
@@ -167,8 +116,9 @@ export default function OrderEditorModal({
       setLabel: form.setLabel.trim(),
       brand: form.brand.trim(),
       jobType: form.jobType.trim(),
-      // One-day shoot: the window closes on the same date it opens.
-      endsOn: form.startsOn,
+      // A one-day shoot ends the day it starts; the store normalises this too,
+      // so nothing downstream has to guess what an empty end means.
+      endsOn: form.endsOn || form.startsOn,
     }
     // Creating is a two-step flow: this form settles the job, then the equipment
     // window opens and IT creates the order together with the gear. So nothing is
@@ -191,8 +141,9 @@ export default function OrderEditorModal({
             <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-800 ring-1 ring-amber-200">
               <Info size={14} className="mt-0.5 shrink-0" />
               <span>
-                The job starts on <strong>Hold</strong> and books the studio for the day.
-                Equipment comes next, in the window that opens after this one.
+                The job starts on <strong>Hold</strong> and books the studio for
+                {days > 1 ? ` all ${days} days` : ' the day'}. Equipment comes next, in the
+                window that opens after this one.
               </span>
             </div>
           )}
@@ -246,17 +197,42 @@ export default function OrderEditorModal({
             </div>
           </div>
 
-          {/* A shoot is always a single day, so there is one date, not a range.
-              `endsOn` is still written (equal to it) because availability, the
-              estimate's billable days and the order search all read a window. */}
+          {/* A shoot books whole days, from the first to the last — no times.
+              Availability, the estimate's billable days, the packing sheet and
+              the job search already read this window; the form is what used to
+              force it shut on the day it opened. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className={label}>Set date</label>
+              <label className={label}>First day</label>
               <DateField
                 value={form.startsOn}
-                onChange={(e) => set({ startsOn: e.target.value })}
+                onChange={(e) => setStart(e.target.value)}
                 className={field}
               />
+            </div>
+            <div>
+              <label className={label}>Last day</label>
+              <DateField
+                value={form.endsOn}
+                onChange={(e) => set({ endsOn: e.target.value })}
+                className={field}
+              />
+              <p
+                className={[
+                  'mt-1 text-[11px]',
+                  form.endsOn && form.startsOn && form.endsOn < form.startsOn
+                    ? 'font-medium text-rose-600'
+                    : 'text-slate-400',
+                ].join(' ')}
+              >
+                {!form.startsOn
+                  ? 'Same as the first day unless you say otherwise.'
+                  : form.endsOn && form.endsOn < form.startsOn
+                    ? 'That is before the first day.'
+                    : days > 1
+                      ? `${days} days · ${spanLabel(form.startsOn, form.endsOn)} — the studio and the gear are held for all of them.`
+                      : `One day · ${spanLabel(form.startsOn, form.endsOn)}`}
+              </p>
             </div>
           </div>
 

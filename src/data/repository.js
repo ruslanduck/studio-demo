@@ -39,6 +39,11 @@ const archiveFields = (row) => ({
   archivedBy: row?.archived_by ?? null,
 })
 
+// `sets.end_date` is NULL for a one-day shoot (20260909120000) and the reader
+// falls back to `date`, so writing the same value into both columns would only
+// be noise to disagree with later.
+const endDateColumn = (b) => (!b.endDate || b.endDate === b.date ? null : b.endDate)
+
 // Archive / restore one row. `table` is the caller's business, not the user's:
 // every call site is a store action, so an unknown table can't come from input.
 // Returns the stamp it wrote, which is what ties a cascade together (below).
@@ -351,12 +356,21 @@ export async function getInventory() {
 // Bookings (sets) mapped to the app's booking shape. photographer/model come
 // from the roster (requires auth to read — under anon they resolve to '').
 export async function getBookings() {
-  const sel = `id, title, studio_id, date, start_time, end_time, status, color, notes, order_id,
+  const sel = (endCol) =>
+    `id, title, studio_id, date${endCol}, start_time, end_time, status, color, notes, order_id,
        ${ARCHIVE_COLS}, created_by, creator:profiles!created_by ( full_name ),
        set_units ( unit_id ),
        roster_entries ( role, contact:contacts ( full_name ) )`
-  let { data, error } = await supabase.from('sets').select(sel).order('date')
-  if (error) ({ data, error } = await supabase.from('sets').select(stripArchive(sel)).order('date'))
+  // `end_date` (20260909120000, multi-day shoots) is the NEWEST column, so it is
+  // the OUTERMOST layer: a database without that migration must degrade to
+  // one-day sets, not lose the roster and the reservations along with it.
+  // Fourth time this rule has mattered — see getOrders' withBrandType.
+  const layers = [sel(', end_date'), sel(''), stripArchive(sel(''))]
+  let data, error
+  for (const layer of layers) {
+    ;({ data, error } = await supabase.from('sets').select(layer).order('date'))
+    if (!error) break
+  }
   if (error) throw error
 
   return data.map((s) => {
@@ -367,8 +381,9 @@ export async function getBookings() {
       title: s.title,
       studioId: s.studio_id,
       date: s.date,
-      startTime: s.start_time?.slice(0, 5),
-      endTime: s.end_time?.slice(0, 5),
+      // A one-day shoot stores no end (null), so it reads back as its own date —
+      // every consumer can then treat a set as a window without a special case.
+      endDate: s.end_date || s.date,
       status: s.status,
       color: s.color || studioColor(s.studio_id),
       notes: s.notes,
@@ -461,15 +476,18 @@ async function replaceUnits(setId, unitIds = []) {
 }
 
 export async function createBooking(b) {
-  const { data: set, error } = await supabase
-    .from('sets')
-    .insert({
-      title: b.title, studio_id: b.studioId, date: b.date,
-      start_time: b.startTime, end_time: b.endTime,
-      color: b.color || studioColor(b.studioId), notes: b.notes, status: 'active',
-    })
-    .select('id')
-    .single()
+  // A shoot is a range of whole days now, so no times are written — the columns
+  // stay for the rows that already carry them (nothing in this app deletes
+  // data), but nothing collects or reads them any more.
+  const row = {
+    title: b.title, studio_id: b.studioId, date: b.date, end_date: endDateColumn(b),
+    color: b.color || studioColor(b.studioId), notes: b.notes, status: 'active',
+  }
+  let { data: set, error } = await supabase.from('sets').insert(row).select('id').single()
+  if (error && isUndefinedColumn(error)) {
+    const { end_date, ...oneDay } = row
+    ;({ data: set, error } = await supabase.from('sets').insert(oneDay).select('id').single())
+  }
   if (error) throw error
   await replaceUnits(set.id, b.unitIds)
   await replaceRoster(set.id, b.photographer, b.model)
@@ -481,12 +499,17 @@ export async function updateBooking(setId, changes) {
   if ('title' in changes) patch.title = changes.title
   if ('studioId' in changes) patch.studio_id = changes.studioId
   if ('date' in changes) patch.date = changes.date
-  if ('startTime' in changes) patch.start_time = changes.startTime
-  if ('endTime' in changes) patch.end_time = changes.endTime
+  if ('endDate' in changes) patch.end_date = endDateColumn(changes)
   if ('notes' in changes) patch.notes = changes.notes
   if ('color' in changes) patch.color = changes.color
   if (Object.keys(patch).length) {
-    const { error } = await supabase.from('sets').update(patch).eq('id', setId)
+    let { error } = await supabase.from('sets').update(patch).eq('id', setId)
+    if (error && isUndefinedColumn(error)) {
+      const { end_date, ...oneDay } = patch
+      if (Object.keys(oneDay).length)
+        ({ error } = await supabase.from('sets').update(oneDay).eq('id', setId))
+      else error = null
+    }
     if (error) throw error
   }
   if ('unitIds' in changes) await replaceUnits(setId, changes.unitIds)
@@ -1349,36 +1372,67 @@ export async function setReservationsForSet(setId, unitIds, { from = null, to = 
 }
 
 // Create the Set an order equips (5.1: "Order привязан к Set/Job"), then link it.
-export async function createSetForOrder(orderId, { jobName, studioId, date }) {
-  const { data, error } = await supabase
-    .from('sets')
-    .insert({
-      title: jobName.trim(),
-      studio_id: studioId,
-      date,
-      // Default working hours so the calendar chip has a time range (the order
-      // editor doesn't collect times; the grid is studio×day, not hourly).
-      start_time: '09:00',
-      end_time: '18:00',
-      status: 'active',
-      order_id: orderId,
-    })
-    .select('id')
-    .single()
+// The shoot spans the order's whole working window; no times are written — the
+// grid is studio × day, and the range is what the crew now types.
+export async function createSetForOrder(orderId, { jobName, studioId, date, endDate }) {
+  const row = {
+    title: jobName.trim(),
+    studio_id: studioId,
+    date,
+    end_date: endDateColumn({ date, endDate }),
+    status: 'active',
+    order_id: orderId,
+  }
+  let { data, error } = await supabase.from('sets').insert(row).select('id').single()
+  if (error && isUndefinedColumn(error)) {
+    const { end_date, ...oneDay } = row
+    ;({ data, error } = await supabase.from('sets').insert(oneDay).select('id').single())
+  }
   if (error) throw error
   return data.id
 }
 
-// How many sets a studio already has on a date — the "max 5 sets per day" rule.
-export async function countSetsOn(studioId, date) {
-  const { count, error } = await supabase
-    .from('sets')
-    .select('*', { count: 'exact', head: true })
-    .eq('studio_id', studioId)
-    .eq('date', date)
-    .eq('status', 'active')
-  if (error) return 0
-  return count ?? 0
+// Mirror an order onto the Set it equips. Local mode always did this in memory;
+// Supabase mode did NOT, so editing a job's date moved its reservations and left
+// the shoot on the old day of the calendar. A multi-day window makes that
+// mismatch visible immediately, so the two modes are the same shape now.
+// Roster (photographer) is deliberately left alone — that needs a contact id,
+// which is the order form's photographerId, and is a separate write.
+export async function syncSetForOrder(setId, { jobName, studioId, date, endDate }) {
+  return updateBooking(setId, {
+    ...(jobName != null ? { title: jobName.trim() } : {}),
+    ...(studioId ? { studioId } : {}),
+    ...(date ? { date, endDate: endDate || date } : {}),
+  })
+}
+
+// The active, unarchived sets a studio has anywhere in [from, to] — the input to
+// the "max 5 sets per studio per day" rule. It reads a RANGE because a set can
+// now span days: asking `date = x` would let a three-day job slip past a day it
+// actually sits on. Archived shoots are excluded; they used to count against
+// capacity, which quietly shrank a studio's day.
+export async function activeSetsInRange(studioId, from, to) {
+  const last = to || from
+  // Starts on or before our last day — the other half of the overlap test
+  // (ends on or after our first day) is applied below, because it has to treat a
+  // null end_date as "ends on `date`" and that is easier to read in JS than in
+  // a nested PostgREST `or`.
+  const q = (sel) =>
+    supabase
+      .from('sets')
+      .select(sel)
+      .eq('studio_id', studioId)
+      .eq('status', 'active')
+      .lte('date', last)
+  // Layered newest-column-first, like every read here: no end_date → every set
+  // is one day; no archive columns → nothing is archived on that database.
+  let { data, error } = await q('id, date, end_date').is('archived_at', null)
+  if (error) ({ data, error } = await q('id, date').is('archived_at', null))
+  if (error) ({ data, error } = await q('id, date'))
+  if (error) return []
+  return (data || [])
+    .map((s) => ({ id: s.id, from: s.date, to: s.end_date || s.date }))
+    .filter((s) => s.to >= from)
 }
 
 // Name the vendor a sub-rented unit came from (4.5).

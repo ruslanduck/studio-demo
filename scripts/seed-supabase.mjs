@@ -287,13 +287,19 @@ async function main() {
   const setByTitle = {} // title -> { id, date, ... }, used to link orders (4.5)
   for (const t of BOOKING_TEMPLATES) {
     const date = format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd')
+    // A shoot books whole days and may book several (20260909120000). `end_date`
+    // stays null for a one-day set — the app reads it as `date`. No times: the
+    // grid is studio × day and the crew types a date range.
+    const endDate = format(addDays(weekStart, t.dayOffset + ((t.days || 1) - 1)), 'yyyy-MM-dd')
     const { data: set, error: sErr } = await db.from('sets').insert({
       title: t.title, studio_id: t.studioId, date,
-      start_time: t.startTime, end_time: t.endTime, status: 'active', color: t.color,
+      end_date: endDate === date ? null : endDate, status: 'active', color: t.color,
     }).select('id').single()
     if (sErr) throw sErr
     sets++
-    setByTitle[t.title] = { id: set.id, date, studioId: t.studioId, photographer: t.photographer }
+    setByTitle[t.title] = {
+      id: set.id, date, endDate, studioId: t.studioId, photographer: t.photographer,
+    }
 
     // Gear is NOT reserved here: a Set's reservations derive from its CONFIRMED
     // order's in-house lines, written in the orders pass below.
@@ -332,7 +338,9 @@ async function main() {
       job_name: o.setTitle ?? null,
       studio_id: set?.studioId ?? null,
       starts_on: set?.date ?? orderedAt,
-      ends_on: set?.date ?? orderedAt,
+      // The job's window IS its shoot's window, so a multi-day set bills, holds
+      // and packs for every day it runs.
+      ends_on: set?.endDate ?? set?.date ?? orderedAt,
       po_number: o.po ?? null,
       // Demo content: the crew types the Set by hand, and their job names end in
       // that designation (…_OMSet1), so the seed reuses it.
@@ -373,7 +381,8 @@ async function main() {
           claimed.add(unit_id)
           suRows.push({
             set_id: set.id, unit_id, status: 'reserved',
-            reserved_from: set.date, reserved_to: set.date,
+            // Gear is held for every day the shoot runs, not just its first.
+            reserved_from: set.date, reserved_to: set.endDate || set.date,
           })
         }
       }

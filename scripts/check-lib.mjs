@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus] =
+const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays] =
   await Promise.all([
     load('src/lib/activity.js'),
     load('src/lib/scanning.js'),
@@ -27,6 +27,7 @@ const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packi
     load('src/lib/itemAvailability.js'),
     load('src/lib/years.js'),
     load('src/data/orderStatus.js'),
+    load('src/lib/setDays.js'),
   ])
 
 let n = 0
@@ -158,6 +159,54 @@ ok(!orderStatus.isClosedStatus('confirmed'), 'confirmed is not')
   const ys = years.yearsFor(2026, new Date(Date.UTC(2027, 0, 15)))
   eq(ys[0], 2030, 'the year window slides with the calendar year')
   ok(ys.includes(2026), 'and always contains the year being viewed')
+}
+
+// ─────────────────────────────────────────────── a shoot can run several days
+// The inclusive range is where off-by-ones live: a Wed→Fri shoot is 3 days, and
+// it has to appear in 3 calendar cells and hold its gear on all 3.
+eq(setDays.setDays('2026-09-09', '2026-09-11'), ['2026-09-09', '2026-09-10', '2026-09-11'], 'both ends are included')
+eq(setDays.setDays('2026-09-09', '2026-09-09'), ['2026-09-09'], 'one day is one day')
+eq(setDays.setDays('2026-09-09', ''), ['2026-09-09'], 'a missing end means one day')
+eq(setDays.setDays('2026-09-09', '2026-09-01'), ['2026-09-09'], 'and a backwards range never books days before the start')
+eq(setDays.setDays('', '2026-09-11'), [], 'no start, no shoot')
+eq(setDays.setDays('2026-12-30', '2027-01-02').length, 4, 'the range crosses a year')
+eq(setDays.setDays('2026-02-27', '2026-03-01').length, 3, 'and a month end')
+eq(setDays.setSpanDays('2026-09-09', '2026-09-11'), 3, 'the span is the day count')
+eq(
+  setDays.setSpanDays('2026-09-09', '2026-09-11'),
+  estimate.billableDays('2026-09-09', '2026-09-11'),
+  'what a shoot occupies is what it bills — the two rules must agree',
+)
+eq(setDays.setDays('2026-01-01', '2030-01-01').length, setDays.MAX_SET_DAYS, 'a mistyped year is clamped, not rendered')
+ok(setDays.coversDay('2026-09-09', '2026-09-11', '2026-09-10'), 'a middle day is covered')
+ok(!setDays.coversDay('2026-09-09', '2026-09-11', '2026-09-12'), 'the day after is not')
+ok(!setDays.coversDay('2026-09-09', '', '2026-09-10'), 'a one-day set covers only its own day')
+ok(setDays.windowsOverlap({ from: '2026-09-09', to: '2026-09-11' }, { from: '2026-09-11' }), 'touching ranges overlap')
+ok(!setDays.windowsOverlap({ from: '2026-09-09', to: '2026-09-10' }, { from: '2026-09-11' }), 'adjacent ones do not')
+eq(setDays.endsOnFor('2026-09-09', ''), '2026-09-09', 'an empty end resolves to the start')
+{
+  // Capacity is per studio per DAY: a 3-day job must clear every day it covers,
+  // and the caller has to be told WHICH day is full.
+  const busy = { '2026-09-10': 5 }
+  const countOn = (iso) => busy[iso] ?? 1
+  eq(setDays.firstFullDay('2026-09-09', '2026-09-11', countOn, 5), '2026-09-10', 'names the full day inside the range')
+  eq(setDays.firstFullDay('2026-09-09', '2026-09-09', countOn, 5), null, 'a day with room passes')
+  eq(setDays.firstFullDay('2026-09-11', '2026-09-12', countOn, 5), null, 'and a range that misses it passes')
+}
+eq(setDays.spanLabel('2026-09-09', '2026-09-09'), 'Sep 9', 'one day reads as one date')
+eq(setDays.spanLabel('2026-09-09', '2026-09-11'), 'Sep 9 – 11', 'a span inside one month says the month once')
+eq(setDays.spanLabel('2026-09-29', '2026-10-01'), 'Sep 29 – Oct 1', 'across months it says both')
+eq(setDays.spanSummary('2026-09-09', '2026-09-11'), '3 days · Sep 9 – 11', 'the summary leads with how long')
+eq(setDays.spanSummary('2026-09-09', '2026-09-09'), 'Sep 9', 'and says nothing extra for one day')
+{
+  // The estimate and both documents follow the window, not the first day.
+  const wide = { ...job, endsOn: '2026-09-12' }
+  const e3 = estimate.buildEstimate(wide, { inventory })
+  eq(e3.days, 3, 'three days on the job')
+  eq(e3.total, 540, 'and the estimate bills all three')
+  const t = bytes(packingPdf.buildPackingListPdf(e3, { booking, inventory }))
+  ok(t.includes('Set dates'), 'the pull sheet says dates, plural, for a multi-day shoot')
+  ok(t.includes('2026-09-10') || t.includes('to  2026-09-12') || t.includes('2026-09-12'), 'and prints the window')
 }
 
 console.log(`OK — ${n} assertions passed`)

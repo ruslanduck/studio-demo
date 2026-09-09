@@ -18,7 +18,8 @@ import {
   Lock,
   Tag,
 } from 'lucide-react'
-import { useStore, notArchived, MAX_SETS_PER_DAY } from '../store'
+import { useStore, notArchived, capacityError } from '../store'
+import { setSpanDays } from '../lib/setDays'
 import { usePersisted } from '../lib/usePersisted'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -120,7 +121,10 @@ function Highlight({ text, query }) {
   )
 }
 
-const dateRange = (from, to) => (!to || to === from ? from : `${from} → ${to}`)
+// A shoot can run several days, so the window says how many — "→ 2026-09-11"
+// alone leaves the reader counting on their fingers.
+const dateRange = (from, to) =>
+  !to || to === from ? from : `${from} → ${to} · ${setSpanDays(from, to)} days`
 
 export default function Orders() {
   const orders = useStore((s) => s.orders)
@@ -291,7 +295,7 @@ export default function Orders() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-slate-900">Jobs</h2>
           <p className="text-sm text-slate-500">
-            {liveOrders.length} orders
+            {liveOrders.length} jobs
             {holdCount > 0 && ` · ${holdCount} on hold`}
           </p>
         </div>
@@ -525,18 +529,15 @@ export default function Orders() {
         jobTypes={typeOptions}
         onClose={() => setEditor({ open: false, order: null })}
         onProceed={(payload) => {
-          // The studio/day capacity is checked HERE, before the crew spends time
+          // The studio capacity is checked HERE, before the crew spends time
           // picking gear — createOrder checks it again when it actually writes.
-          const used = bookings.filter(
-            (b) =>
-              b.studioId === payload.studioId &&
-              b.date === payload.startsOn &&
-              b.status === 'active',
-          ).length
-          if (used >= MAX_SETS_PER_DAY)
-            return {
-              error: `${studioLabel(payload.studioId)} already has ${used} sets on ${payload.startsOn} (max ${MAX_SETS_PER_DAY}). Pick another studio or date.`,
-            }
+          // Every day of the window has to have room, not just the first.
+          const full = capacityError(bookings, {
+            studioId: payload.studioId,
+            from: payload.startsOn,
+            to: payload.endsOn,
+          })
+          if (full) return { error: full }
           setDraft(payload)
           createdDraftId.current = null
           setEqEditor({ open: true, order: { ...payload, id: null, lines: [] } })
@@ -715,7 +716,10 @@ function OrderDetail({
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             The shoot
           </h4>
-          <Row icon={CalendarRange} label="Set date">
+          <Row
+            icon={CalendarRange}
+            label={setSpanDays(order.startsOn, order.endsOn) > 1 ? 'Set dates' : 'Set date'}
+          >
             {order.startsOn ? dateRange(order.startsOn, order.endsOn) : '—'}
           </Row>
           <Row icon={Building2} label="Studio">

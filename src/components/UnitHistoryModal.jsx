@@ -4,6 +4,7 @@ import Modal from './Modal'
 import { useStore } from '../store'
 import { studioLabel } from '../data/studios'
 import { usingSupabase, getUnitHistory } from '../data/repository'
+import { spanSummary } from '../lib/setDays'
 
 // Click a unit → every set it was reserved for → each set's roster.
 //
@@ -33,6 +34,7 @@ export default function UnitHistoryModal({ open, onClose, unit, itemName, onOpen
           setId: b.id,
           title: b.title,
           date: b.date,
+          endDate: b.endDate,
           studioId: b.studioId,
           reservationStatus: b.status === 'active' ? 'reserved' : b.status,
           roster: [
@@ -104,7 +106,9 @@ export default function UnitHistoryModal({ open, onClose, unit, itemName, onOpen
                   </span>
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-6 text-xs text-slate-500">
-                  <span>{r.date}</span>
+                  {/* A shoot can run several days: "Sep 9" alone would hide
+                      two of the three this copy was actually out for. */}
+                  <span>{spanSummary(r.date, r.endDate || r.reservedTo)}</span>
                   <span className="capitalize text-slate-400">{r.reservationStatus}</span>
                 </div>
 

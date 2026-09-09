@@ -18,6 +18,7 @@ import KitStagingModal from './KitStagingModal'
 import UnitPickList from './UnitPickList'
 import SelectField from './SelectField'
 import { studioLabel } from '../data/studios'
+import { setSpanDays } from '../lib/setDays'
 import { useStore, notArchived } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
 import { buildEstimate, money } from '../lib/estimate'
@@ -517,7 +518,15 @@ export default function OrderEquipmentModal({
               <span className="font-semibold text-slate-800">{order?.jobName}</span>
               {order?.setLabel ? ` · ${order.setLabel}` : ''}
               {order?.studioId ? ` · ${studioLabel(order.studioId)}` : ''}
-              {order?.startsOn ? ` · ${order.startsOn}` : ''}
+              {/* The whole window: a 3-day shoot picks gear for 3 days, and
+                  the availability numbers in this very window say so. */}
+              {order?.startsOn
+                ? ` · ${order.startsOn}${
+                    order.endsOn && order.endsOn !== order.startsOn
+                      ? ` → ${order.endsOn} · ${setSpanDays(order.startsOn, order.endsOn)} days`
+                      : ''
+                  }`
+                : ''}
               <span className="mt-1 block text-slate-500">
                 Nothing is saved yet — <strong>Create job</strong> writes the job and this
                 equipment together. Gear can be changed later.

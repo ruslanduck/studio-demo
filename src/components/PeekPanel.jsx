@@ -24,6 +24,7 @@ import { orderStatusMeta } from '../data/orderStatus'
 import { buildEstimate, money } from '../lib/estimate'
 import { itemCount, kindLabel } from '../data/inventory'
 import { availableCount } from '../lib/availability'
+import { spanSummary } from '../lib/setDays'
 import ActivityList from './ActivityList'
 import { useActivity } from '../lib/useActivity'
 import { orderFeed } from '../lib/activity'
@@ -323,7 +324,7 @@ function OrderPeek({ id }) {
                 onClick={() => peek({ type: 'job', id: booking.id })}
                 className="text-violet-600 underline decoration-violet-300 underline-offset-2 hover:text-violet-800"
               >
-                {booking.title} · {booking.startTime}–{booking.endTime}
+                {booking.title} · {spanSummary(booking.date, booking.endDate)}
               </button>
             </Field>
           )}
@@ -839,11 +840,9 @@ function JobPeek({ id }) {
         badges={
           <>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-              {booking.date}
+              {spanSummary(booking.date, booking.endDate)}
             </span>
-            <span className="text-xs text-slate-500">
-              {studioLabel(booking.studioId)} · {booking.startTime}–{booking.endTime}
-            </span>
+            <span className="text-xs text-slate-500">{studioLabel(booking.studioId)}</span>
           </>
         }
         onOpenFull={() => openCalendarOn(booking.date)}

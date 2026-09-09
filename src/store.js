@@ -72,13 +72,15 @@ import {
   archiveOrder as sbArchiveOrder,
   restoreOrder as sbRestoreOrder,
   createSetForOrder as sbCreateSetForOrder,
-  countSetsOn as sbCountSetsOn,
+  syncSetForOrder as sbSyncSetForOrder,
+  activeSetsInRange as sbActiveSetsInRange,
   setOrderLines as sbSetOrderLines,
   setPackingSignoff as sbSetPackingSignoff,
   clearPackingSignoff as sbClearPackingSignoff,
 } from './data/repository'
 import { supabase } from './lib/supabase'
 import { reservedUnitsForOrder, overlaps } from './lib/availability'
+import { coversDay, endsOnFor, firstFullDay, setSpanDays } from './lib/setDays'
 import { isClosedStatus } from './data/orderStatus'
 import { SCAN_OUT, SCAN_IN, expectedUnits, resolveScan } from './lib/scanning'
 import { EVENT, diffOrderLines } from './lib/activity'
@@ -162,8 +164,8 @@ function buildSeedData() {
     title: t.title,
     studioId: t.studioId,
     date: format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd'),
-    startTime: t.startTime,
-    endTime: t.endTime,
+    // A shoot runs for whole days and may run for several (`days`, default 1).
+    endDate: format(addDays(weekStart, t.dayOffset + ((t.days || 1) - 1)), 'yyyy-MM-dd'),
     photographer: t.photographer,
     model: t.model,
     unitIds: [],
@@ -287,7 +289,9 @@ function buildSeedData() {
       jobName: set?.title ?? o.setTitle ?? null,
       studioId: set?.studioId ?? null,
       startsOn: set?.date ?? orderedAt,
-      endsOn: set?.date ?? orderedAt,
+      // The job's window IS its shoot's window — a multi-day set bills, holds
+      // and packs for every one of those days.
+      endsOn: set?.endDate ?? set?.date ?? orderedAt,
       photographer: set?.photographer ?? null,
       photographerId: null,
       createdBy: 'Ann Taylor',
@@ -452,6 +456,39 @@ function resolveScenario(list, inventory, kits) {
 // A studio runs at most this many shoots a day (epic #5 terminology: Sets).
 export const MAX_SETS_PER_DAY = 5
 
+// How many shoots a studio already holds on ONE day. A set can span days now,
+// so this asks whether its window covers the day, not whether it starts on it.
+// Archived shoots don't count — they left the calendar, and counting them
+// quietly shrank the studio's capacity.
+export function setsUsedOn(bookings, studioId, iso, excludeSetId = null) {
+  return bookings.filter(
+    (b) =>
+      b.studioId === studioId &&
+      b.status === 'active' &&
+      !b.archivedAt &&
+      b.id !== excludeSetId &&
+      coversDay(b.date, b.endDate, iso),
+  ).length
+}
+
+// Capacity is per studio per DAY, so a multi-day job has to clear every day it
+// covers. Returns a sentence naming WHICH day is full — without that the crew
+// has to guess which end of the range to move — or null when the range fits.
+//
+// `excludeSetId` is the shoot being edited: it must not count against itself, or
+// stretching a job by one day would report the studio as full of itself.
+export function capacityError(bookings, { studioId, from, to, excludeSetId = null }) {
+  if (!studioId || !from) return null
+  const countOn = (iso) => setsUsedOn(bookings, studioId, iso, excludeSetId)
+  const full = firstFullDay(from, to, countOn, MAX_SETS_PER_DAY)
+  if (!full) return null
+  const span = setSpanDays(from, to)
+  const n = countOn(full)
+  return `${studioLabel(studioId)} already has ${n} set${n === 1 ? '' : 's'} on ${full} (max ${MAX_SETS_PER_DAY}). Pick another studio${
+    span > 1 ? ', or shorten the range' : ' or another date'
+  }.`
+}
+
 // Normalize an authored order (5.1/5.2) into the shape the UI reads. `createdBy`
 // is set here for local mode only; in Supabase mode the DB fills created_by from
 // auth.uid() and hydrate() reads the profile name back.
@@ -564,7 +601,8 @@ function reservationMap(bookings) {
 // Map each reserved unit id -> every shoot holding it, WITH DATES. Gear is
 // committed per day, so a picker asking about the 31st has to know that the
 // camera's only commitment is on the 30th. Supabase mode reads the same shape
-// off set_units (reserved_from/reserved_to); local bookings are single-day.
+// off set_units (reserved_from/reserved_to); local mode reads it off the shoot's
+// own window, which since 20260909120000 can be several days long.
 function reservationWindows(bookings) {
   const map = new Map()
   for (const b of bookings) {
@@ -575,7 +613,7 @@ function reservationWindows(bookings) {
       setTitle: b.title,
       studioId: b.studioId,
       from: b.date,
-      to: b.date,
+      to: endsOnFor(b.date, b.endDate),
     }
     for (const uid of b.unitIds || []) {
       const list = map.get(uid)
@@ -2241,29 +2279,48 @@ export const useStore = create(
         const { jobName, studioId, startsOn } = order
         if (!jobName?.trim()) return { error: 'Give the job a name.' }
         if (!studioId) return { error: 'Pick a studio.' }
-        if (!startsOn) return { error: 'Pick the set date.' }
+        if (!startsOn) return { error: 'Pick the start date.' }
+        // A shoot can run several days; a missing or backwards end is one day.
+        const endsOn = endsOnFor(startsOn, order.endsOn)
 
-        const used = usingSupabase
-          ? await sbCountSetsOn(studioId, startsOn)
-          : get().bookings.filter(
-              (b) => b.studioId === studioId && b.date === startsOn && b.status === 'active',
-            ).length
-        if (used >= MAX_SETS_PER_DAY)
-          return {
-            error: `${studioLabel(studioId)} already has ${used} sets on ${startsOn} (max ${MAX_SETS_PER_DAY}). Pick another studio or date.`,
-          }
+        // Every day of the window has to have room, not just the first one.
+        // Supabase mode asks the DB for the overlapping sets and then judges them
+        // with the SAME function local mode uses, so the two can't drift.
+        const held = usingSupabase
+          ? (await sbActiveSetsInRange(studioId, startsOn, endsOn)).map((s) => ({
+              id: s.id,
+              studioId,
+              status: 'active',
+              date: s.from,
+              endDate: s.to,
+            }))
+          : get().bookings
+        const full = capacityError(held, { studioId, from: startsOn, to: endsOn })
+        if (full) return { error: full }
 
         const logNew = (id) =>
           get().logActivity({
             type: EVENT.ORDER_CREATED,
             entityType: 'order',
             entityId: id,
-            data: { jobName: jobName.trim(), studioId, startsOn, poNumber: order.poNumber ?? null },
+            data: {
+              jobName: jobName.trim(),
+              studioId,
+              startsOn,
+              endsOn,
+              days: setSpanDays(startsOn, endsOn),
+              poNumber: order.poNumber ?? null,
+            },
           })
 
         if (usingSupabase) {
-          const id = await sbCreateOrder({ ...order, status: order.status || 'hold' })
-          await sbCreateSetForOrder(id, { jobName, studioId, date: startsOn })
+          const id = await sbCreateOrder({ ...order, endsOn, status: order.status || 'hold' })
+          await sbCreateSetForOrder(id, {
+            jobName,
+            studioId,
+            date: startsOn,
+            endDate: endsOn,
+          })
           logNew(id)
           await get().hydrate({ quiet: true })
           return { ok: true, id }
@@ -2283,8 +2340,7 @@ export const useStore = create(
           title: jobName.trim(),
           studioId,
           date: startsOn,
-          startTime: order.startTime || '09:00',
-          endTime: order.endTime || '18:00',
+          endDate: endsOn,
           photographer: order.photographer || '',
           model: '',
           unitIds: [],
@@ -2294,7 +2350,7 @@ export const useStore = create(
         }
         const nextOrders = [
           ...state.orders,
-          resolveOrder({ ...order, id, setId, setTitle: jobName.trim() }, state.companies),
+          resolveOrder({ ...order, endsOn, id, setId, setTitle: jobName.trim() }, state.companies),
         ].sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
         // A new order is a Hold (reserves nothing), but recompute anyway so the
         // one path stays correct if it ever arrives confirmed.
@@ -2315,6 +2371,42 @@ export const useStore = create(
       updateOrder: async (id, changes) => {
         // Status moves are the interesting ones: confirming is what commits gear.
         const before = get().orders.find((o) => o.id === id)
+        // A shoot's window: normalise it here so a backwards range can never be
+        // stored, whatever calls this.
+        if (changes.startsOn !== undefined || changes.endsOn !== undefined) {
+          const from = changes.startsOn ?? before?.startsOn
+          changes = { ...changes, endsOn: endsOnFor(from, changes.endsOn ?? before?.endsOn) }
+        }
+        // Moving or stretching a job has to clear the studio's per-day capacity
+        // just like creating one — otherwise the guard is bypassed by booking one
+        // day and then extending it, which the range field makes an obvious move.
+        // The job's own shoot is excluded, or it would count against itself.
+        const windowMoved =
+          before &&
+          (('studioId' in changes && changes.studioId !== before.studioId) ||
+            ('startsOn' in changes && changes.startsOn !== before.startsOn) ||
+            ('endsOn' in changes && changes.endsOn !== before.endsOn))
+        if (windowMoved) {
+          const studioId = changes.studioId ?? before.studioId
+          const from = changes.startsOn ?? before.startsOn
+          const to = endsOnFor(from, changes.endsOn ?? before.endsOn)
+          const held = usingSupabase
+            ? (await sbActiveSetsInRange(studioId, from, to)).map((s) => ({
+                id: s.id,
+                studioId,
+                status: 'active',
+                date: s.from,
+                endDate: s.to,
+              }))
+            : get().bookings
+          const full = capacityError(held, {
+            studioId,
+            from,
+            to,
+            excludeSetId: before.setId || null,
+          })
+          if (full) return { error: full }
+        }
         const statusMoved = changes.status && before && changes.status !== before.status
         const reopened = statusMoved && isClosedStatus(before?.status)
         // Only a real MOVE gets a status event. The editor always submits the
@@ -2348,6 +2440,21 @@ export const useStore = create(
 
         if (usingSupabase) {
           await sbUpdateOrder(id, changes)
+          // The shoot mirrors the job: name, studio and window. Local mode always
+          // did this; Supabase mode did NOT, so editing a date moved the
+          // reservations and left the chip on the old day of the calendar.
+          if (before?.setId) {
+            try {
+              await sbSyncSetForOrder(before.setId, {
+                jobName: changes.jobName ?? before.jobName,
+                studioId: changes.studioId ?? before.studioId,
+                date: changes.startsOn ?? before.startsOn,
+                endDate: changes.endsOn ?? before.endsOn,
+              })
+            } catch (e) {
+              console.error('could not move the shoot with its job:', e)
+            }
+          }
           // Reservations follow the order: hydrate first so the sync sees the new
           // status/dates, then hydrate again to pick up the set_units it wrote.
           await get().hydrate({ quiet: true })
@@ -2369,7 +2476,7 @@ export const useStore = create(
         const orders = state.orders
           .map((o) => (o.id === id ? resolveOrder({ ...o, ...changes, id }, state.companies) : o))
           .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
-        // The Set mirrors the order's job name, studio and set date.
+        // The Set mirrors the order's job name, studio and working window.
         const target = orders.find((o) => o.id === id)
         const mirrored = state.bookings.map((b) =>
           target?.setId && b.id === target.setId
@@ -2378,6 +2485,7 @@ export const useStore = create(
                 title: target.jobName ?? b.title,
                 studioId: target.studioId ?? b.studioId,
                 date: target.startsOn ?? b.date,
+                endDate: endsOnFor(target.startsOn ?? b.date, target.endsOn ?? b.endDate),
                 photographer: target.photographer ?? b.photographer,
               }
             : b,
@@ -2748,6 +2856,8 @@ export const useStore = create(
 
       // Create a booking and reserve its selected units.
       createBooking: async (data) => {
+        // A shoot is a range of whole days; a missing or backwards end is one day.
+        data = { ...data, endDate: endsOnFor(data.date, data.endDate) }
         if (usingSupabase) {
           const id = await sbCreateBooking(data)
           await get().hydrate({ quiet: true })
@@ -2768,6 +2878,11 @@ export const useStore = create(
 
       // Update a booking and re-reserve units to match its new unit list.
       updateBooking: async (id, changes) => {
+        if (changes.date !== undefined || changes.endDate !== undefined) {
+          const b = get().bookings.find((x) => x.id === id)
+          const from = changes.date ?? b?.date
+          changes = { ...changes, endDate: endsOnFor(from, changes.endDate ?? b?.endDate) }
+        }
         if (usingSupabase) {
           await sbUpdateBooking(id, changes)
           await get().hydrate({ quiet: true })

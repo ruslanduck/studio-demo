@@ -20,6 +20,7 @@ import {
 } from 'date-fns'
 import { useStore } from '../store'
 import { brandsIn, jobTypesIn } from '../lib/orderSearch'
+import { setDays, spanSummary } from '../lib/setDays'
 import { studioLabel, studioColor } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { useCalendarFlip } from '../lib/useCalendarFlip'
@@ -72,7 +73,6 @@ export default function StudioCalendar() {
   const brandOptions = useMemo(() => brandsIn(orders), [orders])
   const typeOptions = useMemo(() => jobTypesIn(orders), [orders])
   const openOrderDraft = useStore((s) => s.openOrderDraft)
-  const openOrder = useStore((s) => s.openOrder)
   const peek = useStore((s) => s.peek)
   const can = useCan()
   const canCreate = can(CAP.BOOKING_CREATE)
@@ -85,9 +85,15 @@ export default function StudioCalendar() {
 
   const refDate = useMemo(() => parseISO(selectedDate), [selectedDate])
 
-  // All active bookings grouped by ISO date, sorted by time then studio. Each
-  // chip also carries its order's hand-typed Set designation — with several
+  // All active bookings grouped by ISO date, sorted by studio then job name.
+  // Each chip also carries its order's hand-typed Set designation — with several
   // shoots in one studio on one day, that's what tells them apart at a glance.
+  //
+  // A shoot can run for SEVERAL DAYS, and it appears in EVERY day it covers:
+  // the studio really is taken on all of them, and a grid that showed the job
+  // only on its first day would read as free for the rest. `dayIndex` /
+  // `spanDays` are what let a chip say "Day 2/3" instead of pretending each
+  // cell is a separate booking.
   const byDay = useMemo(() => {
     const setLabelOf = new Map(orders.map((o) => [o.id, o.setLabel]))
     const map = new Map()
@@ -96,14 +102,22 @@ export default function StudioCalendar() {
       // An archived shoot is off the calendar — it lives in the Archive until
       // someone restores it (archiving its order takes it down with it).
       if (b.archivedAt) continue
-      if (!map.has(b.date)) map.set(b.date, [])
-      map.get(b.date).push({ ...b, setLabel: setLabelOf.get(b.orderId) || null })
+      const days = setDays(b.date, b.endDate)
+      days.forEach((iso, i) => {
+        if (!map.has(iso)) map.set(iso, [])
+        map.get(iso).push({
+          ...b,
+          setLabel: setLabelOf.get(b.orderId) || null,
+          spanDays: days.length,
+          dayIndex: i + 1,
+        })
+      })
     }
     for (const list of map.values()) {
       list.sort(
         (a, b) =>
-          (a.startTime || '').localeCompare(b.startTime || '') ||
-          String(a.studioId).localeCompare(String(b.studioId)),
+          String(a.studioId).localeCompare(String(b.studioId)) ||
+          (a.title || '').localeCompare(b.title || ''),
       )
     }
     return map
@@ -143,7 +157,9 @@ export default function StudioCalendar() {
   // and its Set lands on the calendar; equipment is added from the order.
   const openCreate = (studioId, iso) => {
     if (!canCreate) return
-    setOrderEditor({ open: true, prefill: { studioId, startsOn: iso } })
+    // Both ends of the window: clicking one cell means a one-day shoot until
+    // the crew says otherwise, and the form shows that rather than an empty box.
+    setOrderEditor({ open: true, prefill: { studioId, startsOn: iso, endsOn: iso } })
   }
   // Click a shoot → open it as a layered card (crew, its order, the gear on the
   // day) without leaving the calendar; from there the order and every item are a
@@ -486,7 +502,12 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
                 // Job names follow the studio's convention
                 // (20260716_AT_MAIN_SepMM_Missy_OMSet1), which never fits a day
                 // cell — the full name is on hover.
-                title={[b.title, b.setLabel && `Set ${b.setLabel}`, `${b.startTime}–${b.endTime}`]
+                title={[
+                  b.title,
+                  b.setLabel && `Set ${b.setLabel}`,
+                  spanSummary(b.date, b.endDate),
+                  b.spanDays > 1 && `day ${b.dayIndex} of ${b.spanDays}`,
+                ]
                   .filter(Boolean)
                   .join(' · ')}
                 className="cursor-pointer rounded-md px-1.5 py-1 shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
@@ -494,10 +515,13 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
                 <div className="truncate text-xs font-semibold leading-tight">
                   {b.title}
                 </div>
-                <div className="truncate text-[10px] font-medium opacity-80">
-                  {b.startTime}–{b.endTime}
-                  {b.setLabel && ` · ${b.setLabel}`}
-                </div>
+                {(b.spanDays > 1 || b.setLabel) && (
+                  <div className="truncate text-[10px] font-medium opacity-80">
+                    {[b.spanDays > 1 && `Day ${b.dayIndex}/${b.spanDays}`, b.setLabel]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                )}
               </div>
             ))}
             {cellBookings.length === 0 && (
@@ -612,13 +636,24 @@ function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek }) {
               onOpenEdit(b)
             }}
             style={chipStyle(studioColor(b.studioId))}
-            title={[studioLabel(b.studioId), b.title, b.setLabel && `Set ${b.setLabel}`]
+            title={[
+              studioLabel(b.studioId),
+              b.title,
+              b.setLabel && `Set ${b.setLabel}`,
+              spanSummary(b.date, b.endDate),
+              b.spanDays > 1 && `day ${b.dayIndex} of ${b.spanDays}`,
+            ]
               .filter(Boolean)
               .join(' · ')}
             className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-[10px] leading-tight shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
           >
             <span className="font-bold">{b.studioId}</span>
             <span className="truncate">{b.title}</span>
+            {b.spanDays > 1 && (
+              <span className="shrink-0 font-semibold opacity-80">
+                {b.dayIndex}/{b.spanDays}
+              </span>
+            )}
           </div>
         ))}
         {extra > 0 && (

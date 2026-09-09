@@ -11,7 +11,8 @@
 >   every action attributed (`created_by`, etc.). One flat role **Equipment Team** behind a capability
 >   layer — `src/lib/permissions.js` + `useCan()`; **never hardcode role checks**.
 > - **Responsive:** desktop / iPad / iPhone (sidebar→drawer, master-detail inventory).
-> - **English-only UI:** don't use native `<input type=date/time>` (locale-bound); use `DateField`/`TimeField`.
+> - **English-only UI:** don't use native `<input type=date/time>` (locale-bound); use `DateField`.
+>   (`TimeField` is gone — nothing in the app collects a time any more; a shoot is a range of whole days.)
 > - **Secrets:** `.env.local` (gitignored) holds Supabase keys + DB password + service_role. Public
 >   URL+anon are in committed `.env.production` for the prod build. service_role = local seeding only.
 > - **Deploy:** push to `main` → GitHub Pages (~1–2 min). Confirm via the **CDN**, not the rate-limited GitHub
@@ -1401,6 +1402,62 @@
 > has already produced three one-mode-only bugs (the reservation-window guard, `resolveOrder`'s whitelist, live
 > confirm→reserve). Third: one free-tier database serves both the demo and real data, with no backups. Fourth:
 > one flat role. All four outrank the naming.
+> **CHANGE — a shoot can run for SEVERAL DAYS, and a set is defined by dates, not times**
+> (`20260909120000_multi_day_sets.sql`, applied and verified on prod). Requested: "Support multi-day job
+> creation / заменить выбор даты и времени начала-конца сета на выбор даты начала и даты конца".
+> This reverses the earlier "a shoot is ALWAYS one day" decision, and it was cheap because that decision only
+> ever lived in TWO places: the form, which wrote `ends_on = starts_on`, and `sets`, which has one `date` and
+> could therefore only put a chip in one calendar cell. Everything downstream already read a WINDOW —
+> `orders.starts_on/ends_on`, `set_units.reserved_from/reserved_to`, `isUnitFree(window)`,
+> `estimate.billableDays`, `orderSearch`'s overlap test and both PDFs' "A to B (N days)" fallback.
+> **The times are gone, not hidden.** `sets.start_time/end_time` were fiction: the grid is studio × day, not
+> hourly, and an order-created set got a hardcoded 09:00–18:00 because nothing collected one. Both the job form
+> and the legacy `BookingModal` now take **First day / Last day**; the columns stay (nothing here deletes data)
+> but nothing writes or reads them, so `TimeField.jsx` was deleted rather than left to read as live.
+> `sets.end_date` is nullable and **NULL means "ends the day it starts"** — which is what all 20 existing rows
+> mean, so there is no backfill and a browser still holding yesterday's bundle keeps working. It is the
+> OUTERMOST `getBookings` select layer (4th time that rule has mattered): a database without the migration
+> degrades to one-day sets instead of losing the roster and the reservations with them.
+> **The calendar puts the chip in EVERY day the shoot covers**, labelled "Day 2/3" — a grid that showed the job
+> only on its first day would read as FREE for the rest, which is the whole point of supporting a span.
+> `byDay` expands each booking over `setDays(date, endDate)`; the chips' second line is the day counter + Set
+> label where the time range used to be, and the span is in the tooltip.
+> **Capacity is per studio per DAY, so a multi-day job has to clear every day it covers.** New pure
+> `src/lib/setDays.js` (`setDays`/`setSpanDays`/`coversDay`/`windowsOverlap`/`firstFullDay`/`spanLabel`,
+> `MAX_SET_DAYS = 60` so a mistyped year can't render 3600 chips) + store `setsUsedOn`/`capacityError`, used by
+> create, edit AND the pre-flight check in `Orders.jsx`. The message NAMES the full day ("Studio 1 already has
+> 5 sets on 2026-09-08") — without that the crew has to guess which end of the range to move. Two fixes fell
+> out of writing it: the shoot being edited is EXCLUDED (`excludeSetId`), or stretching a job by a day would
+> report the studio as full of itself; and archived shoots no longer count, which had been quietly shrinking a
+> studio's day. Editing now checks capacity at all — it never did, so the old guard was bypassable by booking
+> one day and extending it, which the range field makes an obvious move.
+> ⚠️ **Fixed a real Supabase-only gap found while wiring this:** `updateOrder` wrote the `orders` row and
+> nothing else, so editing a job's date moved its `set_units` and left the shoot on the OLD day of the
+> calendar. Local mode had always mirrored the set in memory. New repository `syncSetForOrder` (job name,
+> studio, window) closes it — the roster is deliberately left alone, that needs a contact id and is its own
+> write. This is the "same logic written twice" class again (54 `usingSupabase` branches).
+> `countSetsOn` was replaced by `activeSetsInRange`, which fetches the overlapping sets and judges them with
+> the SAME `capacityError` local mode uses, so the two modes cannot drift.
+> **28 new assertions (144 total).** One of them pins `setSpanDays === billableDays` for the same range: what a
+> shoot OCCUPIES and what it BILLS are two rules in two files, and they must never disagree.
+> Demo content: two seeded shoots now span days (`days: 3` in Studio 1, `days: 2` in Studio L) — chosen so no
+> order goes short, since a longer hold competes with the other days' orders for the same stock.
+> Verified in local mode by measurement: the 3-day job renders Day 1/3–3/3 across Mon–Wed and the keyboard's
+> availability grid moved from 2/1/0 out on Sep 7/8/9 to **2/3/2**, arithmetic matching the orders on those
+> days; stretching it to 5 days through the form moved the chips to five cells, the card to "Set dates ·
+> 5 days", the estimate to "5 billable day(s) · $520.00" and Sep 10/11 to 7/4 out; creating a 3-day job from
+> scratch wrote it across next week's grid; with the cap temporarily set to 1 the range was refused naming the
+> full day, while shrinking that same job was allowed (the exclude rule). Reseeded afterwards; 0 console errors.
+> On prod, behaviourally as the app's own `authenticated` role: the top `getBookings` layer returns 20 sets,
+> all 20 with `end_date` null; a 3-day window wrote and read back; `end_date < date` was refused with **23514**;
+> the capacity lookup answered over the range; then reverted — **0 sets carry a multi-day window**, prod exactly
+> as found.
+> Also fixed while here: the Jobs header still read "14 **orders**" (a miss from the 69-string rename), and
+> three pieces of dead code went — `TimeField`, `KitRow`/`ItemLine` in `OrderEditorModal` (leftovers from the
+> inline equipment block) and an unused `openOrder` selector in the calendar.
+> ℹ️ Prod's legacy "test 3107" job (`starts_on` 06 Aug → `ends_on` 15 Aug) is now a LEGITIMATE 10-day job
+> rather than the data error it used to be — but its shoot still has `end_date` null, so the calendar shows it
+> on one day. Opening and re-saving it through the form mirrors the window onto the set.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

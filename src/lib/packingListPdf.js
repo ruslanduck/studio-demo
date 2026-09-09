@@ -127,10 +127,12 @@ export function buildPackingListPdf(orderOrEstimate, context, opts = {}) {
     ['Brand', est.order.brand || '—'],
     ['Type', est.order.jobType || '—'],
     [
-      'Set date',
+      // A shoot may run for several days (20260909120000), and the sheet has to
+      // say so: the crew reads this to know when the gear goes out and when it
+      // is due back.
+      est.days > 1 ? 'Set dates' : 'Set date',
       est.order.startsOn
         ? est.order.endsOn && est.order.endsOn !== est.order.startsOn
-          // Legacy rows from when an order could span days.
           ? `${est.order.startsOn} to ${est.order.endsOn}  (${est.days} days)`
           : est.order.startsOn
         : '—',

@@ -14,11 +14,11 @@ import { useStore, notArchived } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
 import { availableCount, resolveUnitsForQuantities } from '../lib/availability'
 import { studioLabel } from '../data/studios'
+import { endsOnFor, spanSummary } from '../lib/setDays'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 import DateField from './DateField'
-import TimeField from './TimeField'
 import KitStagingModal from './KitStagingModal'
 import SelectField from './SelectField'
 import ComboField from './ComboField'
@@ -32,8 +32,7 @@ function blankForm(prefill) {
     title: '',
     studioId: prefill?.studioId ?? '1',
     date: prefill?.date ?? '',
-    startTime: '09:00',
-    endTime: '17:00',
+    endDate: prefill?.date ?? '',
     photographer: '',
     model: '',
     notes: '',
@@ -68,7 +67,12 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
 
   // Availability is asked about THIS shoot's day — gear out on another day is
   // back by then (see lib/availability isUnitFree).
-  const dateWindow = useMemo(() => ({ from: form.date || null, to: form.date || null }), [form.date])
+  // Gear is held for every day of the shoot, so availability is asked about the
+  // whole range — not just the first day.
+  const dateWindow = useMemo(
+    () => ({ from: form.date || null, to: form.date ? endsOnFor(form.date, form.endDate) : null }),
+    [form.date, form.endDate],
+  )
 
   // Units already reserved by *this* booking are available to it when editing.
   const bookingUnits = useMemo(
@@ -85,8 +89,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
         title: booking.title,
         studioId: booking.studioId,
         date: booking.date,
-        startTime: booking.startTime,
-        endTime: booking.endTime,
+        endDate: booking.endDate ?? booking.date,
         photographer: booking.photographer ?? '',
         model: booking.model ?? '',
         notes: booking.notes ?? '',
@@ -126,6 +129,10 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   }
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+  // The last day follows the first while it is empty or would sit before it, so
+  // a one-day shoot stays one click and the range never reads backwards.
+  const setStart = (date) =>
+    setForm((f) => ({ ...f, date, endDate: !f.endDate || f.endDate < date ? date : f.endDate }))
 
   // Units of an item that this booking may reserve (free + its own), minus any
   // already claimed by a staged kit.
@@ -269,29 +276,27 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                 className={fieldClass}
               />
             </div>
+            {/* A shoot books whole days, from the first to the last. It used
+                to take one date plus a start and end time; the grid is
+                studio x day, so the times said nothing the range doesn't. */}
             <div>
-              <label className={labelClass}>Date</label>
+              <label className={labelClass}>First day</label>
               <DateField
                 value={form.date}
-                onChange={set('date')}
+                onChange={(e) => setStart(e.target.value)}
                 className={fieldClass}
               />
             </div>
             <div>
-              <label className={labelClass}>Start time</label>
-              <TimeField
-                value={form.startTime}
-                onChange={set('startTime')}
+              <label className={labelClass}>Last day</label>
+              <DateField
+                value={form.endDate}
+                onChange={set('endDate')}
                 className={fieldClass}
               />
-            </div>
-            <div>
-              <label className={labelClass}>End time</label>
-              <TimeField
-                value={form.endTime}
-                onChange={set('endTime')}
-                className={fieldClass}
-              />
+              <p className="mt-1 text-[11px] text-slate-400">
+                {form.date ? spanSummary(form.date, form.endDate) : 'Same as the first day.'}
+              </p>
             </div>
           </div>
 
