@@ -81,6 +81,7 @@ import {
 import { supabase } from './lib/supabase'
 import { reservedUnitsForOrder, overlaps } from './lib/availability'
 import { coversDay, endsOnFor, firstFullDay, setSpanDays } from './lib/setDays'
+import { normalizeCallTimes } from './lib/callTimes'
 import { isClosedStatus } from './data/orderStatus'
 import { SCAN_OUT, SCAN_IN, expectedUnits, resolveScan } from './lib/scanning'
 import { EVENT, diffOrderLines } from './lib/activity'
@@ -166,6 +167,10 @@ function buildSeedData() {
     date: format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd'),
     // A shoot runs for whole days and may run for several (`days`, default 1).
     endDate: format(addDays(weekStart, t.dayOffset + ((t.days || 1) - 1)), 'yyyy-MM-dd'),
+    // Who is called on when, and when it wraps. Some shoots have none — that is
+    // a real state, not missing data, and the card says so.
+    callTimes: normalizeCallTimes(t.calls || []),
+    wrapTime: t.wrap || null,
     photographer: t.photographer,
     model: t.model,
     unitIds: [],
@@ -2320,6 +2325,8 @@ export const useStore = create(
             studioId,
             date: startsOn,
             endDate: endsOn,
+            wrapTime: order.wrapTime || null,
+            callTimes: normalizeCallTimes(order.callTimes || []),
           })
           logNew(id)
           await get().hydrate({ quiet: true })
@@ -2341,6 +2348,8 @@ export const useStore = create(
           studioId,
           date: startsOn,
           endDate: endsOn,
+          callTimes: normalizeCallTimes(order.callTimes || []),
+          wrapTime: order.wrapTime || null,
           photographer: order.photographer || '',
           model: '',
           unitIds: [],
@@ -2450,6 +2459,12 @@ export const useStore = create(
                 studioId: changes.studioId ?? before.studioId,
                 date: changes.startsOn ?? before.startsOn,
                 endDate: changes.endsOn ?? before.endsOn,
+                // The schedule belongs to the SHOOT, so the job form edits it
+                // through here. Left alone when the caller didn't carry it.
+                ...(changes.callTimes !== undefined
+                  ? { callTimes: normalizeCallTimes(changes.callTimes) }
+                  : {}),
+                ...(changes.wrapTime !== undefined ? { wrapTime: changes.wrapTime || null } : {}),
               })
             } catch (e) {
               console.error('could not move the shoot with its job:', e)
@@ -2486,6 +2501,11 @@ export const useStore = create(
                 studioId: target.studioId ?? b.studioId,
                 date: target.startsOn ?? b.date,
                 endDate: endsOnFor(target.startsOn ?? b.date, target.endsOn ?? b.endDate),
+                callTimes:
+                  changes.callTimes !== undefined
+                    ? normalizeCallTimes(changes.callTimes)
+                    : b.callTimes,
+                wrapTime: changes.wrapTime !== undefined ? changes.wrapTime || null : b.wrapTime,
                 photographer: target.photographer ?? b.photographer,
               }
             : b,
@@ -2857,7 +2877,12 @@ export const useStore = create(
       // Create a booking and reserve its selected units.
       createBooking: async (data) => {
         // A shoot is a range of whole days; a missing or backwards end is one day.
-        data = { ...data, endDate: endsOnFor(data.date, data.endDate) }
+        data = {
+          ...data,
+          endDate: endsOnFor(data.date, data.endDate),
+          callTimes: normalizeCallTimes(data.callTimes || []),
+          wrapTime: data.wrapTime || null,
+        }
         if (usingSupabase) {
           const id = await sbCreateBooking(data)
           await get().hydrate({ quiet: true })
@@ -2883,6 +2908,10 @@ export const useStore = create(
           const from = changes.date ?? b?.date
           changes = { ...changes, endDate: endsOnFor(from, changes.endDate ?? b?.endDate) }
         }
+        if (changes.callTimes !== undefined)
+          changes = { ...changes, callTimes: normalizeCallTimes(changes.callTimes) }
+        if (changes.wrapTime !== undefined)
+          changes = { ...changes, wrapTime: changes.wrapTime || null }
         if (usingSupabase) {
           await sbUpdateBooking(id, changes)
           await get().hydrate({ quiet: true })

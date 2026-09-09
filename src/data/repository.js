@@ -10,6 +10,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { studioLabel, studioColor } from './studios'
 import { createUnits } from './inventory'
+import { normalizeCallTimes, toHHMM } from '../lib/callTimes'
 
 export const DATA_SOURCE = (import.meta.env.VITE_DATA_SOURCE || 'local').toLowerCase()
 export const usingSupabase = DATA_SOURCE === 'supabase' && isSupabaseConfigured
@@ -356,16 +357,22 @@ export async function getInventory() {
 // Bookings (sets) mapped to the app's booking shape. photographer/model come
 // from the roster (requires auth to read — under anon they resolve to '').
 export async function getBookings() {
-  const sel = (endCol) =>
-    `id, title, studio_id, date${endCol}, start_time, end_time, status, color, notes, order_id,
+  const sel = (extra) =>
+    `id, title, studio_id, date, start_time, end_time, status, color, notes, order_id,
        ${ARCHIVE_COLS}, created_by, creator:profiles!created_by ( full_name ),
        set_units ( unit_id ),
-       roster_entries ( role, contact:contacts ( full_name ) )`
-  // `end_date` (20260909120000, multi-day shoots) is the NEWEST column, so it is
-  // the OUTERMOST layer: a database without that migration must degrade to
-  // one-day sets, not lose the roster and the reservations along with it.
-  // Fourth time this rule has mattered — see getOrders' withBrandType.
-  const layers = [sel(', end_date'), sel(''), stripArchive(sel(''))]
+       roster_entries ( role, contact:contacts ( full_name ) )${extra}`
+  // Newest first, so a database missing a migration drops only what that
+  // migration added. Fifth time this rule has mattered (see getOrders'
+  // withBrandType): put a new column anywhere but the top and a pre-migration
+  // DB loses the roster and the reservations along with it.
+  const CALLS = ', wrap_time, set_call_times ( id, roles, call_time, note, position )'
+  const layers = [
+    sel(`, end_date${CALLS}`), // 20260910120000 — call times + wrap
+    sel(', end_date'), //         20260909120000 — multi-day shoots
+    sel(''), //                   before either
+    stripArchive(sel('')), //     before the archive columns
+  ]
   let data, error
   for (const layer of layers) {
     ;({ data, error } = await supabase.from('sets').select(layer).order('date'))
@@ -384,6 +391,19 @@ export async function getBookings() {
       // A one-day shoot stores no end (null), so it reads back as its own date —
       // every consumer can then treat a set as a window without a special case.
       endDate: s.end_date || s.date,
+      // When each role is called on, and when the shoot wraps. Absent on a
+      // pre-migration database, and legitimately empty on a shoot nobody has
+      // scheduled yet — both read as "not set", never as a made-up 09:00.
+      callTimes: normalizeCallTimes(
+        (s.set_call_times || []).map((c) => ({
+          id: c.id,
+          roles: c.roles || [],
+          time: c.call_time,
+          note: c.note,
+          position: c.position,
+        })),
+      ),
+      wrapTime: toHHMM(s.wrap_time) || null,
       status: s.status,
       color: s.color || studioColor(s.studio_id),
       notes: s.notes,
@@ -475,22 +495,57 @@ async function replaceUnits(setId, unitIds = []) {
   }
 }
 
+// A shoot's call times are its CONTENTS: replaced wholesale on save, like an
+// order's lines. Silently tolerated on a database without 20260910120000 —
+// losing a call time is a missing field, while a rejected save is a crew that
+// cannot write the shoot down at all.
+export async function setCallTimes(setId, rows) {
+  const clean = normalizeCallTimes(rows)
+  const del = await supabase.from('set_call_times').delete().eq('set_id', setId)
+  if (del.error) {
+    if (isMissingTable(del.error)) return { stored: false }
+    throw del.error
+  }
+  if (!clean.length) return { stored: true }
+  const { error } = await supabase.from('set_call_times').insert(
+    clean.map((c) => ({
+      set_id: setId,
+      roles: c.roles,
+      call_time: c.time,
+      note: c.note,
+      position: c.position,
+    })),
+  )
+  if (error) {
+    if (isMissingTable(error)) return { stored: false }
+    throw error
+  }
+  return { stored: true }
+}
+
 export async function createBooking(b) {
   // A shoot is a range of whole days now, so no times are written — the columns
   // stay for the rows that already carry them (nothing in this app deletes
   // data), but nothing collects or reads them any more.
   const row = {
     title: b.title, studio_id: b.studioId, date: b.date, end_date: endDateColumn(b),
+    wrap_time: b.wrapTime || null,
     color: b.color || studioColor(b.studioId), notes: b.notes, status: 'active',
   }
   let { data: set, error } = await supabase.from('sets').insert(row).select('id').single()
   if (error && isUndefinedColumn(error)) {
-    const { end_date, ...oneDay } = row
-    ;({ data: set, error } = await supabase.from('sets').insert(oneDay).select('id').single())
+    // Drop the newest columns and retry, newest first.
+    const { wrap_time, ...noWrap } = row
+    ;({ data: set, error } = await supabase.from('sets').insert(noWrap).select('id').single())
+    if (error && isUndefinedColumn(error)) {
+      const { end_date, ...oneDay } = noWrap
+      ;({ data: set, error } = await supabase.from('sets').insert(oneDay).select('id').single())
+    }
   }
   if (error) throw error
   await replaceUnits(set.id, b.unitIds)
   await replaceRoster(set.id, b.photographer, b.model)
+  if (b.callTimes) await setCallTimes(set.id, b.callTimes)
   return set.id
 }
 
@@ -500,18 +555,28 @@ export async function updateBooking(setId, changes) {
   if ('studioId' in changes) patch.studio_id = changes.studioId
   if ('date' in changes) patch.date = changes.date
   if ('endDate' in changes) patch.end_date = endDateColumn(changes)
+  if ('wrapTime' in changes) patch.wrap_time = changes.wrapTime || null
   if ('notes' in changes) patch.notes = changes.notes
   if ('color' in changes) patch.color = changes.color
   if (Object.keys(patch).length) {
     let { error } = await supabase.from('sets').update(patch).eq('id', setId)
+    // Drop the newest column and retry, newest first, so a pre-migration
+    // database still saves everything it does have room for.
     if (error && isUndefinedColumn(error)) {
-      const { end_date, ...oneDay } = patch
-      if (Object.keys(oneDay).length)
-        ({ error } = await supabase.from('sets').update(oneDay).eq('id', setId))
-      else error = null
+      const { wrap_time, ...noWrap } = patch
+      error = null
+      if (Object.keys(noWrap).length)
+        ({ error } = await supabase.from('sets').update(noWrap).eq('id', setId))
+      if (error && isUndefinedColumn(error)) {
+        const { end_date, ...oneDay } = noWrap
+        error = null
+        if (Object.keys(oneDay).length)
+          ({ error } = await supabase.from('sets').update(oneDay).eq('id', setId))
+      }
     }
     if (error) throw error
   }
+  if ('callTimes' in changes) await setCallTimes(setId, changes.callTimes)
   if ('unitIds' in changes) await replaceUnits(setId, changes.unitIds)
   if ('photographer' in changes || 'model' in changes) {
     await replaceRoster(setId, changes.photographer, changes.model)
@@ -1257,6 +1322,12 @@ const withoutNewestColumns = (row) => {
   return rest
 }
 const isUndefinedColumn = (e) => e?.code === '42703' || /column .* does not exist/i.test(e?.message || '')
+// A table the migration for it hasn't created yet. Every feature added after
+// launch degrades to "not available" rather than failing the user's action.
+const isMissingTable = (e) =>
+  e?.code === '42P01' ||
+  e?.code === 'PGRST205' ||
+  /relation .* does not exist|could not find the table/i.test(e?.message || '')
 
 export async function createOrder(order) {
   const row = orderColumns(order)
@@ -1374,21 +1445,30 @@ export async function setReservationsForSet(setId, unitIds, { from = null, to = 
 // Create the Set an order equips (5.1: "Order привязан к Set/Job"), then link it.
 // The shoot spans the order's whole working window; no times are written — the
 // grid is studio × day, and the range is what the crew now types.
-export async function createSetForOrder(orderId, { jobName, studioId, date, endDate }) {
+export async function createSetForOrder(
+  orderId,
+  { jobName, studioId, date, endDate, wrapTime = null, callTimes = null },
+) {
   const row = {
     title: jobName.trim(),
     studio_id: studioId,
     date,
     end_date: endDateColumn({ date, endDate }),
+    wrap_time: wrapTime || null,
     status: 'active',
     order_id: orderId,
   }
   let { data, error } = await supabase.from('sets').insert(row).select('id').single()
   if (error && isUndefinedColumn(error)) {
-    const { end_date, ...oneDay } = row
-    ;({ data, error } = await supabase.from('sets').insert(oneDay).select('id').single())
+    const { wrap_time, ...noWrap } = row
+    ;({ data, error } = await supabase.from('sets').insert(noWrap).select('id').single())
+    if (error && isUndefinedColumn(error)) {
+      const { end_date, ...oneDay } = noWrap
+      ;({ data, error } = await supabase.from('sets').insert(oneDay).select('id').single())
+    }
   }
   if (error) throw error
+  if (callTimes?.length) await setCallTimes(data.id, callTimes)
   return data.id
 }
 
@@ -1398,11 +1478,17 @@ export async function createSetForOrder(orderId, { jobName, studioId, date, endD
 // mismatch visible immediately, so the two modes are the same shape now.
 // Roster (photographer) is deliberately left alone — that needs a contact id,
 // which is the order form's photographerId, and is a separate write.
-export async function syncSetForOrder(setId, { jobName, studioId, date, endDate }) {
+export async function syncSetForOrder(
+  setId,
+  { jobName, studioId, date, endDate, wrapTime, callTimes },
+) {
   return updateBooking(setId, {
     ...(jobName != null ? { title: jobName.trim() } : {}),
     ...(studioId ? { studioId } : {}),
     ...(date ? { date, endDate: endDate || date } : {}),
+    // undefined = the form didn't carry them; null / [] = the crew cleared them.
+    ...(wrapTime !== undefined ? { wrapTime } : {}),
+    ...(callTimes !== undefined ? { callTimes } : {}),
   })
 }
 

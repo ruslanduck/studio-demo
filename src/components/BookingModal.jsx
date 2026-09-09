@@ -15,10 +15,12 @@ import { applyScenarioList } from '../lib/scenarios'
 import { availableCount, resolveUnitsForQuantities } from '../lib/availability'
 import { studioLabel } from '../data/studios'
 import { endsOnFor, spanSummary } from '../lib/setDays'
+import { isValidTime, normalizeCallTimes, rolesFor } from '../lib/callTimes'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 import DateField from './DateField'
+import CallTimesField from './CallTimesField'
 import KitStagingModal from './KitStagingModal'
 import SelectField from './SelectField'
 import ComboField from './ComboField'
@@ -33,6 +35,8 @@ function blankForm(prefill) {
     studioId: prefill?.studioId ?? '1',
     date: prefill?.date ?? '',
     endDate: prefill?.date ?? '',
+    callTimes: [],
+    wrapTime: '',
     photographer: '',
     model: '',
     notes: '',
@@ -46,6 +50,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   const scenarios = useStore((s) => s.scenarios)
   const photographers = useStore((s) => s.photographers)
   const models = useStore((s) => s.models)
+  const allBookings = useStore((s) => s.bookings)
   const createBooking = useStore((s) => s.createBooking)
   const updateBooking = useStore((s) => s.updateBooking)
   const archiveBooking = useStore((s) => s.archiveBooking)
@@ -90,6 +95,8 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
         studioId: booking.studioId,
         date: booking.date,
         endDate: booking.endDate ?? booking.date,
+        callTimes: (booking.callTimes ?? []).map((c) => ({ ...c })),
+        wrapTime: booking.wrapTime ?? '',
         photographer: booking.photographer ?? '',
         model: booking.model ?? '',
         notes: booking.notes ?? '',
@@ -128,6 +135,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
     setApplied({ name: list.name, ...res })
   }
 
+  const roleOptions = useMemo(() => rolesFor(allBookings), [allBookings])
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
   // The last day follows the first while it is empty or would sit before it, so
   // a one-day shoot stays one click and the range never reads backwards.
@@ -222,7 +230,21 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.title.trim()) return
-    const payload = { ...form, title: form.title.trim(), unitIds: resolveUnitIds() }
+    // A half-typed call time would put the wrong hour on the call sheet; an
+    // untouched empty row is dropped by normalizeCallTimes.
+    if (
+      form.callTimes.some(
+        (c) => (c.time || (c.roles || []).length) && !(isValidTime(c.time) && (c.roles || []).length),
+      )
+    )
+      return
+    const payload = {
+      ...form,
+      title: form.title.trim(),
+      callTimes: normalizeCallTimes(form.callTimes),
+      wrapTime: form.wrapTime || null,
+      unitIds: resolveUnitIds(),
+    }
     if (isEdit) await updateBooking(booking.id, payload)
     else await createBooking(payload)
     onClose()
@@ -321,6 +343,19 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                 className={fieldClass}
               />
             </div>
+          </div>
+
+          {/* The call sheet: who is expected when, plus the wrap. Replaces the
+              start/end time pair this form used to carry — a shoot has no one
+              start time, and the grid is studio x day anyway. */}
+          <div className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+            <CallTimesField
+              value={form.callTimes}
+              onChange={(fn) => setForm((f) => ({ ...f, callTimes: fn(f.callTimes) }))}
+              roleOptions={roleOptions}
+              wrapTime={form.wrapTime}
+              onWrapChange={(wrapTime) => setForm((f) => ({ ...f, wrapTime }))}
+            />
           </div>
 
           {/* Inventory multi-select */}

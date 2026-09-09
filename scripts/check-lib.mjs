@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays] =
+const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes] =
   await Promise.all([
     load('src/lib/activity.js'),
     load('src/lib/scanning.js'),
@@ -28,6 +28,7 @@ const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packi
     load('src/lib/years.js'),
     load('src/data/orderStatus.js'),
     load('src/lib/setDays.js'),
+    load('src/lib/callTimes.js'),
   ])
 
 let n = 0
@@ -207,6 +208,59 @@ eq(setDays.spanSummary('2026-09-09', '2026-09-09'), 'Sep 9', 'and says nothing e
   const t = bytes(packingPdf.buildPackingListPdf(e3, { booking, inventory }))
   ok(t.includes('Set dates'), 'the pull sheet says dates, plural, for a multi-day shoot')
   ok(t.includes('2026-09-10') || t.includes('to  2026-09-12') || t.includes('2026-09-12'), 'and prints the window')
+}
+
+// ─────────────────────────────────────────────── call times and the wrap
+// A shoot has no single start: roles are called at different hours, the list is
+// of unknown length, and it is allowed to be empty.
+{
+  const raw = [
+    { roles: ['Model', 'Stylist'], time: '10:00' },
+    { roles: ['Photographer', 'Photographer', ' Digital tech '], time: '08:00' },
+    { roles: [], time: '07:00' }, // a row someone opened and left
+    { roles: ['Crew'], time: '' }, // ditto
+    { roles: ['Producer'], time: '25:00' }, // a typo, not a time
+  ]
+  const clean = callTimes.normalizeCallTimes(raw)
+  eq(clean.length, 2, 'half-filled rows are dropped, not stored as blank lines')
+  eq(clean[0].time, '08:00', 'the day comes back in order')
+  eq(clean[0].roles, ['Photographer', 'Digital tech'], 'roles are trimmed and de-duplicated')
+  eq(clean[1].roles, ['Model', 'Stylist'], 'one call can name several roles')
+  eq(clean.map((c) => c.position), [0, 1], 'positions are re-numbered after the sort')
+  eq(callTimes.earliestCall(raw), '08:00', 'the earliest call is what a chip shows')
+  eq(
+    callTimes.callSummary(raw),
+    '08:00 Photographer, Digital tech · 10:00 Model, Stylist',
+    'the summary reads as a schedule',
+  )
+  eq(callTimes.rolesLabel(clean[1]), 'Model, Stylist', 'roles read as a list')
+}
+eq(callTimes.normalizeCallTimes([]), [], 'no call times is a valid shoot')
+eq(callTimes.normalizeCallTimes(), [], 'and so is nothing at all')
+eq(callTimes.earliestCall([]), null, 'nothing to show on the chip')
+eq(callTimes.callSummary([]), '', 'and nothing in the tooltip')
+eq(callTimes.toHHMM('08:00:00'), '08:00', 'a Postgres time reads back as HH:MM')
+eq(callTimes.toHHMM('8:05'), '08:05', 'and a single-digit hour is padded')
+eq(callTimes.toHHMM(null), '', 'null is not a time')
+ok(callTimes.isValidTime('00:00') && callTimes.isValidTime('23:59'), 'both ends of the clock are valid')
+ok(!callTimes.isValidTime('24:00') && !callTimes.isValidTime('7:5') && !callTimes.isValidTime(''), 'these are not')
+ok(
+  callTimes.wrapBeforeFirstCall([{ roles: ['Crew'], time: '08:00' }], '07:00'),
+  'a wrap before the first call is reported',
+)
+ok(
+  !callTimes.wrapBeforeFirstCall([{ roles: ['Crew'], time: '08:00' }], '19:00'),
+  'a normal day is not',
+)
+ok(!callTimes.wrapBeforeFirstCall([], '07:00'), 'and with no calls there is nothing to contradict')
+{
+  const opts = callTimes.rolesFor([
+    { callTimes: [{ roles: ['Photographer', 'Gaffer'], time: '08:00' }] },
+    { callTimes: [{ roles: ['Gaffer'], time: '09:00' }] },
+  ])
+  ok(opts.includes('Photographer'), 'the offered roles are always there')
+  eq(opts.filter((r) => r === 'Gaffer').length, 1, 'a typed role joins the list exactly once')
+  eq(callTimes.rolesFor([]), callTimes.CALL_ROLES, 'with no shoots, just the defaults')
 }
 
 console.log(`OK — ${n} assertions passed`)

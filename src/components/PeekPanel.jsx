@@ -25,6 +25,7 @@ import { buildEstimate, money } from '../lib/estimate'
 import { itemCount, kindLabel } from '../data/inventory'
 import { availableCount } from '../lib/availability'
 import { spanSummary } from '../lib/setDays'
+import { rolesLabel } from '../lib/callTimes'
 import ActivityList from './ActivityList'
 import { useActivity } from '../lib/useActivity'
 import { orderFeed } from '../lib/activity'
@@ -848,6 +849,36 @@ function JobPeek({ id }) {
         onOpenFull={() => openCalendarOn(booking.date)}
         openLabel="On calendar"
       />
+
+      {/* The call sheet: the one thing a person opening a shoot on the day
+          actually needs. Empty is a real answer, so it says so. */}
+      <Section title="Call times">
+        {booking.callTimes?.length || booking.wrapTime ? (
+          <div className="space-y-1">
+            {(booking.callTimes || []).map((c, i) => (
+              <div key={c.id || i} className="flex items-baseline gap-2 text-sm">
+                <span className="w-12 shrink-0 font-semibold tabular-nums text-slate-800">
+                  {c.time}
+                </span>
+                <span className="min-w-0">
+                  <span className="text-slate-700">{rolesLabel(c)}</span>
+                  {c.note && <span className="text-slate-400"> · {c.note}</span>}
+                </span>
+              </div>
+            ))}
+            {booking.wrapTime && (
+              <div className="flex items-baseline gap-2 border-t border-slate-100 pt-1 text-sm">
+                <span className="w-12 shrink-0 font-semibold tabular-nums text-slate-800">
+                  {booking.wrapTime}
+                </span>
+                <span className="text-slate-500">wrap</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Empty text="No call times set for this shoot." />
+        )}
+      </Section>
 
       <Section title="Crew">
         {crew.length === 0 ? (

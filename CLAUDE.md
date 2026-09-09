@@ -1460,6 +1460,62 @@
 > ℹ️ The legacy "test 3107" span is GONE — checked rather than assumed: **0 of prod's jobs now have
 > `ends_on != starts_on`**, and 0 of its 20 shoots carry an `end_date`. So the repair noted earlier in this
 > file is no longer outstanding, and every prod shoot is a one-day set until someone books a range.
+> **FEATURE — call times per ROLE, and a shoot wrap time**
+> (`20260910120000_call_times.sql` + `20260910130000_call_times_roles_not_empty.sql`, both applied and
+> verified on prod). Requested: "Replace generic time field with call times (producer / photographer / crew)
+> + shoot wrap time … отдельные поля под call time сотрудников … неограниченное количество … нажимаю +,
+> выбираю роль photograph и задаю время его вызова 8 утра, нажимаю еще + … модель, стилист (мультивыбор) —
+> 9 утра … а могу вообще не задавать. Отдельно задаю shoot wrap time."
+> The previous change took the generic start/end pair OFF a set because it was fiction; this puts time back
+> where it means something. A shoot does not "start at 09:00": the producer is called at 07:30, the
+> photographer and digital tech at 08:00, hair/makeup and styling at 08:30, the models at 10:00 — and the day
+> wraps at some hour. That is a LIST of unknown length, and it is allowed to be empty.
+> **`set_call_times`: one row per call, with `roles text[]`.** The crew sets ONE time for "model + stylist",
+> so splitting that into two rows would have the UI grouping them back on every read. These are the CONTENTS
+> of a shoot, like `order_lines` are the contents of a job — replaced wholesale on save, so they keep DELETE
+> (the archive-not-delete rule covers rows with their own identity and card, which a call time has not).
+> **`sets.wrap_time` is a NEW column, deliberately not a reuse of `end_time`:** that one holds the 09:00–18:00
+> defaults `createSetForOrder` invented for shoots nobody typed a time into, and reading those back as "the
+> crew said they wrap at 18:00" would be fabricated data. `start_time`/`end_time` stay as the legacy record,
+> unread. `TimeField.jsx` came back out of git — deleting it one commit earlier was right (nothing collected a
+> time) and it is needed again now.
+> New pure `src/lib/callTimes.js` (+23 assertions, **167 total**): `normalizeCallTimes` drops half-filled rows
+> rather than storing blank lines on a call sheet, de-duplicates roles and sorts the day; `earliestCall` is the
+> one number a calendar chip has room for; `wrapBeforeFirstCall` is REPORTED, never clamped — clamping would
+> invent an hour nobody typed. `rolesFor` merges the offered roles with every role already stored, so a typed
+> one keeps being offered.
+> UI: `CallTimesField` is shared by the job form and the legacy shoot editor, so both have one control and one
+> set of rules. Roles are **toggle chips, not a dropdown** — the vocabulary is ten short labels and a call
+> routinely names two or three at once, so a multi-select popover would be three clicks and a mystery — plus a
+> "+ other" free-text chip, because a closed vocabulary has been a dead end three times here. Shown on the job
+> card (Call times / Wrap rows, "not set" when empty), as its own section on the shoot peek card, and on the
+> calendar chip as the earliest call with the whole sheet in the tooltip. NOT on either PDF: a call sheet is a
+> different document from a pull sheet, and that was not asked for.
+> ⚠️ **SIXTH instance of the stale-value trap, and this one was user-visible.** Every mutator mapped over the
+> `value` PROP, so two role chips clicked before a re-render both computed from the same array and the second
+> silently dropped the first (measured: `["Assistant"]`, then `["Assistant","Client","Gaffer"]` after the fix).
+> `onChange` now takes an UPDATER which the parent applies against its current form state. The rule in this
+> file — "a handler that derives from state and can fire twice before a render must read the current value" —
+> applies to a controlled child's props too, not just to store reads.
+> ⚠️ **A CHECK constraint that read as a guarantee and was a no-op.** `check (array_length(roles, 1) >= 1)`
+> looks right; for an EMPTY array `array_length('{}', 1)` returns **NULL** (dimension 1 doesn't exist), and a
+> CHECK treats NULL as satisfied — so `roles = '{}'` was accepted. Found by probing the real database rather
+> than trusting the DDL, one hour after applying it. `cardinality(roles) >= 1` is a real test (0 for an empty
+> array). Fixed in a SECOND migration because the first was already applied — editing an applied file would
+> leave prod and the repo describing different schemas.
+> Verified in local mode by measurement: the seeded 3-day job's chip reads "07:30 · Day 1/3 · OMSet1" with the
+> full sheet on hover, its peek card lists all four calls plus "18:00 wrap", the form loads them back into five
+> editable rows with the right roles ticked, a new call (11:15 · Client + Assistant + a typed "Gaffer") saved
+> and sorted itself into the day, an empty row says "this row won't be saved" and is dropped, and a wrap of
+> 05:00 against an 07:00 call says "That is before the first call". The legacy order-less shoot editor loads
+> and saves the same sheet. 0 console errors.
+> On prod, behaviourally as the app's own role: the top `getBookings` layer (new column AND new embed) returns
+> 20 shoots; three calls + a wrap wrote and read back as "07:30 Producer · 08:00 Photographer, Digital tech ·
+> 10:00 Model, Stylist" with the note intact and `roles` back as a real array; a call with no roles is refused
+> with **23514** (after the constraint fix — accepted before it); the app's own wholesale DELETE works. Undone:
+> **0 call times and 0 wrap times on prod**, exactly as found.
+> Demo content: 3 of the 11 seeded shoots carry a call sheet (one with a note), one carries only a wrap, and
+> the rest deliberately carry nothing — a shoot nobody has scheduled yet is a real state.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

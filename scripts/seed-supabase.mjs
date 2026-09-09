@@ -283,7 +283,7 @@ async function main() {
 
   console.log('Sets + roster…')
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
-  let sets = 0, reservations = 0, rosterCount = 0
+  let sets = 0, reservations = 0, rosterCount = 0, callTimes = 0
   const setByTitle = {} // title -> { id, date, ... }, used to link orders (4.5)
   for (const t of BOOKING_TEMPLATES) {
     const date = format(addDays(weekStart, t.dayOffset), 'yyyy-MM-dd')
@@ -293,10 +293,23 @@ async function main() {
     const endDate = format(addDays(weekStart, t.dayOffset + ((t.days || 1) - 1)), 'yyyy-MM-dd')
     const { data: set, error: sErr } = await db.from('sets').insert({
       title: t.title, studio_id: t.studioId, date,
-      end_date: endDate === date ? null : endDate, status: 'active', color: t.color,
+      end_date: endDate === date ? null : endDate,
+      // A shoot has no single start: each role has its own call time, and the
+      // wrap is one time for the day. Both optional — some seeded shoots
+      // deliberately have neither.
+      wrap_time: t.wrap || null,
+      status: 'active', color: t.color,
     }).select('id').single()
     if (sErr) throw sErr
     sets++
+    if (t.calls?.length) {
+      must('set_call_times', await db.from('set_call_times').insert(
+        t.calls.map((c, i) => ({
+          set_id: set.id, roles: c.roles, call_time: c.time, note: c.note ?? null, position: i,
+        })),
+      ))
+      callTimes += t.calls.length
+    }
     setByTitle[t.title] = {
       id: set.id, date, endDate, studioId: t.studioId, photographer: t.photographer,
     }
@@ -418,7 +431,9 @@ async function main() {
   console.log(`  inventory_items: ${INVENTORY_SEED.length}, units: ${totalUnits}, repairs: ${repairs}, item_usage: ${usage}`)
   console.log(`  kits: ${kits}, kit_slots: ${kitSlots}`)
   console.log(`  scenario_lists: ${lists}, scenario_list_entries: ${listEntries}`)
-  console.log(`  sets: ${sets}, set_units: ${reservations}, roster_entries: ${rosterCount}`)
+  console.log(
+    `  sets: ${sets}, set_units: ${reservations}, roster_entries: ${rosterCount}, call times: ${callTimes}`,
+  )
   console.log(`  company_types: ${COMPANY_TYPES.length}, sub-rental vendor links: ${vendorLinks}`)
   console.log(`  orders: ${orders}, order_lines: ${orderLines}`)
 }

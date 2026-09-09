@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useStore, notArchived, capacityError } from '../store'
 import { setSpanDays } from '../lib/setDays'
+import { rolesFor, rolesLabel } from '../lib/callTimes'
 import { usePersisted } from '../lib/usePersisted'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -217,6 +218,8 @@ export default function Orders() {
 
   const studioOptions = useMemo(() => studiosIn(liveOrders), [liveOrders])
   const brandOptions = useMemo(() => brandsIn(liveOrders), [liveOrders])
+  // Roles already used on a shoot stay offered in the call-sheet picker.
+  const roleOptions = useMemo(() => rolesFor(bookings), [bookings])
   const typeOptions = useMemo(() => jobTypesIn(liveOrders), [liveOrders])
 
   // A persisted filter whose value is no longer IN the data would hide every row
@@ -490,7 +493,18 @@ export default function Orders() {
                 booking={selectedBooking}
                 estimate={selectedEstimate}
                 canManage={can(CAP.ORDER_MANAGE)}
-                onEdit={() => setEditor({ open: true, order: selected })}
+                // The call sheet belongs to the SHOOT, so it is handed in with
+                // the job — the form edits both and the store splits them again.
+                onEdit={() =>
+                  setEditor({
+                    open: true,
+                    order: {
+                      ...selected,
+                      callTimes: selectedBooking?.callTimes ?? [],
+                      wrapTime: selectedBooking?.wrapTime ?? '',
+                    },
+                  })
+                }
                 onEditEquipment={() => setEqEditor({ open: true, order: selected })}
                 reserveNote={reserveNote}
                 onSetStatus={async (status) => {
@@ -527,6 +541,7 @@ export default function Orders() {
         photographers={photographerNames}
         brands={brandOptions}
         jobTypes={typeOptions}
+        roleOptions={roleOptions}
         onClose={() => setEditor({ open: false, order: null })}
         onProceed={(payload) => {
           // The studio capacity is checked HERE, before the crew spends time
@@ -724,6 +739,26 @@ function OrderDetail({
           </Row>
           <Row icon={Building2} label="Studio">
             {order.studioId ? studioLabel(order.studioId) : '—'}
+          </Row>
+          {/* The call sheet. Empty is a real answer — a shoot nobody has
+              scheduled yet — so it says so instead of showing nothing. */}
+          <Row icon={Clock3} label="Call times">
+            {booking?.callTimes?.length ? (
+              <span className="inline-flex flex-col gap-0.5">
+                {booking.callTimes.map((c, i) => (
+                  <span key={c.id || i}>
+                    <span className="font-medium tabular-nums">{c.time}</span>{' '}
+                    <span className="text-slate-600">{rolesLabel(c)}</span>
+                    {c.note && <span className="text-slate-400"> · {c.note}</span>}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              'not set'
+            )}
+          </Row>
+          <Row icon={Clock3} label="Wrap">
+            {booking?.wrapTime || 'not set'}
           </Row>
           <Row icon={Layers} label="Set">
             {order.setLabel || <span className="text-slate-400">not named</span>}

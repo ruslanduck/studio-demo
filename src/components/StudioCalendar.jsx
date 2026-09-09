@@ -21,6 +21,7 @@ import {
 import { useStore } from '../store'
 import { brandsIn, jobTypesIn } from '../lib/orderSearch'
 import { setDays, spanSummary } from '../lib/setDays'
+import { earliestCall, callSummary, rolesFor } from '../lib/callTimes'
 import { studioLabel, studioColor } from '../data/studios'
 import { useCan } from '../lib/useCan'
 import { useCalendarFlip } from '../lib/useCalendarFlip'
@@ -72,6 +73,9 @@ export default function StudioCalendar() {
   // that is exactly how `companies={companies}` white-screened this view.
   const brandOptions = useMemo(() => brandsIn(orders), [orders])
   const typeOptions = useMemo(() => jobTypesIn(orders), [orders])
+  // Roles already used on any shoot stay offered, so a typed one doesn't vanish
+  // from the list that suggested it.
+  const roleOptions = useMemo(() => rolesFor(bookings), [bookings])
   const openOrderDraft = useStore((s) => s.openOrderDraft)
   const peek = useStore((s) => s.peek)
   const can = useCan()
@@ -368,6 +372,7 @@ export default function StudioCalendar() {
         photographers={photographers}
         brands={brandOptions}
         jobTypes={typeOptions}
+        roleOptions={roleOptions}
         onClose={() => setOrderEditor({ open: false, prefill: null })}
         onProceed={(payload) => {
           openOrderDraft(payload, { view: 'calendar', label: 'Studio Calendar', focus: {} })
@@ -507,6 +512,10 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
                   b.setLabel && `Set ${b.setLabel}`,
                   spanSummary(b.date, b.endDate),
                   b.spanDays > 1 && `day ${b.dayIndex} of ${b.spanDays}`,
+                  // The whole call sheet on hover; the chip has room for one
+                  // number, and "when do I have to be there" is that number.
+                  callSummary(b.callTimes),
+                  b.wrapTime && `wrap ${b.wrapTime}`,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -515,9 +524,13 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
                 <div className="truncate text-xs font-semibold leading-tight">
                   {b.title}
                 </div>
-                {(b.spanDays > 1 || b.setLabel) && (
+                {(b.spanDays > 1 || b.setLabel || earliestCall(b.callTimes)) && (
                   <div className="truncate text-[10px] font-medium opacity-80">
-                    {[b.spanDays > 1 && `Day ${b.dayIndex}/${b.spanDays}`, b.setLabel]
+                    {[
+                      earliestCall(b.callTimes),
+                      b.spanDays > 1 && `Day ${b.dayIndex}/${b.spanDays}`,
+                      b.setLabel,
+                    ]
                       .filter(Boolean)
                       .join(' · ')}
                   </div>
@@ -642,6 +655,8 @@ function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek }) {
               b.setLabel && `Set ${b.setLabel}`,
               spanSummary(b.date, b.endDate),
               b.spanDays > 1 && `day ${b.dayIndex} of ${b.spanDays}`,
+              callSummary(b.callTimes),
+              b.wrapTime && `wrap ${b.wrapTime}`,
             ]
               .filter(Boolean)
               .join(' · ')}

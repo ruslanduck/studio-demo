@@ -6,6 +6,8 @@ import SelectField from './SelectField'
 import ComboField from './ComboField'
 import { studioLabel } from '../data/studios'
 import { MAX_SET_DAYS, setSpanDays, spanLabel } from '../lib/setDays'
+import { isValidTime, normalizeCallTimes, wrapBeforeFirstCall } from '../lib/callTimes'
+import CallTimesField from './CallTimesField'
 
 // Order (Estimate) creation form — epic #5, 5.1 + 5.2.
 //
@@ -38,6 +40,8 @@ const blank = {
   studioId: '1',
   startsOn: '',
   endsOn: '',
+  callTimes: [],
+  wrapTime: '',
   photographer: '',
   poNumber: '',
   status: 'hold',
@@ -51,6 +55,7 @@ export default function OrderEditorModal({
   photographers,
   brands = [],
   jobTypes = [],
+  roleOptions = [],
   onClose,
   onProceed,
   onSave,
@@ -74,6 +79,10 @@ export default function OrderEditorModal({
             studioId: order.studioId ?? '1',
             startsOn: order.startsOn ?? '',
             endsOn: order.endsOn ?? order.startsOn ?? '',
+            // The schedule lives on the SHOOT; the job form is where the crew
+            // edits it, so the caller hands it in alongside the order.
+            callTimes: (order.callTimes ?? []).map((c) => ({ ...c })),
+            wrapTime: order.wrapTime ?? '',
             photographer: order.photographer ?? '',
             poNumber: order.poNumber ?? '',
             status: order.status ?? 'hold',
@@ -109,6 +118,18 @@ export default function OrderEditorModal({
       return setError('The last day is before the first one — check the dates.')
     if (days > MAX_SET_DAYS)
       return setError(`${days} days is longer than a shoot gets (max ${MAX_SET_DAYS}) — check the year.`)
+    // A half-typed time is a typo, and dropping it silently would put the wrong
+    // hour on the call sheet. An empty row (no roles, no time) is fine — it is
+    // just a row the crew opened and left, and it is dropped on save.
+    const halfTyped = form.callTimes.find(
+      (c) => (c.time || (c.roles || []).length) && !(isValidTime(c.time) && (c.roles || []).length),
+    )
+    if (halfTyped)
+      return setError('Every call time needs a role and an HH:MM time — or remove the row.')
+    if (form.wrapTime && !isValidTime(form.wrapTime))
+      return setError('The wrap time should read as HH:MM.')
+    if (wrapBeforeFirstCall(form.callTimes, form.wrapTime))
+      return setError('The wrap time is before the first call.')
     setBusy(true)
     const payload = {
       ...form,
@@ -119,6 +140,8 @@ export default function OrderEditorModal({
       // A one-day shoot ends the day it starts; the store normalises this too,
       // so nothing downstream has to guess what an empty end means.
       endsOn: form.endsOn || form.startsOn,
+      callTimes: normalizeCallTimes(form.callTimes),
+      wrapTime: form.wrapTime || null,
     }
     // Creating is a two-step flow: this form settles the job, then the equipment
     // window opens and IT creates the order together with the gear. So nothing is
@@ -234,6 +257,21 @@ export default function OrderEditorModal({
                       : `One day · ${spanLabel(form.startsOn, form.endsOn)}`}
               </p>
             </div>
+          </div>
+
+          {/* The call sheet. A shoot has no single start time — the
+              photographer is called at 08:00 and the models at 10:00 — so the
+              generic start/end pair was replaced by this list plus a wrap. */}
+          <div className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+            <CallTimesField
+              value={form.callTimes}
+              // The field hands back an updater, applied against the CURRENT
+              // form — see the note on CallTimesField.
+              onChange={(fn) => setForm((f) => ({ ...f, callTimes: fn(f.callTimes) }))}
+              roleOptions={roleOptions}
+              wrapTime={form.wrapTime}
+              onWrapChange={(wrapTime) => set({ wrapTime })}
+            />
           </div>
 
           {/* Brand + shoot type (20260908120000). Both free text with
