@@ -1281,6 +1281,8 @@
 > ℹ️ **Still to do on prod:** the legacy "test 3107" order still spans 06→15 Aug. With the guard fixed, opening
 > it and re-saving collapses it to one day and rewrites its 69 `set_units` rows — that is the repair path, and
 > doing it through the UI both fixes the data and proves the fix. Everything else above is frontend-only.
+> **(DONE — verified 2026-09-09: 0 jobs on prod have `ends_on != starts_on`.** And with multi-day shoots now
+> supported, a span like that is no longer a data error to begin with.)
 > **TOOLING — `npm run user:add` provisions ONE real account** (`scripts/add-user.mjs`, no migration).
 > `seed-users.mjs` hardcodes the three demo logins and their shared password, so it is the wrong tool for
 > adding a person later. The new script takes `--email` and `--name` (plus an optional `--role`, default
@@ -1455,9 +1457,9 @@
 > Also fixed while here: the Jobs header still read "14 **orders**" (a miss from the 69-string rename), and
 > three pieces of dead code went — `TimeField`, `KitRow`/`ItemLine` in `OrderEditorModal` (leftovers from the
 > inline equipment block) and an unused `openOrder` selector in the calendar.
-> ℹ️ Prod's legacy "test 3107" job (`starts_on` 06 Aug → `ends_on` 15 Aug) is now a LEGITIMATE 10-day job
-> rather than the data error it used to be — but its shoot still has `end_date` null, so the calendar shows it
-> on one day. Opening and re-saving it through the form mirrors the window onto the set.
+> ℹ️ The legacy "test 3107" span is GONE — checked rather than assumed: **0 of prod's jobs now have
+> `ends_on != starts_on`**, and 0 of its 20 shoots carry an `end_date`. So the repair noted earlier in this
+> file is no longer outstanding, and every prod shoot is a one-day set until someone books a range.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
