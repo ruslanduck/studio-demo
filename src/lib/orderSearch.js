@@ -125,9 +125,14 @@ export function brandsIn(orders) {
   )
 }
 
-// Shoot types present, with the two the studio asked for offered even before a
-// job uses them — otherwise the filter is empty on day one and reads as broken.
-export const JOB_TYPES = ['Editorial', 'PDP']
+// Shoot types present, with the ones the studio names offered even before a job
+// uses them — otherwise the filter is empty on day one and reads as broken.
+//
+// A STYLE-OUT is one of these, not a separate kind of record: it books a studio
+// for a day, has a call sheet and pulls gear exactly like a shoot, so the day
+// view lists it beside them and the type is what tells them apart. Free text
+// still, so a fourth kind needs no code.
+export const JOB_TYPES = ['Editorial', 'PDP', 'Style-out']
 
 export function jobTypesIn(orders) {
   const used = (orders ?? []).map((o) => o.jobType).filter(Boolean)

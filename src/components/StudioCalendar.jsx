@@ -1,6 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, ChevronDown, Plus, AlertTriangle } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  AlertTriangle,
+  Camera,
+  UserRound,
+  Package,
+  Tag,
+  Layers,
+} from 'lucide-react'
 import {
   startOfWeek,
   endOfWeek,
@@ -20,8 +31,14 @@ import {
 } from 'date-fns'
 import { useStore } from '../store'
 import { brandsIn, jobTypesIn } from '../lib/orderSearch'
-import { setDays, spanSummary } from '../lib/setDays'
-import { earliestCall, callSummary, rolesFor } from '../lib/callTimes'
+import { setDays, spanSummary, spanLabel } from '../lib/setDays'
+import {
+  earliestCall,
+  callSummary,
+  rolesFor,
+  rolesLabel,
+  normalizeCallTimes,
+} from '../lib/callTimes'
 import { studioLabel } from '../data/studios'
 import {
   ORDER_STATUS_CHOICES,
@@ -241,6 +258,11 @@ export default function StudioCalendar() {
           setLabel: order?.setLabel || null,
           // What the chip is painted by, and what its status menu edits.
           status: order?.status || null,
+          // The day view has room for the rest of the job's identity.
+          brand: order?.brand || null,
+          jobType: order?.jobType || null,
+          poNumber: order?.poNumber || null,
+          lineCount: (order?.lines || []).length,
           spanDays: days.length,
           dayIndex: i + 1,
         })
@@ -279,9 +301,13 @@ export default function StudioCalendar() {
   const page = (delta) => {
     setJumping(false)
     const at = currentRef()
-    setSelectedDate(
-      format(calendarMode === 'month' ? addMonths(at, delta) : addWeeks(at, delta), 'yyyy-MM-dd'),
-    )
+    const stepped =
+      calendarMode === 'month'
+        ? addMonths(at, delta)
+        : calendarMode === 'day'
+          ? addDays(at, delta)
+          : addWeeks(at, delta)
+    setSelectedDate(format(stepped, 'yyyy-MM-dd'))
   }
   const goPrev = () => page(-1)
   const goNext = () => page(1)
@@ -327,6 +353,18 @@ export default function StudioCalendar() {
   const jumpToWeek = (day) => {
     setSelectedDate(format(day, 'yyyy-MM-dd'))
     setCalendarMode('week')
+  }
+  // Open the day view ON a named day — a day cell in the month grid, a day
+  // header in the week grid. Reads the store, not the closure (the rule).
+  const jumpToDay = (iso) => {
+    setJumping(false)
+    setSelectedDate(iso)
+    setCalendarMode('day')
+  }
+  // The toggle itself: Day means TODAY, because that is what a day view is for.
+  const pickMode = (mode) => {
+    if (mode === 'day') return jumpToDay(format(new Date(), 'yyyy-MM-dd'))
+    setCalendarMode(mode)
   }
 
   // Same popover contract as DateField: fixed through a portal so nothing clips
@@ -383,14 +421,18 @@ export default function StudioCalendar() {
   const label =
     calendarMode === 'month'
       ? format(refDate, 'MMMM yyyy')
-      : `${format(weekStart, 'MMM d')} – ${format(addDays(weekStart, 6), 'MMM d, yyyy')}`
+      : calendarMode === 'day'
+        ? format(refDate, 'EEEE, d MMMM yyyy')
+        : `${format(weekStart, 'MMM d')} – ${format(addDays(weekStart, 6), 'MMM d, yyyy')}`
 
   // The page currently on screen: the month for the month view, the week's first
   // day for the week view. Sortable, so the flip knows forwards from backwards.
   const pageKey =
     calendarMode === 'month'
       ? `month:${format(refDate, 'yyyy-MM')}`
-      : `week:${format(weekStart, 'yyyy-MM-dd')}`
+      : calendarMode === 'day'
+        ? `day:${selectedDate}`
+        : `week:${format(weekStart, 'yyyy-MM-dd')}`
   const flip = useCalendarFlip(pageKey)
 
   return (
@@ -436,7 +478,7 @@ export default function StudioCalendar() {
               </span>
             ))}
           </div>
-          <ModeToggle mode={calendarMode} setMode={setCalendarMode} />
+          <ModeToggle mode={calendarMode} setMode={pickMode} />
           {canCreate && (
             <button
               type="button"
@@ -501,7 +543,19 @@ export default function StudioCalendar() {
       {/* `key` = the page being shown, so ‹ › remount the grid and its slide
           replays (lib/useCalendarFlip picks the direction). Switching Week ↔
           Month is a page turn too, hence the mode in the key. */}
-      {calendarMode === 'month' ? (
+      {calendarMode === 'day' ? (
+        <DayView
+          key={pageKey}
+          flip={flip}
+          iso={selectedDate}
+          studios={studios}
+          byDay={byDay}
+          onOpenCreate={canCreate ? openCreate : null}
+          onOpenEdit={openEdit}
+          onStatus={openStatus}
+          canManage={canManage}
+        />
+      ) : calendarMode === 'month' ? (
         <MonthView
           key={pageKey}
           flip={flip}
@@ -509,6 +563,7 @@ export default function StudioCalendar() {
           byDay={byDay}
           onOpenEdit={openEdit}
           onJumpToWeek={jumpToWeek}
+          onOpenDay={jumpToDay}
           onStatus={openStatus}
           canManage={canManage}
         />
@@ -522,6 +577,7 @@ export default function StudioCalendar() {
           onOpenCreate={openCreate}
           onOpenEdit={openEdit}
           onStatus={openStatus}
+          onOpenDay={jumpToDay}
           canManage={canManage}
         />
       )}
@@ -581,10 +637,14 @@ export default function StudioCalendar() {
   )
 }
 
+// Day / Week / Month, narrowest first. Picking **Day** jumps to today —
+// "текущий по дефолту" — because a day view opened on last month's Tuesday is
+// not what anyone means by it. A day cell in the month grid and a day header in
+// the week grid open the day they name instead, which is the other half of it.
 function ModeToggle({ mode, setMode }) {
   return (
     <div className="flex rounded-lg border border-slate-300 bg-white p-0.5">
-      {['week', 'month'].map((m) => (
+      {['day', 'week', 'month'].map((m) => (
         <button
           key={m}
           type="button"
@@ -603,9 +663,229 @@ function ModeToggle({ mode, setMode }) {
   )
 }
 
+/* ----------------------------------- Day ---------------------------------- */
+
+// One shoot, as a row in the day view. This is the view a coordinator stands in
+// front of in the morning, so it carries what the grid has no room for: the
+// whole call sheet, the wrap, who is on it and how much gear goes out.
+function DaySetCard({ b, onOpen, onStatus, canManage }) {
+  const meta = b.status ? orderStatusMeta(b.status) : null
+  const canChange = canManage && !!b.orderId
+  const press = useLongPress((at) => canChange && onStatus(b, at))
+  const calls = normalizeCallTimes(b.callTimes)
+
+  return (
+    <li
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(b)}
+      {...press}
+      title="Open this job"
+      className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-violet-300 hover:shadow"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-900">{b.title}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+            {b.setLabel && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+                <Layers size={11} />
+                {b.setLabel}
+              </span>
+            )}
+            {/* The TYPE is what tells a style-out from a shoot at a glance. */}
+            {b.jobType && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700">
+                <Tag size={11} />
+                {b.jobType}
+              </span>
+            )}
+            {b.brand && <span className="font-medium text-slate-600">{b.brand}</span>}
+            {b.poNumber && <span className="font-mono text-slate-400">{b.poNumber}</span>}
+            {b.spanDays > 1 && (
+              <span className="text-slate-500">
+                day {b.dayIndex} of {b.spanDays} · {spanLabel(b.date, b.endDate)}
+              </span>
+            )}
+          </p>
+        </div>
+
+        {/* The status, and the control that changes it — the same menu the grid
+            chips raise, so there is one way to do this. */}
+        <span className="flex shrink-0 items-center gap-1">
+          <span
+            className={[
+              'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1',
+              meta ? meta.pill : 'bg-slate-100 text-slate-500 ring-slate-200',
+            ].join(' ')}
+          >
+            <span
+              className={['h-1.5 w-1.5 rounded-full', meta ? meta.dot : 'bg-slate-300'].join(' ')}
+            />
+            {meta ? meta.label : 'no job'}
+          </span>
+          {canChange && (
+            <button
+              type="button"
+              aria-label={`Status: ${meta?.label ?? 'unknown'} — change it`}
+              title="Change the status"
+              onClick={(e) => {
+                e.stopPropagation()
+                const r = e.currentTarget.getBoundingClientRect()
+                onStatus(b, { x: r.left, y: r.bottom + 4 })
+              }}
+              className="grid h-6 w-6 place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            >
+              <ChevronDown size={14} />
+            </button>
+          )}
+        </span>
+      </div>
+
+      {/* The call sheet: the reason to look at a single day at all. */}
+      <div className="mt-2 border-t border-slate-100 pt-2">
+        {calls.length === 0 && !b.wrapTime ? (
+          <p className="text-xs text-slate-400">No call times set.</p>
+        ) : (
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {calls.map((c, i) => (
+              <span key={c.id || i} className="inline-flex items-baseline gap-1.5 text-xs">
+                <span className="font-semibold tabular-nums text-slate-800">{c.time}</span>
+                <span className="text-slate-600">{rolesLabel(c)}</span>
+                {c.note && <span className="text-slate-400">· {c.note}</span>}
+              </span>
+            ))}
+            {b.wrapTime && (
+              <span className="inline-flex items-baseline gap-1.5 text-xs">
+                <span className="font-semibold tabular-nums text-slate-800">{b.wrapTime}</span>
+                <span className="text-slate-500">wrap</span>
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+        {b.photographer && (
+          <span className="inline-flex items-center gap-1">
+            <Camera size={12} className="text-slate-400" />
+            {b.photographer}
+          </span>
+        )}
+        {b.model && (
+          <span className="inline-flex items-center gap-1">
+            <UserRound size={12} className="text-slate-400" />
+            {b.model}
+          </span>
+        )}
+        {/* What the job actually HOLDS, which is not the length of the unit
+            list: a closed set keeps its units as history flagged returned, and
+            a hold reserves nothing at all. Saying "8 pc(s) held" for either
+            would be a chip that lies about where the gear is. */}
+        <span className="inline-flex items-center gap-1">
+          <Package size={12} className="text-slate-400" />
+          {b.unitsReturned
+            ? `${(b.unitIds || []).length} pc(s) went out · back on the shelf`
+            : (b.unitIds || []).length > 0
+              ? `${(b.unitIds || []).length} pc(s) held`
+              : 'nothing held yet'}
+          {b.lineCount > 0 && <span className="text-slate-400"> · {b.lineCount} line(s)</span>}
+        </span>
+      </p>
+    </li>
+  )
+}
+
+// Every set on ONE day, grouped by studio — including Studio L, which is where
+// the location shoots sit, and including every studio with nothing on it,
+// because "what is free today" is half of what this view answers.
+function DayView({ iso, studios, byDay, onOpenCreate, onOpenEdit, onStatus, canManage, flip = '' }) {
+  const all = byDay.get(iso) ?? []
+  const groups = studios.map((studioId) => ({
+    studioId,
+    sets: all.filter((b) => b.studioId === studioId),
+  }))
+  // A set in a studio this app doesn't list (legacy data) still has to appear.
+  for (const b of all)
+    if (!studios.includes(b.studioId) && !groups.some((g) => g.studioId === b.studioId))
+      groups.push({ studioId: b.studioId, sets: all.filter((x) => x.studioId === b.studioId) })
+  const free = groups.filter((g) => g.sets.length === 0).length
+
+  return (
+    <div className={`min-h-0 flex-1 overflow-auto ${flip}`}>
+      <p className="mb-3 text-sm text-slate-500">
+        {all.length === 0 ? (
+          'Nothing booked on this day.'
+        ) : (
+          <>
+            <span className="font-medium text-slate-700">
+              {all.length} shoot{all.length === 1 ? '' : 's'}
+            </span>
+            {free > 0 && ` · ${free} studio${free === 1 ? '' : 's'} free`}
+          </>
+        )}
+      </p>
+
+      <div className="space-y-3 pb-4">
+        {groups.map(({ studioId, sets }) => (
+          <section key={studioId} className="rounded-xl border border-slate-200 bg-slate-50/60">
+            <header className="flex items-center justify-between gap-2 px-3 py-2">
+              <span className="inline-flex items-center gap-2">
+                <span className="grid h-6 w-6 place-items-center rounded-md bg-white text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
+                  {studioId}
+                </span>
+                <span className="text-sm font-medium text-slate-700">{studioLabel(studioId)}</span>
+                {sets.length > 1 && <span className="text-xs text-slate-400">{sets.length} sets</span>}
+              </span>
+              {sets.length === 0 && (
+                <span className="inline-flex items-center gap-2">
+                  <span className="text-xs text-slate-400">free</span>
+                  {onOpenCreate && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenCreate(studioId, iso)}
+                      className="inline-flex items-center gap-1 rounded-md border border-dashed border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                    >
+                      <Plus size={12} />
+                      Book it
+                    </button>
+                  )}
+                </span>
+              )}
+            </header>
+            {sets.length > 0 && (
+              <ul className="space-y-2 px-3 pb-3">
+                {sets.map((b) => (
+                  <DaySetCard
+                    key={b.id}
+                    b={b}
+                    onOpen={onOpenEdit}
+                    onStatus={onStatus}
+                    canManage={canManage}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /* ---------------------------------- Week ---------------------------------- */
 
-function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit, onStatus, canManage, flip = '' }) {
+function WeekView({
+  weekStart,
+  studios,
+  byDay,
+  onOpenCreate,
+  onOpenEdit,
+  onStatus,
+  onOpenDay,
+  canManage,
+  flip = '',
+}) {
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i)
     return {
@@ -627,10 +907,13 @@ function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit, onStatu
         {/* Header row */}
         <div className="sticky top-0 z-20 border-b border-r border-slate-200 bg-white" />
         {days.map((day) => (
-          <div
+          <button
             key={day.iso}
+            type="button"
+            onClick={() => onOpenDay?.(day.iso)}
+            title={`Everything on ${day.iso} — crew, call times and gear`}
             className={[
-              'sticky top-0 z-20 border-b border-r border-slate-200 px-2 py-2 text-center',
+              'sticky top-0 z-20 border-b border-r border-slate-200 px-2 py-2 text-center transition hover:bg-violet-50',
               day.today ? 'bg-amber-50' : day.weekend ? 'bg-rose-50' : 'bg-white',
             ].join(' ')}
           >
@@ -650,7 +933,7 @@ function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit, onStatu
             >
               {format(day.date, 'MMM d')}
             </div>
-          </div>
+          </button>
         ))}
 
         {/* Studio rows */}
@@ -719,7 +1002,16 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit, onS
 
 const MONTH_CHIP_MAX = 3
 
-function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek, onStatus, canManage, flip = '' }) {
+function MonthView({
+  refDate,
+  byDay,
+  onOpenEdit,
+  onJumpToWeek,
+  onOpenDay,
+  onStatus,
+  canManage,
+  flip = '',
+}) {
   const gridStart = startOfWeek(startOfMonth(refDate), { weekStartsOn: 1 })
   const gridEnd = endOfWeek(endOfMonth(refDate), { weekStartsOn: 1 })
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
@@ -753,6 +1045,7 @@ function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek, onStatus, canMana
             dayBookings={byDay.get(format(day, 'yyyy-MM-dd')) ?? []}
             onOpenEdit={onOpenEdit}
             onJumpToWeek={onJumpToWeek}
+            onOpenDay={onOpenDay}
             onStatus={onStatus}
             canManage={canManage}
           />
@@ -762,7 +1055,16 @@ function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek, onStatus, canMana
   )
 }
 
-function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek, onStatus, canManage }) {
+function MonthCell({
+  day,
+  refDate,
+  dayBookings,
+  onOpenEdit,
+  onJumpToWeek,
+  onOpenDay,
+  onStatus,
+  canManage,
+}) {
   const inMonth = isSameMonth(day, refDate)
   const today = isToday(day)
   const weekend = isWeekend(day)
@@ -788,18 +1090,26 @@ function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek, onStat
       ].join(' ')}
     >
       <div className="flex items-center justify-between">
-        <span
+        {/* The DATE opens that one day; the rest of the cell still jumps to its
+            week, which is what it always did. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenDay?.(format(day, 'yyyy-MM-dd'))
+          }}
+          title="Everything on this day"
           className={[
-            'grid h-6 min-w-6 place-items-center rounded-full px-1 text-xs font-semibold',
+            'grid h-6 min-w-6 place-items-center rounded-full px-1 text-xs font-semibold transition',
             today
-              ? 'bg-amber-500 text-white'
+              ? 'bg-amber-500 text-white hover:bg-amber-600'
               : inMonth
-                ? 'text-slate-700'
-                : 'text-slate-300',
+                ? 'text-slate-700 hover:bg-violet-100 hover:text-violet-700'
+                : 'text-slate-300 hover:bg-slate-100',
           ].join(' ')}
         >
           {format(day, 'd')}
-        </span>
+        </button>
         <Plus
           size={14}
           className="text-slate-300 opacity-0 transition group-hover:opacity-100"

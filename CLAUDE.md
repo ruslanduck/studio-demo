@@ -1594,6 +1594,45 @@
 > Measured: the status pill's list went 97 → **115px with none of the four labels truncated**, and the Jobs
 > filter's status dropdown still matches its 164px field exactly (164 → 164), so nothing that was already
 > right changed.
+> **FEATURE — a DAY view: everything happening on one day** (frontend only, no migration). Requested:
+> "Add day view (all shoots + style-outs per day, including L-row location shoots) / для отображения всех
+> сетов на конкретный день (текущий по дефолту)".
+> The toggle is **Day / Week / Month**, narrowest first. Picking **Day** jumps to TODAY — a day view opened
+> on last month's Tuesday is not what anyone means by it — while a **day header in the week grid** and the
+> **date badge in a month cell** open the day they name (the rest of a month cell still jumps to its week, as
+> it always did). ‹ › step one day in this mode.
+> The pane groups by studio and lists **every studio, including the empty ones** — "what is free today" is
+> half of what this view answers, and a free studio offers **Book it** straight into the two-step create flow.
+> Studio **L is always there**: that is where the location shoots sit, and a day view that dropped it would
+> hide exactly the row the request named.
+> Each set is a card with what the grid has no room for: the **whole call sheet** (every call time with its
+> roles and note, then the wrap), the Set label, the shoot TYPE, the brand, the PO, "day 2 of 3 · Sep 10 – 11"
+> for a span, the photographer and model, and the gear. It reuses the same status pill AND the same status
+> menu as the chips (right-click / long-press / chevron), so there is one way to move a job. Clicking a card
+> opens the job.
+> **A style-out is a TYPE, not a second kind of record.** It books a studio for a day, has a call sheet and
+> pulls gear exactly like a shoot, so `JOB_TYPES` gained `'Style-out'` beside Editorial and PDP (still free
+> text, still merged with whatever the register uses) and the day card shows the type as a chip. That is what
+> lets "all shoots + style-outs" be one list rather than a parallel entity. ⚠️ If a style-out is something
+> else in the studio's own model — no studio, no gear — this is the assumption to correct.
+> ⚠️ **A defect in my own card, caught by measuring rather than reading:** it printed
+> `(b.unitIds || []).length` as "N pc(s) held", and that list is NOT what a job holds. A CLOSED set keeps its
+> units as history flagged `unitsReturned`, and a HOLD reserves nothing — so a job I had just moved to Hold
+> still claimed "8 pc(s) held". (Its 8 came from a sibling sub-rental order on the same set being `fulfilled`,
+> which flags the set returned.) The card now reads "N pc(s) went out · back on the shelf" for a returned set
+> and "nothing held yet" when the job holds nothing.
+> The test suite caught the other half: two assertions pinned the two-type list, which is exactly the net
+> working — they now pin three.
+> Verified in local mode: **Day / Week / Month** all present, Day landing on "Thursday, 10 September 2026"
+> with "2 shoots · 4 studios free", all six studios listed and Studio L carrying its 2-day shoot with
+> "06:45 Crew · Load-in through the freight door · 08:00 Photographer, Assistant · 20:00 wrap · day 1 of 2";
+> ‹ › moved to Friday; the week header (Sep 10) and a month date badge (9) each opened that day; the status
+> menu opened from a day card and setting Hold wrote through; setting a job's Type to Style-out showed it as a
+> chip on its day card; a card click opened the JOB card. Demo data reseeded, 0 new console errors.
+> ℹ️ **Open question left with the studio:** the app labels the sixth studio "Studio L" and this file has
+> called it "a large studio" since V1 — but the request says "L-row **location** shoots". If L means
+> LOCATION, its label should say so (and it probably should not consume studio capacity the same way).
+> Not renamed on a guess.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

@@ -89,9 +89,24 @@ eq(ids({ brand: 'Nike', text: 'legacy' }), [], 'a job with no brand never matche
 ok(orderSearch.searchOrders(jobs, { text: 'legacy' }).length === 1, 'but stays findable by name')
 eq(orderSearch.brandsIn(jobs), ['H&M', 'Nike'], 'brand options: from the data, deduped, sorted')
 eq(orderSearch.brandsIn([]), [], 'no jobs, no brands')
-eq(orderSearch.jobTypesIn([]), ['Editorial', 'PDP'], 'the two asked-for types are offered from day one')
-eq(orderSearch.jobTypesIn([{ jobType: 'Lookbook' }]), ['Editorial', 'PDP', 'Lookbook'], 'a new type joins')
-eq(orderSearch.jobTypesIn([{ jobType: 'PDP' }]), ['Editorial', 'PDP'], 'and a used default is not duplicated')
+// A style-out books a studio, has a call sheet and pulls gear like a shoot, so
+// it is a TYPE rather than a second kind of record — that is what lets the day
+// view list "all shoots + style-outs" without a parallel entity.
+eq(
+  orderSearch.jobTypesIn([]),
+  ['Editorial', 'PDP', 'Style-out'],
+  'the types the studio names are offered from day one',
+)
+eq(
+  orderSearch.jobTypesIn([{ jobType: 'Lookbook' }]),
+  ['Editorial', 'PDP', 'Style-out', 'Lookbook'],
+  'a new type joins',
+)
+eq(
+  orderSearch.jobTypesIn([{ jobType: 'PDP' }]),
+  ['Editorial', 'PDP', 'Style-out'],
+  'and a used default is not duplicated',
+)
 // the studio stays OUT of free text: a bare "2" would match every 2026 date
 eq(orderSearch.searchOrders(jobs, { text: 'studio' }).length, 0, 'studio is a dropdown, not a search term')
 
