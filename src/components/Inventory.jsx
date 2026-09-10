@@ -310,6 +310,14 @@ export default function Inventory() {
   // able to resolve them) — the lists, the counts and the pickers work off the
   // live ones. See store.notArchived.
   const liveInventory = useMemo(() => inventory.filter(notArchived), [inventory])
+  // Every barcode the register holds — archived copies included, because a
+  // written-off unit KEEPS its barcode (`units.barcode` is unique table-wide),
+  // so proposing it again would be refused by the database.
+  const takenBarcodes = useMemo(() => {
+    const set = new Set()
+    for (const item of inventory) for (const u of item.units || []) if (u.barcode) set.add(u.barcode)
+    return set
+  }, [inventory])
   const liveKits = useMemo(() => kits.filter(notArchived), [kits])
   const liveLists = useMemo(() => scenarios.filter(notArchived), [scenarios])
 
@@ -495,11 +503,15 @@ export default function Inventory() {
   const closeItemModal = () => setItemModal({ open: false, item: null })
 
   async function handleCreate(fields) {
-    const newId = await addInventoryItem(fields)
+    const res = await addInventoryItem(fields)
+    // A refused barcode used to close the form on a write that never happened.
+    // The modal renders what comes back and stays open.
+    if (res?.error) return res
     clearFilters()
-    setSelectedId(newId)
+    setSelectedId(res.id)
     setShowDetailMobile(true)
     closeItemModal()
+    return res
   }
 
   async function handleSave(id, changes) {
@@ -1060,6 +1072,7 @@ export default function Inventory() {
         itemName={selected?.name}
         itemPlacement={selected?.placement ?? null}
         suggestedBarcode={unitEditor.open && !unitEditor.unit ? nextBarcode() : null}
+        takenBarcodes={takenBarcodes}
         onClose={() => setUnitEditor({ open: false, unit: null })}
         onAdd={(payload) => addUnits(selected.id, payload)}
         onSave={(payload) => updateUnit(selected.id, unitEditor.unit.id, payload)}
@@ -1465,7 +1478,7 @@ function ItemDetailsGrid({ item }) {
     // The derived path, not the legacy text: this is where the item actually
     // lives now, and the two can differ until it has been filed.
     ['Filed under', filedPath || null],
-    ['Replacement price', price],
+    ['Purchase price', price],
     ['Purchase date', item.purchaseDate],
   ]
   return (

@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Check, Plus, AlertTriangle, Info, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, Plus, AlertTriangle } from 'lucide-react'
 import Modal from './Modal'
-
-const MAX_ROWS = 50
-
-const blankRow = () => ({ barcode: '', serial: '' })
+import UnitRowsField, { blankUnitRow } from './UnitRowsField'
+import { duplicateTypedBarcode } from '../lib/unitRows'
 
 // Add or correct the PHYSICAL COPIES of an item — the barcoded units with their
 // own serial. "Add inventory" creates the item type; this manages what's on the
@@ -20,6 +18,9 @@ export default function UnitEditorModal({
   itemName,
   itemPlacement,
   suggestedBarcode,
+  // Every barcode the register holds. Optional: without it a preview can still
+  // propose a number the save then refuses, which the store catches out loud.
+  takenBarcodes,
   onClose,
   onAdd,
   onSave,
@@ -28,7 +29,7 @@ export default function UnitEditorModal({
   const [barcode, setBarcode] = useState('')
   const [serial, setSerial] = useState('')
   const [placement, setPlacement] = useState('')
-  const [rows, setRows] = useState([blankRow()])
+  const [rows, setRows] = useState([blankUnitRow()])
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -37,47 +38,17 @@ export default function UnitEditorModal({
     setBarcode(isEdit ? unit.barcode ?? '' : '')
     setSerial(isEdit ? unit.serial ?? '' : '')
     setPlacement(isEdit ? unit.placement ?? '' : '')
-    setRows([blankRow()])
+    setRows([blankUnitRow()])
     setError(null)
     setBusy(false)
   }, [open, unit, isEdit])
 
-  // What each blank row will actually get, skipping numbers typed elsewhere in
-  // the batch — so the greyed-out preview never promises a barcode it can't use.
-  const previews = useMemo(() => {
-    const base = parseInt(suggestedBarcode, 10)
-    const typed = new Set(rows.map((r) => r.barcode.trim()).filter(Boolean))
-    let next = Number.isFinite(base) ? base : 1
-    return rows.map((r) => {
-      if (r.barcode.trim()) return null
-      let code = String(next).padStart(4, '0')
-      while (typed.has(code)) code = String(++next).padStart(4, '0')
-      next++
-      return code
-    })
-  }, [rows, suggestedBarcode])
-
-  function setCount(value) {
-    const n = Math.max(1, Math.min(MAX_ROWS, Math.floor(Number(value) || 1)))
-    setRows((cur) =>
-      n === cur.length
-        ? cur
-        : n < cur.length
-          ? cur.slice(0, n)
-          : [...cur, ...Array.from({ length: n - cur.length }, blankRow)],
-    )
-  }
-
-  const setRow = (i, key) => (e) =>
-    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, [key]: e.target.value } : r)))
-
   async function submit(e) {
     e?.preventDefault()
     if (!isEdit) {
-      // Two rows claiming one barcode is a mistake worth catching here — the
-      // store only knows about barcodes that already exist.
-      const typed = rows.map((r) => r.barcode.trim()).filter(Boolean)
-      const dup = typed.find((c, i) => typed.indexOf(c) !== i)
+      // Caught next to the field rather than after a round trip; the store
+      // checks it too, and that one is the guarantee (lib/unitRows).
+      const dup = duplicateTypedBarcode(rows)
       if (dup) return setError(`#${dup} is listed twice — each copy needs its own barcode.`)
     }
     setBusy(true)
@@ -130,84 +101,13 @@ export default function UnitEditorModal({
               </div>
             </div>
           ) : (
-            <>
-              <div className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
-                <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                <span>
-                  One row per copy. Leave a row empty and its barcode and serial are generated —
-                  that&apos;s the case for a batch of identical gear. Type them in for a copy you
-                  have in hand.
-                </span>
-              </div>
-
-              <div className="flex items-end gap-3">
-                <div>
-                  <label className={label}>How many?</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max={MAX_ROWS}
-                    value={rows.length}
-                    onChange={(e) => setCount(e.target.value)}
-                    className={[field, 'w-24'].join(' ')}
-                  />
-                </div>
-                <p className="pb-2.5 text-xs text-slate-400">
-                  {rows.length === 1 ? '1 copy' : `${rows.length} copies`} will be registered.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="grid grid-cols-[1.5rem_1fr_1fr_1.5rem] items-center gap-2 text-[11px] uppercase tracking-wide text-slate-400">
-                  <span />
-                  <span>Barcode</span>
-                  <span>Serial</span>
-                  <span />
-                </div>
-                {rows.map((row, i) => (
-                  <div key={i} className="grid grid-cols-[1.5rem_1fr_1fr_1.5rem] items-center gap-2">
-                    <span className="text-right text-xs text-slate-400">{i + 1}</span>
-                    <input
-                      autoFocus={i === 0}
-                      type="text"
-                      value={row.barcode}
-                      onChange={setRow(i, 'barcode')}
-                      placeholder={previews[i] ?? ''}
-                      className={[field, 'font-mono'].join(' ')}
-                    />
-                    <input
-                      type="text"
-                      value={row.serial}
-                      onChange={setRow(i, 'serial')}
-                      placeholder="generated"
-                      className={[field, 'font-mono'].join(' ')}
-                    />
-                    {rows.length > 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => setRows((cur) => cur.filter((_, idx) => idx !== i))}
-                        title="Remove this copy"
-                        className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
-                      >
-                        <X size={14} />
-                      </button>
-                    ) : (
-                      <span />
-                    )}
-                  </div>
-                ))}
-                {rows.length < MAX_ROWS && (
-                  <button
-                    type="button"
-                    onClick={() => setRows((cur) => [...cur, blankRow()])}
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-violet-700 transition hover:bg-violet-50"
-                  >
-                    <Plus size={13} />
-                    Add another copy
-                  </button>
-                )}
-              </div>
-            </>
+            <UnitRowsField
+              rows={rows}
+              onChange={setRows}
+              suggestedBarcode={suggestedBarcode}
+              taken={takenBarcodes}
+              autoFocus
+            />
           )}
 
           {/* Where the copy LIVES. Not the same as the LOCATION column in the

@@ -64,7 +64,11 @@ for (const file of files) {
         if (depth === 0) break
       }
     }
-    const body = src.slice(m.index, end + 1)
+    // PROPERTY ACCESS IS NOT A BINDING: `item.units` cannot trip a temporal
+    // dead zone, only a bare `units` can. Stripping `.name` (and `?.name`)
+    // before scanning removes a whole class of false alarm — and a tool whose
+    // job is to be believed cannot cry wolf.
+    const body = src.slice(m.index, end + 1).replace(/\??\.\s*[A-Za-z_$][\w$]*/g, ' ')
     // The hook call's own last line. A const declared INSIDE the callback is a
     // local — the overwhelming majority of matches — and only a declaration
     // BELOW the whole call can be the outer-scope one that has not run yet.

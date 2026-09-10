@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData] =
+const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows] =
   await Promise.all([
     load('src/lib/activity.js'),
     load('src/lib/scanning.js'),
@@ -31,6 +31,7 @@ const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packi
     load('src/lib/callTimes.js'),
     load('src/lib/taxonomy.js'),
     load('src/data/inventory.js'),
+    load('src/lib/unitRows.js'),
   ])
 
 let n = 0
@@ -497,6 +498,74 @@ ok(
     'every seeded subcategory is one SUBCATEGORIES lists for that category')
   const unfiled = INVENTORY_SEED.filter((i) => !i.subcategory)
   ok(unfiled.length >= 1, 'and some stock is deliberately left unfiled — that state is real')
+}
+
+// ---------------------------------------------------------------------------
+// lib/unitRows — one row per physical copy: blanks are generated, typed values
+// are the label on the piece in hand, and no number is ever handed out twice.
+{
+  const taken = new Set(['0700', '0701'])
+
+  // Blank rows take the next free numbers, skipping what the register holds.
+  {
+    const { codes } = unitRows.resolveUnitCodes([{}, {}, {}], { taken, nextBarcode: '0700' })
+    eq(codes, ['0702', '0703', '0704'], 'blank rows skip barcodes already in use')
+  }
+
+  // A typed number is honoured, and the blanks route around it.
+  {
+    const { codes } = unitRows.resolveUnitCodes(
+      [{ barcode: '0703' }, {}, {}],
+      { taken, nextBarcode: '0702' },
+    )
+    eq(codes, ['0703', '0702', '0704'], 'a blank row never takes a number typed in another row')
+  }
+
+  // The two refusals. Neither invents a substitute — a barcode is a label on a
+  // physical piece of gear.
+  eq(
+    unitRows.resolveUnitCodes([{ barcode: '0700' }], { taken }).error,
+    '#0700 is already used by another unit.',
+    'a barcode the register already holds is refused',
+  )
+  eq(
+    unitRows.resolveUnitCodes([{ barcode: '0900' }, { barcode: '0900' }], { taken }).error,
+    '#0900 is listed twice — each copy needs its own barcode.',
+    'two rows claiming one barcode are refused',
+  )
+  ok(!unitRows.resolveUnitCodes([{ barcode: '0900' }, {}], { taken }).error,
+    'and one typed row is fine')
+
+  // Serials ride along untouched; the caller supplies its own generator.
+  {
+    const { specs } = unitRows.resolveUnitCodes([{ serial: ' SN-1 ' }, {}], { taken, nextBarcode: '0800' })
+    eq(specs[0].serial, 'SN-1', 'a typed serial is trimmed and kept')
+    eq(specs[1].serial, '', 'a blank one is left for the caller to generate')
+  }
+
+  // `count` is the "just give me N" shorthand the old API took.
+  eq(unitRows.resolveUnitCodes([], { taken, nextBarcode: '0710', count: 2 }).codes,
+    ['0710', '0711'], 'a bare count still means that many generated')
+  eq(unitRows.normalizeUnitRows([], 3).length, 3, 'and normalizes to that many rows')
+  eq(unitRows.normalizeUnitRows(Array.from({ length: 99 }, () => ({})), 1).length,
+    unitRows.MAX_UNIT_ROWS, 'the row count is capped')
+
+  // The greyed previews must agree with what the save will do — the whole point
+  // of sharing this module.
+  {
+    const rows = [{ barcode: '0703' }, {}, {}]
+    const previews = unitRows.barcodePreviews(rows, '0702', taken)
+    const { codes } = unitRows.resolveUnitCodes(rows, { taken, nextBarcode: '0702' })
+    eq(previews, [null, '0702', '0704'], 'a typed row previews nothing, blanks preview their number')
+    eq(previews.map((p, i) => p ?? rows[i].barcode), codes,
+      'and every preview is the code the save actually assigns')
+  }
+  eq(unitRows.barcodePreviews([{}, {}], undefined), ['0001', '0002'],
+    'with no suggestion it starts at 0001 rather than NaN')
+
+  eq(unitRows.duplicateTypedBarcode([{ barcode: '0900' }, { barcode: '0900' }]), '0900',
+    'the form catches the duplicate next to the field')
+  eq(unitRows.duplicateTypedBarcode([{ barcode: '0900' }, {}, {}]), null, 'blanks never collide')
 }
 
 console.log(`OK — ${n} assertions passed`)

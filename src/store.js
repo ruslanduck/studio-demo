@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { startOfWeek, addDays, format } from 'date-fns'
 import { STUDIOS, studioLabel } from './data/studios'
-import { CATEGORIES, INVENTORY_SEED, createUnits, serialFor } from './data/inventory'
+import { CATEGORIES, INVENTORY_SEED, serialFor } from './data/inventory'
 import { REPAIR_TEMPLATES, repairDates } from './data/repairs'
 import { generateUsage } from './data/usage'
 import { KIT_SEED } from './data/kits'
@@ -90,6 +90,7 @@ import { supabase } from './lib/supabase'
 import { reservedUnitsForOrder, overlaps } from './lib/availability'
 import { coversDay, endsOnFor, firstFullDay, setSpanDays } from './lib/setDays'
 import { normalizeCallTimes } from './lib/callTimes'
+import { resolveUnitCodes } from './lib/unitRows'
 import {
   categoryNameError,
   categoryRemovalBlock,
@@ -1298,6 +1299,16 @@ export const useStore = create(
         return String(max + 1).padStart(4, '0')
       },
 
+      // Every barcode the register holds — ARCHIVED copies included, because a
+      // written-off unit keeps its barcode (`units.barcode` is unique
+      // table-wide), so handing it out again would be refused by the database.
+      takenBarcodes: () => {
+        const set = new Set()
+        for (const it of get().inventory)
+          for (const u of it.units || []) if (u.barcode) set.add(u.barcode)
+        return set
+      },
+
       // Register physical copies of a barcoded item. `rows` is ONE ENTRY PER
       // COPY ([{ barcode, serial }]) — each may be typed or left blank to be
       // generated, so a batch of 6 and 6 hand-entered serials are the same call.
@@ -1310,39 +1321,17 @@ export const useStore = create(
         if (item.kind !== 'barcoded')
           return { error: 'Only barcoded items track individual units — edit the quantity instead.' }
 
-        const specs = (Array.isArray(rows) && rows.length
-          ? rows
-          : Array.from({ length: Math.max(1, Math.min(100, Number(count) || 1)) }, () => ({}))
-        )
-          .slice(0, 100)
-          .map((r) => ({
-            barcode: String(r?.barcode ?? '').trim(),
-            serial: String(r?.serial ?? '').trim(),
-          }))
-
-        const taken = new Set()
-        for (const it of state.inventory) for (const u of it.units || []) taken.add(u.barcode)
-
-        // A typed barcode must be free, and no two rows may claim the same one.
-        const claimed = new Set()
-        for (const s of specs) {
-          if (!s.barcode) continue
-          if (taken.has(s.barcode)) return { error: `#${s.barcode} is already used by another unit.` }
-          if (claimed.has(s.barcode))
-            return { error: `#${s.barcode} is listed twice — each copy needs its own barcode.` }
-          claimed.add(s.barcode)
-        }
-
-        // Blank rows take the next free numbers, skipping anything typed above.
-        let next = parseInt(get().nextBarcode(), 10)
-        const codes = specs.map((s) => {
-          if (s.barcode) return s.barcode
-          let code = String(next).padStart(4, '0')
-          while (taken.has(code) || claimed.has(code)) code = String(++next).padStart(4, '0')
-          next++
-          claimed.add(code)
-          return code
+        // The rule lives in lib/unitRows: a typed barcode must be free, no two
+        // rows may claim one, and blank rows take the next free numbers,
+        // skipping anything typed above. Creating an item with its copies runs
+        // the SAME resolution — a rule written twice is a rule that drifts.
+        const resolved = resolveUnitCodes(rows, {
+          taken: get().takenBarcodes(),
+          nextBarcode: get().nextBarcode(),
+          count,
         })
+        if (resolved.error) return { error: resolved.error }
+        const { codes, specs } = resolved
 
         const typedPlacement = String(placement || '').trim()
         const units = codes.map((code, i) => ({
@@ -1678,7 +1667,22 @@ export const useStore = create(
       // Create a new inventory item with `quantity` freshly generated units.
       // Barcodes start past every existing one so ids never collide. Returns
       // the new item's id so the UI can select it.
-      addInventoryItem: async ({ name, category, quantity, kind = 'barcoded', ...fields }) => {
+      // Create an item — and, for a barcoded one, its physical COPIES in the
+      // same action. `units` is one entry per copy ([{barcode, serial}]): typed
+      // where the crew has the label in hand, blank to be generated. Passing
+      // only `quantity` still means "that many generated".
+      //
+      // Returns `{ id }` or `{ error }`. It used to return a bare id, so a
+      // refused barcode had nowhere to be reported and the form closed on a
+      // write that never happened.
+      addInventoryItem: async ({
+        name,
+        category,
+        quantity,
+        kind = 'barcoded',
+        units: rows,
+        ...fields
+      }) => {
         const logCreate = (itemId) =>
           get().logActivity({
             type: EVENT.ITEM_CREATED,
@@ -1686,11 +1690,47 @@ export const useStore = create(
             entityId: itemId,
             data: { name, category, kind, quantity },
           })
+
+        // The copies, resolved by the SAME rule `addUnits` uses. Done before
+        // anything is written, so a clash costs nothing.
+        let copies = null
+        if (kind === 'barcoded') {
+          const resolved = resolveUnitCodes(rows, {
+            taken: get().takenBarcodes(),
+            nextBarcode: get().nextBarcode(),
+            count: quantity,
+          })
+          if (resolved.error) return { error: resolved.error }
+          copies = resolved.codes.map((code, i) => ({
+            id: `u-${code}`,
+            barcode: code,
+            serial: resolved.specs[i].serial || serialFor(`${slugify(name)}-${code}`),
+            status: 'available',
+            location: 'Available',
+            placement: null,
+            ownership: 'owned',
+            repairs: [],
+          }))
+        }
+
         if (usingSupabase) {
-          const id = await sbAddInventoryItem({ name, category, quantity, kind, ...fields })
-          logCreate(id)
-          await get().hydrate({ quiet: true })
-          return id
+          try {
+            const id = await sbAddInventoryItem({
+              name,
+              category,
+              quantity,
+              kind,
+              units: copies ?? undefined,
+              ...fields,
+            })
+            logCreate(id)
+            await get().hydrate({ quiet: true })
+            return { id }
+          } catch (e) {
+            // A barcode that slipped through between the check and the insert
+            // lands here as the DB's unique violation. Reported, not swallowed.
+            return { error: e?.message || 'The item could not be created.' }
+          }
         }
         const state = get()
         const existingIds = new Set(state.inventory.map((i) => i.id))
@@ -1698,14 +1738,6 @@ export const useStore = create(
         let id = base
         let n = 2
         while (existingIds.has(id)) id = `${base}-${n++}`
-
-        let maxBarcode = 0
-        for (const item of state.inventory) {
-          for (const u of item.units) {
-            const num = parseInt(u.barcode, 10)
-            if (Number.isFinite(num) && num > maxBarcode) maxBarcode = num
-          }
-        }
 
         const attrs = {
           brand: fields.brand || null,
@@ -1719,11 +1751,21 @@ export const useStore = create(
         const base_ = { id, name: name.trim(), category, kind, ...attrs }
         const item =
           kind === 'barcoded'
-            ? { ...base_, quantity: 0, units: createUnits(id, quantity, maxBarcode + 1) }
+            ? { ...base_, quantity: 0, units: copies.map((u) => ({ ...u, id: `${id}-${u.barcode}` })) }
             : { ...base_, quantity, units: [] }
         set({ inventory: [item, ...state.inventory] })
         logCreate(id)
-        return id
+        // One event per copy, exactly as `addUnits` logs them: "how did this
+        // unit get here" is answered the same way whichever door it came in.
+        for (const u of item.units)
+          get().logActivity({
+            type: EVENT.UNIT_ADDED,
+            entityType: 'item',
+            entityId: id,
+            unitId: u.id,
+            data: { barcode: u.barcode, serial: u.serial, itemName: item.name },
+          })
+        return { id }
       },
 
       // Move non-barcoded stock by a DELTA — "20 more arrived",
@@ -1777,7 +1819,7 @@ export const useStore = create(
           subcategory: 'subcategory',
           subcategoryId: 'filed under',
           purchaseDate: 'purchase date',
-          replacementPrice: 'replacement price',
+          replacementPrice: 'purchase price',
           dayRate: 'day rate',
         }
         const changed = []

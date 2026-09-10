@@ -325,6 +325,11 @@ export async function getInventory() {
     // where a piece came from, and shown as a hint while it is being assigned.
     subcategoryId: item.subcategory_id ?? null,
     purchaseDate: item.purchase_date,
+    // ⚠️ The COLUMN is `replacement_price` and the label is "Purchase price".
+    // It was added as an insurance value (20260724160000) and the studio uses it
+    // for what a piece cost, which is why it now sits beside Purchase date.
+    // Renaming the column would rewrite stored data for no visible benefit —
+    // the same call as the `orders` table meaning Job.
     replacementPrice: item.replacement_price,
     dayRate: item.day_rate != null ? Number(item.day_rate) : null,
     ...archiveFields(item),
@@ -839,7 +844,15 @@ async function writeItemRow(run, patch) {
   return { ok: true, subcategoryNotStored: true }
 }
 
-export async function addInventoryItem({ name, category, quantity, kind = 'barcoded', ...fields }) {
+export async function addInventoryItem({
+  name,
+  category,
+  quantity,
+  kind = 'barcoded',
+  // Fully resolved copies, when the caller typed any of their barcodes.
+  units,
+  ...fields
+}) {
   const attrs = itemFieldColumns(fields)
 
   // Non-barcoded items store a quantity and have no unit rows.
@@ -860,21 +873,44 @@ export async function addInventoryItem({ name, category, quantity, kind = 'barco
     return item.id
   }
 
-  // Barcoded: generate `quantity` tracked units with fresh barcodes.
+  // Barcoded: register its physical copies in the same breath.
   const item = await insertItem({ name: name.trim(), category, kind: 'barcoded', ...attrs })
-  const { data: rows } = await supabase.from('units').select('barcode')
-  let maxB = 0
-  for (const r of rows || []) {
-    const n = parseInt(r.barcode, 10)
-    if (Number.isFinite(n) && n > maxB) maxB = n
+  // The CALLER resolves the barcodes when it has them — the store holds the
+  // register and already owns that rule for `addUnits` (lib/unitRows), so doing
+  // it twice is how the two would come to disagree. Without them, fall back to
+  // generating `quantity` from the highest barcode the DB holds.
+  let toInsert = units
+  if (!toInsert?.length) {
+    const { data: rows } = await supabase.from('units').select('barcode')
+    let maxB = 0
+    for (const r of rows || []) {
+      const n = parseInt(r.barcode, 10)
+      if (Number.isFinite(n) && n > maxB) maxB = n
+    }
+    toInsert = createUnits(item.id, quantity, maxB + 1)
   }
-  const units = createUnits(item.id, quantity, maxB + 1)
   const { error: uErr } = await supabase.from('units').insert(
-    units.map((u) => ({
-      inventory_item_id: item.id, barcode: u.barcode, serial: u.serial, ownership: u.ownership,
+    toInsert.map((u) => ({
+      inventory_item_id: item.id,
+      barcode: u.barcode,
+      serial: u.serial,
+      ownership: u.ownership || 'owned',
+      placement: u.placement || null,
     })),
   )
-  if (uErr) throw uErr
+  if (uErr) {
+    // Pre-placement database: retry without the column rather than lose the
+    // copies (the same fallback `addUnits` has).
+    const { error: retry } = await supabase.from('units').insert(
+      toInsert.map((u) => ({
+        inventory_item_id: item.id,
+        barcode: u.barcode,
+        serial: u.serial,
+        ownership: u.ownership || 'owned',
+      })),
+    )
+    if (retry) throw retry
+  }
   return item.id
 }
 

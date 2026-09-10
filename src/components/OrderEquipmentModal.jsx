@@ -501,11 +501,13 @@ export default function OrderEquipmentModal({
   // the row resolves its name in the same commit as this state change.
   async function createItemAndAdd(payload) {
     setNewItemOpen(false)
-    const id = await addInventoryItem(payload)
-    if (!id) {
-      setError('The item could not be created.')
+    const res = await addInventoryItem(payload)
+    if (res?.error || !res?.id) {
+      // The actual reason — a clashing barcode says so instead of "could not".
+      setError(res?.error || 'The item could not be created.')
       return
     }
+    const id = res.id
     setItemLines((prev) => [...prev, { itemId: id, quantity: 1, source: IN_HOUSE, vendorId: null }])
     setPicker(false)
     setPickerSearch('')

@@ -7,6 +7,8 @@ import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 import DateField from './DateField'
 import SelectField from './SelectField'
+import UnitRowsField, { blankUnitRow } from './UnitRowsField'
+import { duplicateTypedBarcode } from '../lib/unitRows'
 import {
   liveCategories,
   subcategoryById,
@@ -68,18 +70,33 @@ export default function AddInventoryModal({
   // field here — an item is never attached to a category directly.
   const taxonomy = useStore((st) => st.taxonomy)
   const createSubcategory = useStore((st) => st.createSubcategory)
+  // Read from the store rather than threaded down: what the previews need is
+  // this control's own business (the `companies={companies}` lesson).
+  const inventory = useStore((st) => st.inventory)
+  const nextBarcode = useStore((st) => st.nextBarcode)
+  const takenBarcodes = useMemo(() => {
+    const set = new Set()
+    for (const it of inventory) for (const u of it.units || []) if (u.barcode) set.add(u.barcode)
+    return set
+  }, [inventory])
   const can = useCan()
   const isEdit = !!item
   const [form, setForm] = useState(BLANK)
   // The inline "+ New subcategory…" panel: `null` when closed.
   const [newSub, setNewSub] = useState(null)
   const [subError, setSubError] = useState(null)
+  // The physical copies of a NEW barcoded item, one row per copy. Registering
+  // the item and what is on the shelf under it used to be two trips.
+  const [unitRows, setUnitRows] = useState([blankUnitRow()])
+  const [createError, setCreateError] = useState(null)
 
   useEffect(() => {
     if (open) {
       setForm(item ? fromItem(item) : { ...BLANK, ...(prefill ?? {}) })
       setNewSub(null)
       setSubError(null)
+      setUnitRows([blankUnitRow()])
+      setCreateError(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item, prefill?.name])
@@ -90,8 +107,11 @@ export default function AddInventoryModal({
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
-  const qty = Math.floor(Number(form.quantity))
   const isBarcoded = form.kind === 'barcoded'
+  // A NEW barcoded item counts its copies from the rows below — the count field
+  // there is the same number, so there is no second place to disagree.
+  const creatingUnits = !isEdit && isBarcoded
+  const qty = creatingUnits ? unitRows.length : Math.floor(Number(form.quantity))
   const showQty = !isEdit || !isBarcoded
   // Creating the missing subcategory from here, so a half-typed item is never
   // abandoned to go and make one elsewhere.
@@ -108,9 +128,16 @@ export default function AddInventoryModal({
   const canSubmit =
     form.name.trim() !== '' && (isEdit || (Number.isFinite(qty) && qty >= 1))
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     if (!canSubmit) return
+    setCreateError(null)
+    if (creatingUnits) {
+      // Caught next to the field; the store checks it too and that one is the
+      // guarantee (lib/unitRows).
+      const dup = duplicateTypedBarcode(unitRows)
+      if (dup) return setCreateError(`#${dup} is listed twice — each copy needs its own barcode.`)
+    }
     const price = form.replacementPrice.trim()
     const base = {
       name: form.name.trim(),
@@ -129,7 +156,18 @@ export default function AddInventoryModal({
       if (!isBarcoded) changes.quantity = Number.isFinite(qty) && qty >= 0 ? qty : 0
       onSave(item.id, changes)
     } else {
-      onCreate({ ...base, kind: form.kind, quantity: Math.min(MAX_QTY, qty) })
+      const res = await onCreate({
+        ...base,
+        kind: form.kind,
+        quantity: Math.min(MAX_QTY, qty),
+        // One entry per copy: typed where the crew has the label in hand, blank
+        // to be generated. Only for barcoded stock — counted stock has no
+        // copies to register.
+        units: creatingUnits ? unitRows : undefined,
+      })
+      // A refused barcode leaves the form open with the reason on it, rather
+      // than closing on a write that did not happen.
+      if (res?.error) setCreateError(res.error)
     }
   }
 
@@ -296,7 +334,7 @@ export default function AddInventoryModal({
               )}
             </div>
             <div>
-              <label className={label}>Replacement price</label>
+              <label className={label}>Purchase price</label>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">$</span>
                 <input type="number" min="0" step="0.01" value={form.replacementPrice} onChange={set('replacementPrice')} placeholder="0.00" className={field + ' pl-7'} />
@@ -306,24 +344,50 @@ export default function AddInventoryModal({
               <label className={label}>Purchase date</label>
               <DateField value={form.purchaseDate} onChange={set('purchaseDate')} className={field} />
             </div>
-            <div>
-              <label className={label}>{isBarcoded ? 'Quantity' : 'Quantity on hand'}</label>
-              {showQty ? (
-                <>
-                  <input type="number" min={isEdit ? '0' : '1'} max={MAX_QTY} value={form.quantity} onChange={set('quantity')} className={field} />
-                  <p className="mt-1.5 text-xs text-slate-400">
-                    {isBarcoded
-                      ? `Generates ${Number.isFinite(qty) && qty >= 1 ? Math.min(MAX_QTY, qty) : 0} unit${qty === 1 ? '' : 's'} with auto barcodes.`
-                      : 'Stored as a count — no per-unit barcodes.'}
-                  </p>
-                </>
-              ) : (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
-                  {item.units.length} units — managed individually.
-                </div>
-              )}
-            </div>
+            {/* Counted stock takes a number. Barcoded stock takes its COPIES —
+                see the block below — and an existing item manages them one at a
+                time from its card. */}
+            {!creatingUnits && (
+              <div>
+                <label className={label}>{isBarcoded ? 'Quantity' : 'Quantity on hand'}</label>
+                {showQty ? (
+                  <>
+                    <input type="number" min={isEdit ? '0' : '1'} max={MAX_QTY} value={form.quantity} onChange={set('quantity')} className={field} />
+                    <p className="mt-1.5 text-xs text-slate-400">
+                      Stored as a count — no per-unit barcodes.
+                    </p>
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                    {item.units.length} units — managed individually.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* The COPIES of a new barcoded item, registered with it. Blank rows
+              are generated (a batch of identical stands), typed rows carry the
+              label already on the piece — the same control the item card's
+              "Add unit" uses, so the question is asked one way. */}
+          {creatingUnits && (
+            <div className="space-y-3 rounded-xl border border-slate-200 p-3">
+              <p className="text-sm font-medium text-slate-700">Its copies</p>
+              <UnitRowsField
+                rows={unitRows}
+                onChange={setUnitRows}
+                suggestedBarcode={nextBarcode()}
+                taken={takenBarcodes}
+              />
+            </div>
+          )}
+
+          {createError && (
+            <div className="flex items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+              {createError}
+            </div>
+          )}
         </div>
 
         {archiveError && (
