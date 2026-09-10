@@ -89,8 +89,7 @@ export default function PackingChecklistModal({
               </div>
               <div className="mt-0.5 text-xs text-slate-500">
                 {order.poNumber ? `PO ${order.poNumber} · ` : ''}
-                One row per barcoded copy — tick it once it's in the case. Returns are recorded at
-                the scanning station.
+                One row per barcoded copy — tick it once it's in the case.
               </div>
             </div>
             <div className="shrink-0 text-center text-xs">

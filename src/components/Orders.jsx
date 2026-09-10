@@ -31,7 +31,6 @@ import {
   ORDER_STATUS,
   ORDER_STATUS_CHOICES,
   orderStatusMeta,
-  CLOSED_STATUS,
   isClosedStatus,
   isCanceledStatus,
 } from '../data/orderStatus'
@@ -57,7 +56,6 @@ import { buildEstimate, money } from '../lib/estimate'
 import { downloadEstimatePdf } from '../lib/estimatePdf'
 import { downloadPackingListPdf } from '../lib/packingListPdf'
 import { packingProgress, packingRows } from '../lib/packing'
-import { expectedUnits, outstandingUnits } from '../lib/scanning'
 
 // Orders / Estimates (epic #5, 5.1 + 5.2).
 //
@@ -78,7 +76,7 @@ const PILL = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px
 // with its three buttons is gone: one thing in one place, and the chevron is
 // what says it can be clicked. Without `onChange` (a list row, or an account
 // without ORDER_MANAGE) it stays a plain badge.
-function StatusPill({ status, onChange = null, closedBlockedBy = null }) {
+function StatusPill({ status, onChange = null }) {
   const s = orderStatusMeta(status)
   if (!onChange)
     return (
@@ -99,15 +97,7 @@ function StatusPill({ status, onChange = null, closedBlockedBy = null }) {
       value={status}
       onChange={(e) => onChange(e.target.value)}
       ariaLabel="Job status — click to change"
-      options={values.map((v) => ({
-        value: v,
-        // A disabled row with no reason is the dead-button trap: say why.
-        label:
-          v === CLOSED_STATUS && closedBlockedBy
-            ? `${ORDER_STATUS[v]?.label ?? v} — ${closedBlockedBy}`
-            : ORDER_STATUS[v]?.label ?? v,
-        disabled: v === CLOSED_STATUS && !!closedBlockedBy,
-      }))}
+      options={values.map((v) => ({ value: v, label: ORDER_STATUS[v]?.label ?? v }))}
       className={[PILL, s.pill, 'cursor-pointer transition hover:ring-2'].join(' ')}
     />
   )
@@ -721,10 +711,6 @@ function OrderDetail({
     packingRows(estimate, { inventory: inventoryList, booking }).flatMap((g) => g.lines),
     order.packing || {},
   )
-  // Scanning (epic #6). The scan log is what says the gear physically came back,
-  // which is what closing the order is allowed to depend on.
-  const scanExpected = expectedUnits(order, booking, inventoryList)
-  const stillOut = outstandingUnits(scanExpected, order.scans ?? [])
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -733,13 +719,10 @@ function OrderDetail({
             <h3 className="truncate text-lg font-semibold text-slate-900">
               {order.jobName ?? order.setTitle ?? 'Untitled job'}
             </h3>
-            <StatusPill
-              status={order.status}
-              onChange={canManage ? onSetStatus : null}
-              closedBlockedBy={
-                stillOut.length > 0 ? `${stillOut.length} piece(s) still scanned out` : null
-              }
-            />
+            {/* Closing used to be blocked while gear was still scanned out.
+                That went with the scanning station — nothing records a scan-out
+                any more, so the pill has nothing to block on. */}
+            <StatusPill status={order.status} onChange={canManage ? onSetStatus : null} />
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             {order.poNumber ? (

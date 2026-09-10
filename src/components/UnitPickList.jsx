@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ScanLine } from 'lucide-react'
-import { normalizeBarcode } from '../lib/scanning'
+import { normalizeBarcode } from '../lib/barcode'
 
 // Which physical COPY goes on the job.
 //

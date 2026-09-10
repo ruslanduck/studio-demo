@@ -6,10 +6,13 @@
 //
 // It used to be three initials fields (two people at sign-out, one at return),
 // which is what the paper form had. Dropped on request: the crew wants to tick
-// that everything made it to the set, and the RETURN side is already the
-// scanning station's job — scan-in records who and when, and closing an order
-// refuses while anything is still out. A second, weaker record of the same thing
-// is worse than none.
+// that everything made it to the set. At the time the RETURN side was the
+// scanning station's job, which is why dropping it cost nothing.
+//
+// ⚠️ The station has since been removed too, so NOTHING records the return any
+// more. That is the accepted consequence, not an oversight — if "the gear came
+// back" needs a record again, this sheet's `ret` column is still in
+// `packing_signoffs`, unwritten and waiting.
 //
 // The slot is still called `out1` and the other two columns still exist in
 // `packing_signoffs`: nothing is destroyed, the app just stops writing them, so
@@ -40,7 +43,7 @@ export const packingLineKey = (line) =>
 //     rather than silently disappearing off the pull sheet.
 //
 // The concrete copies come from the SET's reservations (`booking.unitIds`), the
-// same source the scanning station uses — a loose line carries a quantity, and
+// same source the reservations give — a loose line carries a quantity, and
 // the reservation is the resolved answer to "which ones".
 export function packingRows(estimate, { inventory = [], booking = null } = {}) {
   const groups = estimate?.groups ?? []

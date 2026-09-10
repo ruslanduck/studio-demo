@@ -25,8 +25,6 @@ import {
   setUnitBarcode as sbSetUnitBarcode,
   setReservationsForSet as sbSetReservationsForSet,
   markSetReturned as sbMarkSetReturned,
-  logScan as sbLogScan,
-  setSetUnitStatus as sbSetSetUnitStatus,
   logEvent as sbLogEvent,
   getEvents as sbGetEvents,
   getEventsForUnits as sbGetEventsForUnits,
@@ -101,7 +99,6 @@ import {
   taxonomyFromItems,
 } from './lib/taxonomy'
 import { isClosedStatus } from './data/orderStatus'
-import { SCAN_OUT, SCAN_IN, expectedUnits, outstandingUnits, resolveScan } from './lib/scanning'
 import { EVENT, diffOrderLines } from './lib/activity'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
@@ -324,7 +321,6 @@ function buildSeedData() {
       setId: set?.id ?? null,
       setTitle: set?.title ?? o.setTitle ?? null,
       packing: {}, // digital packing checklist sign-offs (6.2 / 6.5), by lineKey
-      scans: [], // scan-out / scan-in log (epic #6) — filled at the station
       lines: o.lines.map(([itemId, quantity, vendorId], li) => {
         const source = vendorId ? 'sub_rental' : 'in_house'
         return {
@@ -868,7 +864,6 @@ export const useStore = create(
       orderDraft: null, // { payload, ts } | null — a new order awaiting its gear
       // A scan that appeared on screen but whose write was refused (e.g. the
       // scanning migration hasn't run on this database). Shown at the station.
-      scanSyncError: null,
       peopleFocus: null, // { personId, companyId, ts } | null
 
       // Send the caller's location to the stack + push a browser history entry.
@@ -2782,23 +2777,12 @@ export const useStore = create(
           })
           if (full) return { error: full }
         }
-        // Closing asserts "the shoot happened and the gear came back", so it is
-        // refused while anything is still scanned out. The job card greys the row
-        // and names what's out, but the GUARD has to live here: the calendar's
-        // status menu (and any future surface) would otherwise be a way around a
-        // rule the card only enforces visually.
-        if (changes.status && isClosedStatus(changes.status) && before && !isClosedStatus(before.status)) {
-          const state0 = get()
-          const booking0 = before.setId ? state0.bookings.find((b) => b.id === before.setId) : null
-          const out = outstandingUnits(
-            expectedUnits(before, booking0, state0.inventory),
-            before.scans ?? [],
-          )
-          if (out.length)
-            return {
-              error: `${out.length} piece(s) are still scanned out — scan them back in before closing this job.`,
-            }
-        }
+        // NOTE: closing used to be refused while anything was still scanned
+        // out. That guard went with the scanning STATION: nothing records a
+        // scan-out any more, so the check had no input and would have read as a
+        // rule that never fires. Scanning now only ADDS gear to a job from the
+        // equipment window. If signing gear out of the building comes back,
+        // this is where the guard belongs.
         const statusMoved = changes.status && before && changes.status !== before.status
         const reopened = statusMoved && isClosedStatus(before?.status)
         // Only a real MOVE gets a status event. The editor always submits the
@@ -3076,95 +3060,6 @@ export const useStore = create(
           )
       },
 
-      // --- the scanning station (epic #6) ----------------------------------
-      //
-      // One scan. Validation lives in `lib/scanning` (pure, asserted under Node);
-      // this only writes: append to the order's log, move the reservation row's
-      // status so the DB says where the copy is, and put the act in the activity
-      // feed with the account that did it.
-      //
-      // OPTIMISTIC, like the packing sign-off: a scanning station cannot wait on
-      // a round-trip while someone holds a camera over the reader.
-      scanUnit: (orderId, code, direction) => {
-        const state = get()
-        const order = state.orders.find((o) => o.id === orderId)
-        if (!order) return { error: 'That job is gone — reload.' }
-        const booking = state.bookings.find((b) => b.id === order.setId)
-        const expected = expectedUnits(order, booking, state.inventory)
-        const res = resolveScan(code, {
-          order,
-          expected,
-          scans: order.scans || [],
-          direction,
-          inventory: state.inventory,
-        })
-        if (!res.ok) return res
-
-        const unit = res.unit
-        const at = new Date().toISOString()
-        const entry = {
-          id: `scan-${unit.unitId}-${at}`,
-          setId: order.setId ?? null,
-          unitId: unit.unitId,
-          itemId: unit.itemId,
-          barcode: unit.barcode,
-          itemName: unit.itemName,
-          direction,
-          at,
-          by: state.profile?.fullName ?? 'Demo user',
-        }
-        set({
-          orders: state.orders.map((o) =>
-            o.id === orderId ? { ...o, scans: [...(o.scans || []), entry] } : o,
-          ),
-        })
-
-        get().logActivity({
-          type: direction === SCAN_OUT ? EVENT.SCANNED_OUT : EVENT.SCANNED_IN,
-          entityType: 'order',
-          entityId: orderId,
-          unitId: unit.unitId,
-          data: { barcode: unit.barcode, itemName: unit.itemName },
-        })
-
-        if (usingSupabase) {
-          sbLogScan({
-            orderId,
-            setId: order.setId,
-            unitId: unit.unitId,
-            itemId: unit.itemId,
-            barcode: unit.barcode,
-            itemName: unit.itemName,
-            direction,
-          }).catch((e) => {
-            // The scan showed instantly (a station can't wait on a round-trip),
-            // so a failed write has to be TAKEN BACK and said out loud —
-            // otherwise the screen claims gear moved and a reload disagrees.
-            // This is also what a pre-migration database looks like.
-            console.error('scan log failed:', e)
-            set({
-              orders: get().orders.map((o) =>
-                o.id === orderId
-                  ? { ...o, scans: (o.scans || []).filter((x) => x.id !== entry.id) }
-                  : o,
-              ),
-              scanSyncError: `That scan didn't reach the database (${e?.message ?? 'write refused'}) — nothing was recorded.`,
-            })
-          })
-          // 'checked_out' and 'reserved' both occupy the unit, so this changes
-          // what the DB says about WHERE the copy is, never what is available.
-          sbSetSetUnitStatus(
-            order.setId,
-            unit.unitId,
-            direction === SCAN_OUT ? 'checked_out' : 'reserved',
-          ).catch((e) => console.error('set_unit status failed:', e))
-        }
-
-        set({ scanSyncError: null })
-        return { ok: true, unit, direction, at }
-      },
-
-      clearScanSyncError: () => set({ scanSyncError: null }),
 
       // Archiving an order releases its gear AND takes its shoot off the calendar:
       // the shoot exists because this order equips it, so leaving a phantom

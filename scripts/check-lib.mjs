@@ -15,10 +15,10 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows] =
+const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows] =
   await Promise.all([
     load('src/lib/activity.js'),
-    load('src/lib/scanning.js'),
+    load('src/lib/barcode.js'),
     load('src/lib/orderSearch.js'),
     load('src/lib/estimate.js'),
     load('src/lib/estimatePdf.js'),
@@ -70,10 +70,17 @@ for (const t of Object.values(activity.EVENT)) {
   ok(!/\border\b/i.test(r.title), `and none of them says "order": ${t}`)
 }
 
-const scanErr = (o) => scanning.resolveScan('0801', { order: o, expected: [], scans: [], direction: 'out' }).error
-ok(/job/i.test(scanErr({ status: 'hold' })), 'the station refuses a job that is not confirmed, in those words')
-ok(!/\border\b/i.test(scanErr({ status: 'hold' })), 'and does not say "order"')
-ok(/job/i.test(scanErr(null)), 'nor when nothing is picked')
+// lib/barcode — the one rule every barcode field shares. The reported case was
+// a code COPIED off the screen, which brings the decorative `#` with it and was
+// refused as "not in the register".
+eq(barcode.normalizeBarcode('#0806'), '0806', 'a copied code loses its decorative hash')
+eq(barcode.normalizeBarcode('  0806' + String.fromCharCode(13, 10)), '0806', "and a reader's trailing return is trimmed")
+eq(barcode.normalizeBarcode('##0806'), '0806', 'however many hashes it arrives with')
+eq(barcode.normalizeBarcode('# 0806 '), '0806', 'with space between the hash and the digits')
+eq(barcode.normalizeBarcode('0806'), '0806', 'a bare code is left exactly as it is')
+eq(barcode.normalizeBarcode(''), '', 'empty stays empty')
+eq(barcode.normalizeBarcode(null), '', 'and nothing at all is not the string "null"')
+eq(barcode.normalizeBarcode('SF0T9197'), 'SF0T9197', 'a serial is not mangled either')
 
 // ─────────────────────────────────────────────── brand + shoot type
 const jobs = [

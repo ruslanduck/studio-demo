@@ -18,9 +18,11 @@ export const EVENT = {
   EQ_CHANGED: 'order.equipment_changed',
   PACKING_SIGNED: 'packing.signed',
   PACKING_CLEARED: 'packing.cleared',
-  // The scanning station. The scan LOG (`scans`) is the operational record the
-  // station reads; these events put the same act in the order's own feed, so
-  // "who took the camera out" is answerable from the order card too.
+  // ⚠️ NOTHING EMITS THESE ANY MORE — the scanning station was removed on
+  // request (a scan now only ADDS gear to a job from the equipment window).
+  // The two types stay so a row already written in some database still renders
+  // as a sentence instead of a raw key, exactly like the retired packing slot
+  // names. Delete them only once no `scan.*` row can exist anywhere.
   SCANNED_OUT: 'scan.out',
   SCANNED_IN: 'scan.in',
   ITEM_CREATED: 'item.created',

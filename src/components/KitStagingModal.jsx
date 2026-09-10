@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import Modal from './Modal'
 import { freeUnitsOf, isUnitFree } from '../lib/availability'
-import { normalizeBarcode } from '../lib/scanning'
+import { normalizeBarcode } from '../lib/barcode'
 import UnitPickList from './UnitPickList'
 
 // Staging window (Build order #3, 3.2 + 3.3 + 3.4). Adding a kit to a set opens
