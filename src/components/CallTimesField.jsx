@@ -17,8 +17,8 @@ import { isValidTime, wrapBeforeFirstCall } from '../lib/callTimes'
 // and one set of rules for both.
 
 const CHIP = 'rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 transition'
-const ON = 'bg-violet-600 text-white ring-violet-600'
-const OFF = 'bg-white text-slate-600 ring-slate-300 hover:ring-violet-300'
+const ON = 'bg-brand text-white ring-brand'
+const OFF = 'bg-surface text-slate-600 ring-slate-300 hover:ring-violet-300'
 
 function RoleChips({ roles, options, onToggle, onAddCustom }) {
   const [draft, setDraft] = useState(null)
@@ -162,7 +162,7 @@ export default function CallTimesField({
                       type="button"
                       onClick={() => remove(i)}
                       title="Remove this call time"
-                      className="shrink-0 rounded p-1 text-slate-400 transition hover:bg-white hover:text-rose-500"
+                      className="shrink-0 rounded p-1 text-slate-400 transition hover:bg-surface hover:text-rose-500"
                     >
                       <X size={14} />
                     </button>

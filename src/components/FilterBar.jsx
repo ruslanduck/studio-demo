@@ -76,7 +76,7 @@ export default function FilterBar({
               <SlidersHorizontal size={13} />
               Filters
               {activeCount > 0 && (
-                <span className="rounded-full bg-violet-600 px-1.5 text-[10px] font-semibold text-white">
+                <span className="rounded-full bg-brand px-1.5 text-[10px] font-semibold text-white">
                   {activeCount}
                 </span>
               )}

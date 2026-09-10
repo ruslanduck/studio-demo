@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import { useStore } from './store'
+import { useApplyTheme } from './lib/useApplyTheme'
 import { usingSupabase } from './data/repository'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
@@ -12,6 +13,9 @@ import Login from './components/Login'
 import PeekPanel from './components/PeekPanel'
 
 export default function App() {
+  // Keeps <html class="dark"> in step with the preference, and follows the
+  // device while the preference is "system".
+  useApplyTheme()
   const activeView = useStore((s) => s.activeView)
   const loading = useStore((s) => s.loading)
   const hydrate = useStore((s) => s.hydrate)
@@ -69,7 +73,7 @@ export default function App() {
         <TopBar />
         {/* Drill-in trail: how you get back to where you came from. */}
         {back && !loading && (
-          <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 sm:px-4 lg:px-6">
+          <div className="shrink-0 border-b border-slate-200 bg-surface px-3 py-2 sm:px-4 lg:px-6">
             <button
               type="button"
               onClick={onBack}

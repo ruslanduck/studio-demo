@@ -65,7 +65,7 @@ export default function StatusMenu({ at, status, onPick, onClose, title = 'Job s
       role="menu"
       aria-label={title}
       style={{ position: 'fixed', top: pos.y, left: pos.x, zIndex: 60 }}
-      className="w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+      className="w-56 overflow-hidden rounded-xl border border-slate-200 bg-surface py-1 shadow-xl"
       // A click inside must never reach the chip underneath (which opens the job).
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}

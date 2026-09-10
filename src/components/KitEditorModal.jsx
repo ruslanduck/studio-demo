@@ -259,8 +259,8 @@ export default function KitEditorModal({
                               'inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition',
                               s.slotType === val
                                 ? val === 'fixed'
-                                  ? 'bg-slate-700 text-white'
-                                  : 'bg-violet-600 text-white'
+                                  ? 'bg-chip text-white'
+                                  : 'bg-brand text-white'
                                 : 'text-slate-500 hover:bg-slate-100',
                             ].join(' ')}
                           >
@@ -388,7 +388,7 @@ export default function KitEditorModal({
                     onDelete(kit.id)
                     onClose()
                   }}
-                  className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
+                  className="rounded-md bg-danger px-2.5 py-1 font-medium text-white transition hover:bg-danger-strong"
                 >
                   Archive
                 </button>
@@ -423,7 +423,7 @@ export default function KitEditorModal({
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong"
             >
               {isEdit ? <Check size={15} /> : <Layers size={15} />}
               {isEdit ? 'Save kit' : 'Create kit'}

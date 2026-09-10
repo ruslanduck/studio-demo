@@ -373,7 +373,7 @@ export default function PersonEditorModal({
                     if (res?.error) setError(res.error)
                     else onClose()
                   }}
-                  className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
+                  className="rounded-md bg-danger px-2.5 py-1 font-medium text-white transition hover:bg-danger-strong"
                 >
                   Archive
                 </button>
@@ -409,7 +409,7 @@ export default function PersonEditorModal({
             <button
               type="submit"
               disabled={uploading}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:opacity-50"
             >
               {isEdit ? <Check size={15} /> : <UserPlus size={15} />}
               {isEdit ? 'Save person' : 'Create person'}

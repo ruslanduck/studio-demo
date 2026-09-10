@@ -12,8 +12,6 @@ export const WORKSPACE_NAV = [
   { id: 'orders', label: 'Jobs', short: 'Jobs', icon: ClipboardList },
   { id: 'inventory', label: 'Inventory', short: 'Inventory', icon: Boxes },
   { id: 'people', label: 'People', short: 'People', icon: Users },
-  // The packing station (epic #6). Its own tab because it stays open by the
-  // door for a whole shift, next to the scanner.
   // No Archive tab, on request: records are still archived (never deleted) in
   // the DB, but the UI gives no way to view or restore them. The Archive view
   // (components/Archive.jsx) is kept unrouted — re-adding an entry here and a

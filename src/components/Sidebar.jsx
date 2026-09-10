@@ -35,7 +35,7 @@ export default function Sidebar() {
     <>
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-slate-900/40"
+          className="fixed inset-0 z-30 bg-scrim/40"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -43,7 +43,7 @@ export default function Sidebar() {
 
       <aside
         className={[
-          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200',
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-surface transition-transform duration-200',
           sidebarOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full',
         ].join(' ')}
       >

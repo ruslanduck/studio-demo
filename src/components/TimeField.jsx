@@ -215,7 +215,7 @@ export default function TimeField({ value, onChange, className, ariaLabel }) {
           <div
             ref={popRef}
             style={{ position: 'fixed', top: coords.top, left: coords.left }}
-            className="z-[75] flex overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+            className="z-[75] flex overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-xl"
           >
             {[
               { key: 'h', label: 'Hour', ref: hourCol, rows: HOURS, sel: hh, at: hh ?? OPEN_AT_HOUR, pick: pickHour, on: true },
@@ -245,7 +245,7 @@ export default function TimeField({ value, onChange, className, ariaLabel }) {
                           ROW,
                           'tabular-nums',
                           selected
-                            ? 'bg-violet-600 font-semibold text-white'
+                            ? 'bg-brand font-semibold text-white'
                             : col.on
                               ? 'text-slate-700 hover:bg-violet-50'
                               : 'cursor-not-allowed text-slate-300',

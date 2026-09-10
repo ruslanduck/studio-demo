@@ -65,7 +65,7 @@ export default function StockModal({ open, item, onClose, onSubmit }) {
                 className={[
                   'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition',
                   mode === m.value
-                    ? 'bg-violet-600 text-white shadow-sm'
+                    ? 'bg-brand text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-100',
                 ].join(' ')}
               >
@@ -134,7 +134,7 @@ export default function StockModal({ open, item, onClose, onSubmit }) {
           <button
             type="submit"
             disabled={busy || tooMany}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:opacity-50"
           >
             {mode === 'add' ? <Plus size={15} /> : <Minus size={15} />}
             {mode === 'add' ? `Add ${n || ''}`.trim() : `Take out ${n || ''}`.trim()}

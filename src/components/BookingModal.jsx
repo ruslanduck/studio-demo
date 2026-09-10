@@ -348,7 +348,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
           {/* The call sheet: who is expected when, plus the wrap. Replaces the
               start/end time pair this form used to carry — a shoot has no one
               start time, and the grid is studio x day anyway. */}
-          <div className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+          <div className="rounded-lg bg-surface p-3 ring-1 ring-slate-200">
             <CallTimesField
               value={form.callTimes}
               onChange={(fn) => setForm((f) => ({ ...f, callTimes: fn(f.callTimes) }))}
@@ -475,7 +475,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                       {units.map((u) => (
                         <li
                           key={u.unitId}
-                          className="flex items-center gap-2 rounded-md bg-white px-2.5 py-1"
+                          className="flex items-center gap-2 rounded-md bg-surface px-2.5 py-1"
                         >
                           <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
                             {u.label && <span className="text-slate-400">{u.label}: </span>}
@@ -526,7 +526,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                         <button
                           type="button"
                           onClick={() => setQty(itemId, qty - 1)}
-                          className="grid h-6 w-6 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-white"
+                          className="grid h-6 w-6 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-surface"
                         >
                           <Minus size={13} />
                         </button>
@@ -536,7 +536,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                         <button
                           type="button"
                           onClick={() => addItem(itemId)}
-                          className="grid h-6 w-6 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-white"
+                          className="grid h-6 w-6 place-items-center rounded border border-slate-300 text-slate-500 hover:bg-surface"
                         >
                           <Plus size={13} />
                         </button>
@@ -579,7 +579,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                 className={fieldClass + ' pl-9'}
               />
               {searchResults.length > 0 && (
-                <ul className="absolute z-10 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                <ul className="absolute z-10 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-surface py-1 shadow-lg">
                   {searchResults.map((item) => {
                     const free = availCount(item)
                     // Exhausted stock stays CLICKABLE — it just says so. Refusing
@@ -679,7 +679,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
             <button
               type="submit"
               disabled={!form.title.trim()}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isEdit ? 'Save changes' : 'Create booking'}
             </button>

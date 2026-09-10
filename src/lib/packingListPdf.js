@@ -4,8 +4,8 @@
 // grouped exactly like the estimate — but this is a physical pull sheet, not a
 // price doc. So: no money, and every row carries ONE box to tick when the piece
 // is in the case. It used to carry three (two at sign-out, one at return); the
-// crew wants one, and the return side is the scanning station's record. The
-// printed sheet must match the digital checklist, or two documents get ticked.
+// crew wants one. The printed sheet must match the digital checklist, or two
+// documents get ticked.
 //
 // It reuses buildEstimate's grouped line model (same source of truth: the
 // order's lines) and the estimate PDF's jsPDF setup + ASCII-safety, so the two

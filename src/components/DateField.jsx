@@ -154,7 +154,7 @@ export default function DateField({ value, onChange, className }) {
           <div
             ref={popRef}
             style={{ position: 'fixed', top: coords.top, left: coords.left, width: 256 }}
-            className="z-[70] rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
+            className="z-[70] rounded-xl border border-slate-200 bg-surface p-2 shadow-xl"
           >
             <div className="mb-1 flex items-center justify-between px-1">
               <button
@@ -219,7 +219,7 @@ export default function DateField({ value, onChange, className }) {
                     className={[
                       'grid h-8 place-items-center rounded-md text-sm transition',
                       isSel
-                        ? 'bg-violet-600 font-semibold text-white'
+                        ? 'bg-brand font-semibold text-white'
                         : inMonth
                           ? 'text-slate-700 hover:bg-violet-50'
                           : 'text-slate-300 hover:bg-slate-50',

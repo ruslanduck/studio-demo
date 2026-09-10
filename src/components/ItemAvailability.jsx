@@ -181,7 +181,7 @@ export default function ItemAvailability({ item }) {
                 // A day with sets is tinted by how tight it is: some out (amber),
                 // nothing left (rose). An untouched weekday stays white; a quiet
                 // weekend is grey.
-                none ? 'bg-rose-50' : booked > 0 ? 'bg-amber-50' : weekend ? 'bg-slate-100' : 'bg-white',
+                none ? 'bg-rose-50' : booked > 0 ? 'bg-amber-50' : weekend ? 'bg-slate-100' : 'bg-surface',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -272,7 +272,7 @@ export default function ItemAvailability({ item }) {
             {rows.map((r) => (
               <li
                 key={r.unitId}
-                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-slate-200"
+                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-surface px-2.5 py-1.5 text-xs ring-1 ring-slate-200"
               >
                 <span className="font-mono font-medium text-slate-700">#{r.barcode}</span>
                 <span className="text-slate-300">→</span>
@@ -322,7 +322,7 @@ export default function ItemAvailability({ item }) {
             {chosen.awayUnits.map((u) => (
               <li
                 key={u.unitId}
-                className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs ring-1 ring-amber-200"
+                className="flex items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5 text-xs ring-1 ring-amber-200"
               >
                 <span className="font-mono font-medium text-slate-700">#{u.barcode}</span>
                 <span className="inline-flex items-center gap-1 text-amber-700">

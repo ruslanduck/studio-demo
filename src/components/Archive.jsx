@@ -86,7 +86,7 @@ function Row({ icon: Icon, title, meta, at, by, canRestore, onRestore, onOpen, b
 function Section({ title, hint, rows }) {
   if (!rows.length) return null
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-surface">
       <header className="flex items-baseline justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           {title} · {rows.length}
@@ -201,7 +201,7 @@ export default function Archive() {
 
       <div className="min-h-0 flex-1 space-y-4 overflow-auto pb-4">
         {total === 0 && (
-          <div className="grid place-items-center rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center">
+          <div className="grid place-items-center rounded-xl border border-dashed border-slate-300 bg-surface py-16 text-center">
             <ArchiveIcon size={28} className="text-slate-300" />
             <p className="mt-3 max-w-sm text-sm text-slate-500">
               Deleting is off by design: archiving a job, a shoot, a person, a company or a piece

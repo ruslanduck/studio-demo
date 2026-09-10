@@ -89,6 +89,7 @@ import { reservedUnitsForOrder, overlaps } from './lib/availability'
 import { coversDay, endsOnFor, firstFullDay, setSpanDays } from './lib/setDays'
 import { normalizeCallTimes } from './lib/callTimes'
 import { resolveUnitCodes } from './lib/unitRows'
+import { THEME_SYSTEM, isTheme } from './lib/theme'
 import {
   categoryNameError,
   categoryRemovalBlock,
@@ -839,6 +840,11 @@ export const useStore = create(
         }
       },
 
+      // Light / dark / follow-the-device. A UI PREFERENCE, so it is persisted in
+      // both modes — unlike the data, which supabase mode always refetches.
+      theme: THEME_SYSTEM,
+      setTheme: (theme) => set({ theme: isTheme(theme) ? theme : THEME_SYSTEM }),
+
       // --- UI state (not persisted — always starts on the current week) ---
       activeView: 'calendar', // 'calendar' | 'inventory'
       // Picking a view from the sidebar is a deliberate jump, not a drill-in, so
@@ -862,8 +868,6 @@ export const useStore = create(
       inventoryFocus: null, // { itemId, unitId, kitId, listId, ts } | null
       orderFocus: null, // { orderId, ts } | null
       orderDraft: null, // { payload, ts } | null — a new order awaiting its gear
-      // A scan that appeared on screen but whose write was refused (e.g. the
-      // scanning migration hasn't run on this database). Shown at the station.
       peopleFocus: null, // { personId, companyId, ts } | null
 
       // Send the caller's location to the stack + push a browser history entry.
@@ -3297,6 +3301,7 @@ export const useStore = create(
               viewState: state.viewState,
               selectedDate: state.selectedDate,
               calendarMode: state.calendarMode,
+              theme: state.theme,
             }
           : {
               inventory: state.inventory,
@@ -3313,6 +3318,7 @@ export const useStore = create(
               viewState: state.viewState,
               selectedDate: state.selectedDate,
               calendarMode: state.calendarMode,
+              theme: state.theme,
             },
     },
   ),

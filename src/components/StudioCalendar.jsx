@@ -486,7 +486,7 @@ export default function StudioCalendar() {
             <button
               type="button"
               onClick={() => openCreate('1', selectedDate)}
-              className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+              className="inline-flex items-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
             >
               <Plus size={16} />
               New job
@@ -527,7 +527,7 @@ export default function StudioCalendar() {
           <div
             ref={jumpPop}
             style={{ position: 'fixed', top: jumpAt.top, left: jumpAt.left, width: jumpAt.width }}
-            className="z-[70] rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
+            className="z-[70] rounded-xl border border-slate-200 bg-surface p-2 shadow-xl"
           >
             <MonthYearPicker
               month={refDate.getMonth()}
@@ -646,7 +646,7 @@ export default function StudioCalendar() {
 // the week grid open the day they name instead, which is the other half of it.
 function ModeToggle({ mode, setMode }) {
   return (
-    <div className="flex rounded-lg border border-slate-300 bg-white p-0.5">
+    <div className="flex rounded-lg border border-slate-300 bg-surface p-0.5">
       {['day', 'week', 'month'].map((m) => (
         <button
           key={m}
@@ -655,7 +655,7 @@ function ModeToggle({ mode, setMode }) {
           className={[
             'rounded-md px-3 py-1.5 text-sm font-medium capitalize transition',
             mode === m
-              ? 'bg-violet-600 text-white shadow-sm'
+              ? 'bg-brand text-white shadow-sm'
               : 'text-slate-600 hover:bg-slate-100',
           ].join(' ')}
         >
@@ -684,7 +684,7 @@ function DaySetCard({ b, onOpen, onStatus, canManage }) {
       onClick={() => onOpen(b)}
       {...press}
       title="Open this job"
-      className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-violet-300 hover:shadow"
+      className="cursor-pointer rounded-xl border border-slate-200 bg-surface p-3 shadow-sm transition hover:border-violet-300 hover:shadow"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -834,7 +834,7 @@ function DayView({ iso, studios, byDay, onOpenCreate, onOpenEdit, onStatus, canM
           <section key={studioId} className="rounded-xl border border-slate-200 bg-slate-50/60">
             <header className="flex items-center justify-between gap-2 px-3 py-2">
               <span className="inline-flex items-center gap-2">
-                <span className="grid h-6 w-6 place-items-center rounded-md bg-white text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
+                <span className="grid h-6 w-6 place-items-center rounded-md bg-surface text-xs font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
                   {studioId}
                 </span>
                 <span className="text-sm font-medium text-slate-700">{studioLabel(studioId)}</span>
@@ -904,11 +904,11 @@ function WeekView({
 
   return (
     <div
-      className={`min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm ${flip}`}
+      className={`min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-surface shadow-sm ${flip}`}
     >
       <div className="grid min-w-[760px] grid-cols-[56px_repeat(7,minmax(0,1fr))]">
         {/* Header row */}
-        <div className="sticky top-0 z-20 border-b border-r border-slate-200 bg-white" />
+        <div className="sticky top-0 z-20 border-b border-r border-slate-200 bg-surface" />
         {days.map((day) => (
           <button
             key={day.iso}
@@ -917,7 +917,7 @@ function WeekView({
             title={`Everything on ${day.iso} — crew, call times and gear`}
             className={[
               'sticky top-0 z-20 border-b border-r border-slate-200 px-2 py-2 text-center transition hover:bg-violet-50',
-              day.today ? 'bg-amber-50' : day.weekend ? 'bg-rose-50' : 'bg-white',
+              day.today ? 'bg-amber-50' : day.weekend ? 'bg-rose-50' : 'bg-surface',
             ].join(' ')}
           >
             <div
@@ -962,7 +962,7 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit, onS
   return (
     <>
       <div className="flex min-h-[92px] items-center justify-center border-b border-r border-slate-200 bg-slate-50">
-        <span className="grid h-7 w-7 place-items-center rounded-md bg-white text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
+        <span className="grid h-7 w-7 place-items-center rounded-md bg-surface text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
           {studioId}
         </span>
       </div>
@@ -1021,7 +1021,7 @@ function MonthView({
 
   return (
     <div
-      className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${flip}`}
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm ${flip}`}
     >
       {/* Weekday header */}
       <div className="grid grid-cols-7 border-b border-slate-200">
@@ -1081,7 +1081,7 @@ function MonthCell({
       ? 'bg-amber-50'
       : weekend
         ? 'bg-rose-50/50'
-        : 'bg-white'
+        : 'bg-surface'
 
   return (
     <div

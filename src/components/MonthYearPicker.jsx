@@ -19,7 +19,7 @@ export default function MonthYearPicker({ month, year, onMonth, onYear }) {
             onClick={() => onMonth(i)}
             className={[
               'rounded-md py-1.5 text-xs font-medium transition',
-              month === i ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-violet-50',
+              month === i ? 'bg-brand text-white' : 'text-slate-600 hover:bg-violet-50',
             ].join(' ')}
           >
             {m}
@@ -37,7 +37,7 @@ export default function MonthYearPicker({ month, year, onMonth, onYear }) {
               onClick={() => onYear(y)}
               className={[
                 'rounded py-1 text-xs transition',
-                year === y ? 'bg-violet-600 font-semibold text-white' : 'text-slate-600 hover:bg-violet-50',
+                year === y ? 'bg-brand font-semibold text-white' : 'text-slate-600 hover:bg-violet-50',
               ].join(' ')}
             >
               {y}

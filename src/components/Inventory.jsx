@@ -177,7 +177,7 @@ function ItemRow({ item, active, onSelect, query }) {
       <span
         className={[
           'grid h-9 w-9 shrink-0 place-items-center rounded-lg text-sm font-semibold',
-          active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
+          active ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600',
         ].join(' ')}
       >
         {itemCount(item)}
@@ -565,7 +565,7 @@ export default function Inventory() {
               <button
                 type="button"
                 onClick={() => setKitModal({ open: true, kit: null })}
-                className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
               >
                 <Plus size={16} />
                 New kit
@@ -576,7 +576,7 @@ export default function Inventory() {
                 <button
                   type="button"
                   onClick={() => setListModal({ open: true, list: null })}
-                  className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
                 >
                   <Plus size={16} />
                   New list
@@ -586,7 +586,7 @@ export default function Inventory() {
                 <button
                   type="button"
                   onClick={() => setItemModal({ open: true, item: null })}
-                  className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
                 >
                   <Plus size={16} />
                   Add inventory
@@ -602,7 +602,7 @@ export default function Inventory() {
         <div
           className={[
             showDetailMobile ? 'hidden lg:flex' : 'flex',
-            'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:w-80',
+            'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm lg:w-80',
           ].join(' ')}
         >
           <div className="p-3 pb-0">
@@ -624,7 +624,7 @@ export default function Inventory() {
                   className={[
                     'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition',
                     entryType === val
-                      ? 'bg-violet-600 text-white shadow-sm'
+                      ? 'bg-brand text-white shadow-sm'
                       : 'text-slate-600 hover:bg-slate-100',
                   ].join(' ')}
                 >
@@ -763,14 +763,14 @@ export default function Inventory() {
                           <button
                             type="button"
                             onClick={() => setPicked(new Set(filtered.map((i) => i.id)))}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-violet-600 transition hover:bg-white"
+                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-violet-600 transition hover:bg-surface"
                           >
                             All {filtered.length}
                           </button>
                           <button
                             type="button"
                             onClick={() => setPicked(new Set())}
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-white"
+                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-surface"
                           >
                             None
                           </button>
@@ -781,7 +781,7 @@ export default function Inventory() {
                               setPicked(new Set())
                               setFileNote(null)
                             }}
-                            className="ml-auto rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-white"
+                            className="ml-auto rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-surface"
                           >
                             Done
                           </button>
@@ -827,7 +827,7 @@ export default function Inventory() {
                 )}
                 {groups.map((g) => (
                   <div key={g.categoryId}>
-                    <div className="sticky top-0 z-10 -mx-2 bg-white/95 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur">
+                    <div className="sticky top-0 z-10 -mx-2 bg-surface/95 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur">
                       {g.category}
                     </div>
                     {g.subgroups.map((sg) => (
@@ -885,7 +885,7 @@ export default function Inventory() {
         <div
           className={[
             showDetailMobile ? 'flex' : 'hidden lg:flex',
-            'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm',
+            'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm',
           ].join(' ')}
         >
           {entryType === 'lists' ? (
@@ -1199,7 +1199,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                   ? 'Register another physical copy of this item'
                   : 'Stock received or gone out — logged with who and when'
               }
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
             >
               <Plus size={14} />
               {isBarcoded ? 'Add unit' : 'Add stock'}
@@ -1373,7 +1373,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                           onDeleteUnit(unit)
                         }}
                         title="Archives the copy — the register keeps its barcode and history"
-                        className="rounded-md bg-rose-600 px-2 py-1 font-medium text-white transition hover:bg-rose-700"
+                        className="rounded-md bg-danger px-2 py-1 font-medium text-white transition hover:bg-danger-strong"
                       >
                         Write off
                       </button>
@@ -1604,7 +1604,7 @@ function KitList({ kits, selectedId, query, onSelect }) {
               <span
                 className={[
                   'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
-                  active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
+                  active ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600',
                 ].join(' ')}
               >
                 <Layers size={16} />
@@ -1685,7 +1685,7 @@ function KitDetail({ kit, inventory, canManage, onEdit, onSelectItem }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     {slot.slotType === 'fixed' ? (
-                      <span className="inline-flex items-center gap-1 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                      <span className="inline-flex items-center gap-1 rounded bg-chip px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                         <Lock size={9} /> Fixed
                       </span>
                     ) : (
@@ -1769,7 +1769,7 @@ function ScenarioListPane({ lists, selectedId, query, onSelect }) {
               <span
                 className={[
                   'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
-                  active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
+                  active ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600',
                 ].join(' ')}
               >
                 <ClipboardList size={16} />

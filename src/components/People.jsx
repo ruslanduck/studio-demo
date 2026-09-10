@@ -192,7 +192,7 @@ export default function People() {
               <button
                 type="button"
                 onClick={() => setEditor({ open: true, person: null })}
-                className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
               >
                 <Plus size={16} />
                 New person
@@ -202,7 +202,7 @@ export default function People() {
               <button
                 type="button"
                 onClick={() => setCompanyEditor({ open: true, company: null })}
-                className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
               >
                 <Plus size={16} />
                 New company
@@ -215,7 +215,7 @@ export default function People() {
         <div
           className={[
             showDetailMobile ? 'hidden lg:flex' : 'flex',
-            'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:w-80',
+            'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm lg:w-80',
           ].join(' ')}
         >
           <div className="space-y-2 border-b border-slate-200 p-3">
@@ -234,7 +234,7 @@ export default function People() {
                   className={[
                     'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition',
                     tab === val
-                      ? 'bg-violet-600 text-white shadow-sm'
+                      ? 'bg-brand text-white shadow-sm'
                       : 'text-slate-600 hover:bg-slate-100',
                   ].join(' ')}
                 >
@@ -308,7 +308,7 @@ export default function People() {
         <div
           className={[
             showDetailMobile ? 'flex' : 'hidden lg:flex',
-            'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm',
+            'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm',
           ].join(' ')}
         >
           {tab === 'people' ? (
@@ -451,7 +451,7 @@ function PersonList({ people, selectedId, query, onSelect, onOpenCompany }) {
                 <span
                   className={[
                     'grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-semibold',
-                    active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
+                    active ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600',
                   ].join(' ')}
                 >
                   {initials(p.name)}
@@ -521,7 +521,7 @@ function CompanyList({ companies, people, selectedId, query, onSelect }) {
               <span
                 className={[
                   'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
-                  active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600',
+                  active ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600',
                 ].join(' ')}
               >
                 <Building2 size={16} />

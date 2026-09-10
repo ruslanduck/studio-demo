@@ -305,7 +305,7 @@ export default function Orders() {
           <button
             type="button"
             onClick={() => setEditor({ open: true, order: null })}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
           >
             <Plus size={16} />
             New job
@@ -318,7 +318,7 @@ export default function Orders() {
         <div
           className={[
             showDetailMobile ? 'hidden lg:flex' : 'flex',
-            'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:w-96',
+            'w-full shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm lg:w-96',
           ].join(' ')}
         >
           <FilterBar
@@ -521,7 +521,7 @@ export default function Orders() {
         <div
           className={[
             showDetailMobile ? 'flex' : 'hidden lg:flex',
-            'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm',
+            'min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-surface shadow-sm',
           ].join(' ')}
         >
           {selected ? (
@@ -1040,7 +1040,7 @@ function OrderDetail({
             <button
               type="button"
               onClick={onDownloadPdf}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white transition hover:bg-brand-strong"
             >
               <FileDown size={15} />
               Estimate PDF

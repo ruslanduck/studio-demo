@@ -14,7 +14,7 @@ export default function PlaceholderPanel({ icon: Icon, title, subtitle, stats = 
           {stats.map((s) => (
             <div
               key={s.label}
-              className="min-w-[9rem] rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm"
+              className="min-w-[9rem] rounded-xl border border-slate-200 bg-surface px-6 py-4 shadow-sm"
             >
               <div className="text-2xl font-semibold text-slate-900">{s.value}</div>
               <div className="mt-1 text-xs uppercase tracking-wide text-slate-400">

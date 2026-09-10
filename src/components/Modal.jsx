@@ -24,13 +24,13 @@ export default function Modal({ open, onClose, title, size = 'md', children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-scrim/40 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
         className={[
-          'relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl',
+          'relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-surface shadow-xl',
           SIZES[size] ?? SIZES.md,
         ].join(' ')}
       >

@@ -221,7 +221,7 @@ export default function AddInventoryModal({
                   className={[
                     'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition',
                     form.kind === k.value
-                      ? 'bg-violet-600 text-white shadow-sm'
+                      ? 'bg-brand text-white shadow-sm'
                       : 'text-slate-600 hover:bg-slate-100',
                     isEdit && form.kind !== k.value ? 'opacity-40' : '',
                     isEdit ? 'cursor-not-allowed' : '',
@@ -271,7 +271,7 @@ export default function AddInventoryModal({
                       onChange={(e) => setNewSub((v) => ({ ...v, categoryId: e.target.value }))}
                       options={categories.map((c) => ({ value: c.id, label: c.name }))}
                       placeholder="Category…"
-                      className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none"
+                      className="min-w-0 flex-1 rounded-md border border-slate-300 bg-surface px-2 py-1.5 text-sm outline-none"
                     />
                     <span className="text-slate-400">/</span>
                     <input
@@ -291,14 +291,14 @@ export default function AddInventoryModal({
                     <button
                       type="button"
                       onClick={addSubcategory}
-                      className="rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700"
+                      className="rounded-md bg-brand px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-strong"
                     >
                       Add
                     </button>
                     <button
                       type="button"
                       onClick={() => setNewSub(null)}
-                      className="rounded-md px-2 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-white"
+                      className="rounded-md px-2 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-surface"
                     >
                       Cancel
                     </button>
@@ -422,7 +422,7 @@ export default function AddInventoryModal({
                 <button
                   type="button"
                   onClick={handleArchive}
-                  className="rounded-md bg-rose-600 px-2 py-1 text-xs font-semibold text-white transition hover:bg-rose-700"
+                  className="rounded-md bg-danger px-2 py-1 text-xs font-semibold text-white transition hover:bg-danger-strong"
                 >
                   Archive
                 </button>
@@ -462,7 +462,7 @@ export default function AddInventoryModal({
             <button
               type="submit"
               disabled={!canSubmit}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isEdit ? 'Save changes' : 'Add item'}
             </button>

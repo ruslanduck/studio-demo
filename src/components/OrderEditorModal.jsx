@@ -282,7 +282,7 @@ export default function OrderEditorModal({
               </p>
             </div>
           ) : (
-            <div className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+            <div className="rounded-lg bg-surface p-3 ring-1 ring-slate-200">
               <CallTimesField
                 value={form.callTimes}
                 // The field hands back an updater, applied against the CURRENT
@@ -404,7 +404,7 @@ export default function OrderEditorModal({
                     onDelete(order.id)
                     onClose()
                   }}
-                  className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
+                  className="rounded-md bg-danger px-2.5 py-1 font-medium text-white transition hover:bg-danger-strong"
                 >
                   Archive
                 </button>
@@ -440,7 +440,7 @@ export default function OrderEditorModal({
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:opacity-50"
             >
               {isEdit ? <Check size={15} /> : <Boxes size={15} />}
               {isEdit ? 'Save job' : 'Select equipment'}

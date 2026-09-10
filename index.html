@@ -8,6 +8,26 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>Kitbay</title>
+    <script>
+      // Paint the theme BEFORE React mounts. Applying it from an effect means a
+      // dark-theme user gets a white flash on every load, which is the one
+      // thing a dark theme must not do.
+      //
+      // Reads the SAME persisted store the app writes, so there is one source
+      // of truth for the preference; anything unreadable falls back to the
+      // device, whose answer is never wrong.
+      try {
+        var raw = localStorage.getItem('anntaylor-rental-demo')
+        var pref = raw ? JSON.parse(raw).state.theme : 'system'
+        var dark =
+          pref === 'dark' ||
+          (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (dark) document.documentElement.classList.add('dark')
+      } catch (e) {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.add('dark')
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

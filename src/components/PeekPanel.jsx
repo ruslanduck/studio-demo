@@ -70,11 +70,11 @@ export default function PeekPanel() {
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div
-        className="absolute inset-0 bg-slate-900/30 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-scrim/30 backdrop-blur-[2px]"
         onClick={peekClose}
         aria-hidden="true"
       />
-      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-2xl">
+      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-surface shadow-2xl">
         <PeekHeader stack={stack} onBack={peekBack} onClose={peekClose} />
         <div className="min-h-0 flex-1 overflow-auto">
           <PeekBody target={current} />

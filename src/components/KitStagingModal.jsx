@@ -548,7 +548,7 @@ export default function KitStagingModal({
             <button
               type="button"
               onClick={confirmRegister}
-              className="ml-auto shrink-0 rounded-md bg-violet-600 px-2.5 py-1 font-medium text-white transition hover:bg-violet-700"
+              className="ml-auto shrink-0 rounded-md bg-brand px-2.5 py-1 font-medium text-white transition hover:bg-brand-strong"
             >
               Register &amp; assign
             </button>
@@ -584,7 +584,7 @@ export default function KitStagingModal({
             <button
               type="button"
               onClick={() => setLastAction(null)}
-              className="shrink-0 rounded px-1 text-slate-400 transition hover:bg-white/60"
+              className="shrink-0 rounded px-1 text-slate-400 transition hover:bg-surface/60"
             >
               <X size={12} />
             </button>
@@ -640,7 +640,7 @@ export default function KitStagingModal({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       {isFixed && !f.overridden ? (
-                        <span className="inline-flex items-center gap-1 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                        <span className="inline-flex items-center gap-1 rounded bg-chip px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                           <Lock size={9} /> Fixed
                         </span>
                       ) : f.slotType === 'extra' ? (
@@ -775,7 +775,7 @@ export default function KitStagingModal({
                     <button
                       type="button"
                       onClick={() => returnToStock(f.key)}
-                      className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
+                      className="inline-flex items-center gap-1 rounded-md bg-surface px-2 py-1 font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
                     >
                       <Undo2 size={13} /> Return to stock
                     </button>
@@ -785,7 +785,7 @@ export default function KitStagingModal({
                         setBroken({ key: f.key, vendor: '', issue: '' })
                         setReplacing(null)
                       }}
-                      className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 font-medium text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
+                      className="inline-flex items-center gap-1 rounded-md bg-surface px-2 py-1 font-medium text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50"
                     >
                       <Wrench size={13} /> Broken → send to repair
                     </button>
@@ -813,7 +813,7 @@ export default function KitStagingModal({
                         value={broken.vendor}
                         onChange={(e) => setBroken((b) => ({ ...b, vendor: e.target.value }))}
                         placeholder="Repair shop (optional)"
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                        className="rounded-md border border-slate-300 bg-surface px-2 py-1.5 text-xs outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
                       />
                       <input
                         autoFocus
@@ -827,21 +827,21 @@ export default function KitStagingModal({
                           } else if (e.key === 'Escape') setBroken(null)
                         }}
                         placeholder="What's wrong with it?"
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+                        className="rounded-md border border-slate-300 bg-surface px-2 py-1.5 text-xs outline-none transition focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
                       />
                     </div>
                     <div className="mt-2 flex items-center gap-2">
                       <button
                         type="button"
                         onClick={markBroken}
-                        className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-rose-700"
+                        className="rounded-md bg-danger px-2.5 py-1 text-xs font-medium text-white transition hover:bg-danger-strong"
                       >
                         Send to repair
                       </button>
                       <button
                         type="button"
                         onClick={() => setBroken(null)}
-                        className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-white"
+                        className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-surface"
                       >
                         Cancel
                       </button>
@@ -875,7 +875,7 @@ export default function KitStagingModal({
                     <button
                       type="button"
                       onClick={saveBarcode}
-                      className="rounded-md bg-violet-600 px-2.5 py-1 font-medium text-white transition hover:bg-violet-700"
+                      className="rounded-md bg-brand px-2.5 py-1 font-medium text-white transition hover:bg-brand-strong"
                     >
                       Save
                     </button>
@@ -1004,7 +1004,7 @@ export default function KitStagingModal({
             type="button"
             onClick={confirm}
             disabled={!ready}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Check size={15} />
             Add {filledCount} to set

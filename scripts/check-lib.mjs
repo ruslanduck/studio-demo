@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows] =
+const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows, theme] =
   await Promise.all([
     load('src/lib/activity.js'),
     load('src/lib/barcode.js'),
@@ -32,6 +32,7 @@ const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packin
     load('src/lib/taxonomy.js'),
     load('src/data/inventory.js'),
     load('src/lib/unitRows.js'),
+    load('src/lib/theme.js'),
   ])
 
 let n = 0
@@ -611,6 +612,29 @@ ok(
   ok(!orderSearch.rangeIsBackwards('2026-09-10', '2026-09-10'), 'a single day is not backwards')
   ok(!orderSearch.rangeIsBackwards('', '2026-09-10') && !orderSearch.rangeIsBackwards('2026-09-10', ''),
     'and one open end can never be')
+}
+
+// ---------------------------------------------------------------------------
+// lib/theme — three states, because a two-way toggle cannot express "follow the
+// device" once it has been touched.
+{
+  eq(theme.resolveTheme('dark', false), 'dark', 'an explicit dark wins over a light device')
+  eq(theme.resolveTheme('light', true), 'light', 'and an explicit light over a dark one')
+  eq(theme.resolveTheme('system', true), 'dark', 'system follows the device')
+  eq(theme.resolveTheme('system', false), 'light', 'both ways')
+  // Anything we do not understand follows the device rather than forcing light:
+  // an older build, or a hand-edited localStorage.
+  eq(theme.resolveTheme(undefined, true), 'dark', 'an absent preference follows the device')
+  eq(theme.resolveTheme('midnight', true), 'dark', 'so does a value from the future')
+  eq(theme.resolveTheme(null, false), 'light', 'and null is not a crash')
+
+  eq(theme.nextTheme('system'), 'light', 'the cycle runs System → Light')
+  eq(theme.nextTheme('light'), 'dark', '→ Dark')
+  eq(theme.nextTheme('dark'), 'system', 'and back to System, so it is reachable again')
+  eq(theme.nextTheme('nonsense'), 'system', 'a broken value lands on System')
+  eq(new Set(theme.THEME_ORDER).size, 3, 'three distinct states')
+  ok(theme.THEME_ORDER.every((t) => theme.THEME_LABEL[t]), 'each one has a label to show')
+  ok(theme.isTheme('dark') && !theme.isTheme('darkish'), 'and the guard is exact')
 }
 
 console.log(`OK — ${n} assertions passed`)

@@ -197,7 +197,7 @@ export default function SelectField({
               maxWidth: `min(24rem, calc(100vw - 16px))`,
               maxHeight: coords.maxHeight,
             }}
-            className="z-[70] overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+            className="z-[70] overflow-auto rounded-xl border border-slate-200 bg-surface py-1 shadow-xl"
           >
             {opts.length === 0 && (
               <p className="px-3 py-2 text-xs text-slate-400">Nothing to choose from.</p>

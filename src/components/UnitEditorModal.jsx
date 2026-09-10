@@ -152,7 +152,7 @@ export default function UnitEditorModal({
           <button
             type="submit"
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:opacity-50"
           >
             {isEdit ? <Check size={15} /> : <Plus size={15} />}
             {isEdit ? 'Save unit' : rows.length === 1 ? 'Add copy' : `Add ${rows.length} copies`}

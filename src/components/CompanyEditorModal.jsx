@@ -206,7 +206,7 @@ export default function CompanyEditorModal({
                           <button
                             type="button"
                             onClick={saveRename}
-                            className="rounded-md bg-violet-600 px-2 py-1 text-xs font-medium text-white"
+                            className="rounded-md bg-brand px-2 py-1 text-xs font-medium text-white"
                           >
                             Save
                           </button>
@@ -225,7 +225,7 @@ export default function CompanyEditorModal({
                             type="button"
                             onClick={() => setRenaming({ id: t.id, value: t.name })}
                             title="Rename"
-                            className="rounded p-1 text-slate-400 transition hover:bg-white hover:text-violet-600"
+                            className="rounded p-1 text-slate-400 transition hover:bg-surface hover:text-violet-600"
                           >
                             <Pencil size={12} />
                           </button>
@@ -233,7 +233,7 @@ export default function CompanyEditorModal({
                             type="button"
                             onClick={() => removeType(t)}
                             title="Remove from the list"
-                            className="rounded p-1 text-slate-400 transition hover:bg-white hover:text-rose-500"
+                            className="rounded p-1 text-slate-400 transition hover:bg-surface hover:text-rose-500"
                           >
                             <X size={13} />
                           </button>
@@ -260,7 +260,7 @@ export default function CompanyEditorModal({
                     type="button"
                     onClick={addType}
                     disabled={!newType.trim()}
-                    className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-1 text-xs font-medium text-white transition hover:bg-violet-700 disabled:opacity-40"
+                    className="inline-flex items-center gap-1 rounded-md bg-brand px-2 py-1 text-xs font-medium text-white transition hover:bg-brand-strong disabled:opacity-40"
                   >
                     <Plus size={12} />
                     Add
@@ -366,7 +366,7 @@ export default function CompanyEditorModal({
                     onDelete(company.id)
                     onClose()
                   }}
-                  className="rounded-md bg-rose-600 px-2.5 py-1 font-medium text-white transition hover:bg-rose-700"
+                  className="rounded-md bg-danger px-2.5 py-1 font-medium text-white transition hover:bg-danger-strong"
                 >
                   Archive
                 </button>
@@ -401,7 +401,7 @@ export default function CompanyEditorModal({
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong"
             >
               {isEdit ? <Check size={15} /> : <Building2 size={15} />}
               {isEdit ? 'Save company' : 'Create company'}

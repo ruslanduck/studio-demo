@@ -170,7 +170,7 @@ export default function ComboField({
               width: coords.width,
               maxHeight: coords.maxHeight,
             }}
-            className="z-[70] overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+            className="z-[70] overflow-auto rounded-xl border border-slate-200 bg-surface py-1 shadow-xl"
           >
             {/* Free entry, said out loud: the value is already yours, and it joins
                 the list for this category once the record is saved. */}

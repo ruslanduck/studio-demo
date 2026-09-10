@@ -286,7 +286,7 @@ export default function TaxonomyModal({ open, onClose }) {
                     <button
                       type="button"
                       onClick={() => addSubcategory(cat.id)}
-                      className="rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700"
+                      className="rounded-md bg-brand px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-strong"
                     >
                       Add
                     </button>
@@ -348,7 +348,7 @@ export default function TaxonomyModal({ open, onClose }) {
               type="button"
               onClick={addCategory}
               disabled={!newCat.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
             >
               <Plus size={14} />
               Add category
@@ -420,14 +420,14 @@ function ConfirmRow({ what, note, onYes, onNo }) {
         <button
           type="button"
           onClick={onYes}
-          className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-rose-700"
+          className="rounded-md bg-danger px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-danger-strong"
         >
           Remove
         </button>
         <button
           type="button"
           onClick={onNo}
-          className="rounded-md px-2 py-1 text-xs font-medium text-rose-700 transition hover:bg-white"
+          className="rounded-md px-2 py-1 text-xs font-medium text-rose-700 transition hover:bg-surface"
         >
           Keep
         </button>

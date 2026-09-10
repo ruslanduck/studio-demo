@@ -41,7 +41,7 @@ export default function Login() {
 
         <form
           onSubmit={handleSubmit}
-          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+          className="rounded-2xl border border-slate-200 bg-surface p-5 shadow-sm"
         >
           <div className="space-y-3">
             <div>
@@ -76,7 +76,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={busy || !email || !password}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy ? <Loader2 size={16} className="animate-spin" /> : <LogIn size={16} />}
             Sign in

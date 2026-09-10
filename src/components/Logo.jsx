@@ -16,7 +16,7 @@ export default function Logo({ size = 32, radius = 'rounded-lg', className = '' 
     <div
       style={{ width: size, height: size }}
       className={[
-        'grid shrink-0 place-items-center bg-violet-600 text-white',
+        'grid shrink-0 place-items-center bg-brand text-white',
         radius,
         className,
       ].join(' ')}
