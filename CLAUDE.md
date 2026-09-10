@@ -1716,6 +1716,95 @@
 > all, because `document.hasFocus()` is false while the pane is hidden. Dispatch `focusout` (it bubbles).
 > Second: a programmatic `scrollTop` change fires its event asynchronously, so measuring in the same call
 > reads the old position — the third time this session that a same-tick measurement misled me.
+> **TWO FIXES in the equipment window, both found by using it on prod.**
+> (1) **Creating a vendor discarded every unsaved pick.** With the window open, "+ New vendor…" on a
+> sub-rental line dropped the line that asked for it and the footer fell back from 7 pcs to 6. Cause: the
+> effect that seeds `itemLines`/`stagedUnits` from the job's SAVED lines listed **`kits`** as a dependency —
+> and `kits` comes from the store, where `hydrate()` hands out a NEW ARRAY every time, including the quiet
+> refetch that `createCompany` AND `addInventoryItem` perform from inside this very window. That fresh
+> identity re-ran the effect and re-seeded from the last saved state. `open` and `order` are the real
+> triggers and both are snapshots held in the parent's own state; `kits` is read only to name a staged kit.
+> ⚠️ A grep worth repeating: an init effect that seeds form state must not depend on a STORE COLLECTION.
+> `OrderEquipmentModal` was the only editor that did (`UnitHistoryModal` depends on `bookings` but only
+> refetches read-only rows, and `BookingModal`/`AddInventoryModal` take snapshots or a string).
+> (2) **A quantity stepper lost clicks.** Two clicks on a line's + before a re-render took 1 → 2, not 1 → 3:
+> `stepLine` read `itemLines[index]` from the render closure, so both computed the same next value. SEVENTH
+> instance of the trap. Local state has no `getState()`, so the lines now also live in a **ref** that every
+> write updates — `setItemLines` keeps its exact shape (a value or an updater) and no call site changed, but
+> an updater runs against the CURRENT lines. The capacity guard judges the quantity as it stands, because
+> each + consumes another piece.
+> ⚠️ **An intermediate version of that fix was wrong and the browser said so:** it put the whole step inside
+> the updater and reported the capacity block out through a closure variable. React runs an updater during
+> the RENDER phase, so the flag was still null when it was read — the zero-availability dialog never appeared
+> and the click just did nothing. A side effect cannot be driven by a value an updater assigns.
+> Verified on prod: with the fix deployed, an unsaved 6 → 7 bump AND a newly added line both survived
+> creating a vendor, and the vendor landed on the line that asked. Locally: 1 → 3 on two clicks, a third
+> click raising the dialog, "Add anyway" giving "4 · 1 over capacity", and two minus clicks going 4 → 2.
+> **FEATURE — the inventory taxonomy is editable, and gear is filed under a SUBCATEGORY**
+> (`20260911120000_inventory_taxonomy.sql` + `20260911130000_taxonomy_position_default.sql`, both applied and
+> verified on prod). Requested: create and edit categories and subcategories; every subcategory must belong
+> to a category; delete a category only with no inventory and no subcategories, a subcategory only with no
+> inventory, else an error; assign inventory to subcategories in bulk — and "инвентарь никогда не
+> привязывается к категории напрямую".
+> That last line is the model change. Both levels were free TEXT on `inventory_items` with the offered values
+> in a frontend constant, and that could not express any of the rules: a subcategory had no owning category
+> (on prod **"Profoto" and "Broncolor" each sat under Strobes AND Lighting Modification**), and "delete only
+> if unused" has nothing to check when a category is a string someone typed. `SUBCATEGORIES` was also half
+> dead — its keys were the OLD demo categories, so the register migrated from the studio's export had almost
+> no suggestions.
+> **`inventory_categories` + `inventory_subcategories` (`category_id` NOT NULL — the invariant is the
+> database's, not a form's) + `inventory_items.subcategory_id`.** An item's category is DERIVED by following
+> its subcategory, and `src/lib/taxonomy.js` is the one place that knows how. Backfilled from the register's
+> own text: **17 categories, 63 subcategory rows** (one per category/subcategory PAIR, which is how the two
+> shared names keep their meaning), **225 of 276 live items filed, 0 disagreeing with the text they came
+> from**. Live items only — an archived item is retired stock and its old categories would pad the studio's
+> taxonomy with the demo register's names.
+> ⚠️ `subcategory_id` is **NULLABLE** because **51 items have no subcategory at all** (whole categories —
+> Stands, Uncategorized — have none), and inventing names for them would be fabricating the studio's
+> taxonomy. They read as "Not filed", which is what they are, and the bulk tool is how they get placed. The
+> legacy `category`/`subcategory` TEXT columns are untouched and never read as a link: they are the record of
+> what a piece was imported as, shown as "Imported as X — pick where it belongs" while it is being filed.
+> `unassignedByFormerCategory` groups them by that text so a whole former category can be placed at once.
+> **The removal rules return a REASON, not a boolean** — "Grip still holds 11 items in 5 subcategories. Move
+> them elsewhere first." / "Clamps still holds 3 items. Reassign them first." / with no stock but
+> subcategories left, the reason NAMES them. A blocked remove still CLICKS and says what is in the way;
+> greying it out leaves the crew guessing. Retired stock does NOT block a removal but is reported ("2 archived
+> items keep it for their history"). The guards live in the STORE as well as the form, because a picker left
+> open while someone else fills a subcategory would otherwise still remove it (the `setOrderLines` reasoning).
+> **Removal ARCHIVES**, like everything since `20260808120000`: verified on prod that DELETE as the app's own
+> role affects **0 rows** and the row survives.
+> UI: a **Categories** screen (tree with counts, add/rename/remove at both levels, and moving a subcategory
+> to another category — every item in it follows, which is the point); ONE **"Filed under"** field on the item
+> editor showing `Category / Subcategory` and **no direct category field**, with "+ New subcategory…" inline
+> so a half-typed item is never abandoned to go make one; both levels in the filters plus **"Not filed (N)"**;
+> and a select mode that files any number of items at once, logging **one `item.filed` line per piece**.
+> The three item badges that printed the legacy `item.category` (inventory detail, peek card, work-history
+> dialog) now print the derived `categoryLabel`, which says "Not filed" rather than showing an empty chip.
+> ⚠️ **The local `updateInventoryItem`/`addInventoryItem` field lists are WHITELISTS** — `subcategoryId` was
+> stored fine in supabase mode and dropped SILENTLY in local mode, so re-filing an item "saved" and changed
+> nothing. Caught in the browser, not by the build. Same class as `resolveOrder`: adding a field to an item
+> means editing BOTH modes.
+> ⚠️ A `SelectField` option whose `value` equals the control's own value renders as the CURRENT selection, so
+> the bulk bar read "— take out of its subcategory —" before anyone had chosen anything. The unfile choice is
+> a distinct sentinel now, and the control stays at `''` so the placeholder shows.
+> **32 new assertions (263 total)**, including the two twin subcategories staying distinct, both removal rules
+> with their reasons, per-category name uniqueness allowing the same name elsewhere, a subcategory with no
+> category being refused, and `taxonomyFromItems` — the rule the SQL backfill applies, written once so the
+> demo seed and the migration cannot describe different shapes.
+> Demo content: the seed register is filed from the `SUBCATEGORIES` constant, which lost its last consumer
+> when the taxonomy became rows and is the seed's own source of truth now — 42 of 44 items, every assignment
+> checked against that map, with **two left unfiled on purpose** so the demo shows that state and the bulk
+> tool doing something.
+> Verified on prod as the app's own `authenticated` role: the backfill counts, the derived-category match,
+> NOT NULL refusing an orphan subcategory (**23502**), the per-category unique index refusing a duplicate
+> (**23505**) while the same name under another category is accepted, rename/archive/bulk-assign all working,
+> DELETE affecting 0 rows — then in the browser on the deployed build: 17 category rows with their counts,
+> Strobes' own Broncolor/Profoto separate from Lighting Modification's, the "51 items are not filed" banner,
+> and one item filed through the UI (`subcategory_id` written, unfiled 51 → 50) and taken back out
+> (51 again). Every probe row and event removed — prod at 17/63/225/51 exactly as found.
+> ℹ️ **Left to the studio, not guessed:** those 51 items need subcategories NAMED before they can be filed
+> (10 of them were imported as "Stands", a category with no second level at all). The bulk tool places a
+> whole former-category group in one action once the names exist.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

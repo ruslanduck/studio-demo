@@ -363,14 +363,17 @@ export default function Inventory() {
     const subcategoryId = choice === UNFILE ? null : choice || null
     const res = await assignItemsSubcategory(ids, subcategoryId)
     if (res?.error) return setFileNote({ bad: true, text: res.error })
-    const where = subcategoryId
-      ? subcategoryPath(subcategoryById(taxonomy, subcategoryId), taxonomy)
-      : 'nothing'
+    const n = res.count
+    const many = n === 1 ? 'item' : 'items'
     setFileNote({
       bad: false,
-      text: res.count
-        ? `${res.count} item${res.count === 1 ? '' : 's'} filed under ${where}.`
-        : 'Nothing moved — they were already there.',
+      text: !n
+        ? 'Nothing moved — they were already there.'
+        : subcategoryId
+          ? `${n} ${many} filed under ${subcategoryPath(subcategoryById(taxonomy, subcategoryId), taxonomy)}.`
+          // Not "filed under nothing": unfiling is its own act, and the sentence
+          // should read like one.
+          : `${n} ${many} taken out of ${n === 1 ? 'its' : 'their'} subcategory.`,
     })
     setPicked(new Set())
   }
