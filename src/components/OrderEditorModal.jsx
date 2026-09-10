@@ -261,18 +261,36 @@ export default function OrderEditorModal({
 
           {/* The call sheet. A shoot has no single start time — the
               photographer is called at 08:00 and the models at 10:00 — so the
-              generic start/end pair was replaced by this list plus a wrap. */}
-          <div className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
-            <CallTimesField
-              value={form.callTimes}
-              // The field hands back an updater, applied against the CURRENT
-              // form — see the note on CallTimesField.
-              onChange={(fn) => setForm((f) => ({ ...f, callTimes: fn(f.callTimes) }))}
-              roleOptions={roleOptions}
-              wrapTime={form.wrapTime}
-              onWrapChange={(wrapTime) => set({ wrapTime })}
-            />
-          </div>
+              generic start/end pair was replaced by this list plus a wrap.
+              ⚠️ A call sheet belongs to the SHOOT (`set_call_times` +
+              `sets.wrap_time`), so a job with no shoot row has nowhere to keep
+              one. Three legacy sub-rental orders are in that state — we rented
+              FROM a vendor, no studio was booked — and the form used to take a
+              full call sheet and drop it on save without a word. Measured on
+              prod: typed 07:15 Producer + Photographer with an 18:30 wrap,
+              saved, and the card came back "not set". Creating a job is fine —
+              its shoot is written in the same action. */}
+          {isEdit && !order?.setId ? (
+            <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 ring-1 ring-slate-200">
+              <p className="font-medium text-slate-700">No call sheet for this job</p>
+              <p className="mt-1">
+                Call times and the wrap belong to the shoot, and this job has no shoot booked — it
+                is a sub-rental raised against another job. Everything else here still saves.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg bg-white p-3 ring-1 ring-slate-200">
+              <CallTimesField
+                value={form.callTimes}
+                // The field hands back an updater, applied against the CURRENT
+                // form — see the note on CallTimesField.
+                onChange={(fn) => setForm((f) => ({ ...f, callTimes: fn(f.callTimes) }))}
+                roleOptions={roleOptions}
+                wrapTime={form.wrapTime}
+                onWrapChange={(wrapTime) => set({ wrapTime })}
+              />
+            </div>
+          )}
 
           {/* Brand + shoot type (20260908120000). Both free text with
               suggestions, NOT closed dropdowns: a new client arrives and a third
