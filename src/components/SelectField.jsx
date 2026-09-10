@@ -62,10 +62,13 @@ export default function SelectField({
     if (!open) return
     place()
     const onScroll = () => place()
-    window.addEventListener('scroll', onScroll, true)
+    // NOTE: `document`, not `window` — a scroll INSIDE a container (this app's
+    // modals scroll) never reaches a capture listener on window; measured with a
+    // probe. `document` is on the propagation path, which is why it is the idiom.
+    document.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', onScroll)
     return () => {
-      window.removeEventListener('scroll', onScroll, true)
+      document.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onScroll)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

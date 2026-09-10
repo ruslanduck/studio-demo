@@ -1678,6 +1678,44 @@
 > Sub-rental → **+ New vendor…** → "Lumen Rental House" created and selected on that line ("1 sub-rental").
 > A CLOSED job shows "Equipment locked"; a CANCELED one shows "Canceled — nothing to pull." with both
 > buttons gone. Demo data reseeded (the test item, vendor and status change gone), 0 new console errors.
+> **FEATURE — a time PICKER, so nobody types the colon** (frontend only, no migration). Requested: a
+> dropdown to choose the time, "на мобилке как листающаяся вниз история", convenient on a desktop too, and
+> "во всех местах где есть такое поле" — which is one place: `TimeField` is the app's only time input (the
+> call sheet's rows and the shoot's wrap), so the control owns it and every future field gets it free.
+> **Two columns — hour, then minute — not one list of 96 slots.** 19:45 is two short scrolls instead of a
+> long hunt, and each column is a thumb-sized flick on a phone. Rows are 40px because this list is used with
+> a thumb (the 16px-target lesson). **One tap on an hour is already a valid time** (`HH:00`), the second
+> refines it, so the common case is two taps and no typing. Minutes come in 5s; anything else stays typeable.
+> ⚠️ **The minute column is INERT until there is an hour** — tapping ":15" on an empty field would need an
+> hour invented for it, and this codebase does not invent values. An empty field's lists open at **08**, not
+> 00:00: a studio calls people in the morning, and opening at midnight would make every pick a scroll.
+> **Typing still works and no longer needs the colon:** `parseTimeInput` (pure, in `lib/callTimes.js`) reads
+> "8" → 08:00, "830" → 08:30, "0830" → 08:30, "8:5" → 08:05, "19.45" → 19:45, "08:00:00" → 08:00 (a Postgres
+> `time` someone pasted), and snaps on blur or Enter. Text it cannot read is **left alone** — the form already
+> says what is wrong, and overwriting a typo with a guess hides it. ArrowDown/Up nudge ±5 minutes (`stepTime`,
+> wrapping at midnight) so a value is corrected without retyping. **+32 assertions (218 total).**
+> ⚠️ One of those assertions caught a real edge in my own parser: `"1:2:3:4"` became `01:02` — a value
+> invented out of junk. Up to three parts is a time with seconds; four is not a time.
+> ⚠️ **A pre-existing defect in EVERY popover in the app, found and proved while testing this one.** They all
+> re-placed themselves with `window.addEventListener('scroll', fn, true)` — and a scroll INSIDE a container
+> never reaches a capture listener on `window`. Measured with a probe: **0 hits** while the field moved 60px,
+> so the list stayed where it was while the modal behind it scrolled away. `document` IS on the propagation
+> path, which is why it is the idiom. Fixed in all six (`TimeField`, `SelectField`, `DateField`, `ComboField`,
+> `StatusMenu`, the calendar's month/year picker) — one word each, and the class rather than the instance.
+> Verified after: the field moved 260 → 190 and the list followed 264 → 194, still anchored 4px below.
+> ⚠️ And a second one I introduced and measured: placement in TWO passes (place, then a separate effect that
+> slid it back on screen) left the list at **x=417 on a 375px screen** — the clamp only re-ran when the
+> coordinates changed, so a viewport change never re-evaluated it. One function owns both now.
+> Verified in local mode by measurement, desktop and phone: two columns (24 + 12 rows, 40px each, 138×268),
+> opening scrolled to the selected 16:00, tapping 19 gave "19:00" with the list still open, tapping 45 gave
+> "19:45" and closed it; an empty field showed nothing selected, inert minutes and both lists at 08/00;
+> "830" + blur became "08:30"; ArrowDown/Up moved 08:30 ↔ 08:35; at 375px the list opens at x=72 fully on
+> screen, columns flick, and it follows the modal's scroll. Demo data reseeded, 0 new console errors.
+> ℹ️ **Browser-tool lessons, both of which sent me down a wrong path first.** React maps `onBlur` from
+> **focusout**, so a dispatched `blur` never reaches it — and `element.blur()` does nothing in this pane at
+> all, because `document.hasFocus()` is false while the pane is hidden. Dispatch `focusout` (it bubbles).
+> Second: a programmatic `scrollTop` change fires its event asynchronously, so measuring in the same call
+> reads the old position — the third time this session that a same-tick measurement misled me.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

@@ -378,10 +378,13 @@ export default function StudioCalendar() {
       setJumpAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)), width: w })
     }
     place()
-    window.addEventListener('scroll', place, true)
+    // NOTE: `document`, not `window` — a scroll INSIDE a container (this app's
+    // modals scroll) never reaches a capture listener on window; measured with a
+    // probe. `document` is on the propagation path, which is why it is the idiom.
+    document.addEventListener('scroll', place, true)
     window.addEventListener('resize', place)
     return () => {
-      window.removeEventListener('scroll', place, true)
+      document.removeEventListener('scroll', place, true)
       window.removeEventListener('resize', place)
     }
   }, [jumping])

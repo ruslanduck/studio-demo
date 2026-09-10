@@ -47,12 +47,15 @@ export default function StatusMenu({ at, status, onPick, onClose, title = 'Job s
     window.addEventListener('mousedown', onDown, true)
     window.addEventListener('touchstart', onDown, true)
     window.addEventListener('keydown', onKey, true)
-    window.addEventListener('scroll', onClose, true)
+    // NOTE: `document`, not `window` — a scroll INSIDE a container (this app's
+    // modals scroll) never reaches a capture listener on window; measured with a
+    // probe. `document` is on the propagation path, which is why it is the idiom.
+    document.addEventListener('scroll', onClose, true)
     return () => {
       window.removeEventListener('mousedown', onDown, true)
       window.removeEventListener('touchstart', onDown, true)
       window.removeEventListener('keydown', onKey, true)
-      window.removeEventListener('scroll', onClose, true)
+      document.removeEventListener('scroll', onClose, true)
     }
   }, [onClose])
 

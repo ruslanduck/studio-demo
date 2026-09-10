@@ -59,6 +59,71 @@ export function toHHMM(t) {
   return `${m[1].padStart(2, '0')}:${m[2]}`
 }
 
+const pad = (n) => String(n).padStart(2, '0')
+
+// The hours and the minutes a picker offers. Minutes come in steps because a
+// call sheet is written on the 5s — and any other minute is still TYPEABLE, so
+// the list covers the real cases without closing the door on 08:07.
+export function hourOptions() {
+  return Array.from({ length: 24 }, (_, h) => pad(h))
+}
+export function minuteOptions(step = 5) {
+  const n = Math.max(1, Math.min(60, Math.round(step)))
+  const out = []
+  for (let m = 0; m < 60; m += n) out.push(pad(m))
+  return out
+}
+
+// What a person TYPED, snapped to HH:MM — so nobody has to reach for the colon.
+//   "8" → 08:00 · "830" → 08:30 · "0830" → 08:30 · "8:5" → 08:05 · "19.45" → 19:45
+// Returns '' when the text cannot be read as a time (including a real 24:00 or
+// 08:75), so the caller can leave what was typed alone rather than overwrite it
+// with a guess.
+export function parseTimeInput(raw) {
+  const text = String(raw ?? '').trim()
+  if (!text) return ''
+  if (!/^[\d\s:.]+$/.test(text)) return ''
+  let h
+  let m
+  if (/[:.\s]/.test(text)) {
+    // Up to THREE parts: "08:00:00" is a Postgres `time` someone pasted and it
+    // means 08:00, while "1:2:3:4" is junk — reading its first two fields would
+    // invent a value out of nonsense.
+    const parts = text.split(/[:.\s]+/)
+    if (parts.length > 3) return ''
+    const [a, b = ''] = parts
+    if (!a) return ''
+    h = Number(a)
+    m = b === '' ? 0 : Number(b.length === 1 ? b : b.slice(0, 2))
+  } else {
+    // No separator: read it the way a clock does — the last two digits are
+    // minutes once there are more than two.
+    if (text.length <= 2) {
+      h = Number(text)
+      m = 0
+    } else if (text.length === 3) {
+      h = Number(text[0])
+      m = Number(text.slice(1))
+    } else {
+      h = Number(text.slice(0, 2))
+      m = Number(text.slice(2, 4))
+    }
+  }
+  if (!Number.isInteger(h) || !Number.isInteger(m)) return ''
+  if (h < 0 || h > 23 || m < 0 || m > 59) return ''
+  return `${pad(h)}:${pad(m)}`
+}
+
+// Nudge a time by N minutes, wrapping at midnight — what the arrow keys do on a
+// time field, so a value can be corrected without retyping it.
+export function stepTime(hhmm, deltaMinutes, fallback = '08:00') {
+  const base = isValidTime(toHHMM(hhmm)) ? toHHMM(hhmm) : null
+  if (!base) return fallback
+  const [h, m] = base.split(':').map(Number)
+  const total = (((h * 60 + m + deltaMinutes) % 1440) + 1440) % 1440
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`
+}
+
 // Drop the half-filled rows, de-duplicate roles, and put the day in order.
 // A row with no roles or no time is not a call time — it is a row someone
 // started and abandoned, and storing it would put a blank line on the call

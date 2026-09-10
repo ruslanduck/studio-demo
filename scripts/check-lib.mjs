@@ -301,6 +301,51 @@ ok(
   'a normal day is not',
 )
 ok(!callTimes.wrapBeforeFirstCall([], '07:00'), 'and with no calls there is nothing to contradict')
+
+// ───────────────────────────────── typing a time, without typing the colon
+// The field offers a two-column list, but it stays typeable — and nobody should
+// have to reach for the colon. Read the way a clock is read.
+for (const [typed, want] of [
+  ['8', '08:00'],
+  ['08', '08:00'],
+  ['830', '08:30'],
+  ['0830', '08:30'],
+  ['8:5', '08:05'],
+  ['8:30', '08:30'],
+  ['19.45', '19:45'],
+  ['7 15', '07:15'],
+  ['2359', '23:59'],
+  ['0', '00:00'],
+  // A Postgres `time` pasted into the field means what it says.
+  ['08:00:00', '08:00'],
+]) {
+  eq(callTimes.parseTimeInput(typed), want, `"${typed}" reads as ${want}`)
+}
+// Unreadable text returns '' so the caller LEAVES IT ALONE — overwriting a typo
+// with a guess hides it instead of fixing it.
+// Four fields is not a time: reading its first two would invent a value out of
+// junk, which is worse than refusing it.
+for (const bad of ['24:00', '08:75', '99', 'abc', '', null, undefined, '1:2:3:4']) {
+  eq(callTimes.parseTimeInput(bad), '', `${JSON.stringify(bad)} is not a time`)
+}
+// The arrows nudge without retyping, and the day wraps at midnight.
+eq(callTimes.stepTime('08:00', 5), '08:05', '+5 minutes')
+eq(callTimes.stepTime('08:00', -5), '07:55', '-5 minutes')
+eq(callTimes.stepTime('23:55', 5), '00:00', 'past midnight wraps to the start of the day')
+eq(callTimes.stepTime('00:00', -5), '23:55', 'and back the other way')
+eq(callTimes.stepTime('', 5, '08:00'), '08:00', 'an empty field lands on the fallback, not on 00:05')
+eq(callTimes.stepTime('nonsense', 5, '08:00'), '08:00', 'and so does junk')
+// What the two columns offer.
+eq(callTimes.hourOptions().length, 24, 'every hour of the day')
+eq(callTimes.hourOptions()[0], '00', 'zero-padded')
+eq(callTimes.hourOptions()[23], '23', 'through 23')
+eq(callTimes.minuteOptions(5).length, 12, 'minutes on the 5s')
+eq(callTimes.minuteOptions(15), ['00', '15', '30', '45'], 'or on the quarter hour')
+eq(callTimes.minuteOptions(5)[1], '05', 'zero-padded too')
+ok(
+  callTimes.minuteOptions(5).every((m) => callTimes.isValidTime(`08:${m}`)),
+  'and every offered minute makes a valid time',
+)
 {
   const opts = callTimes.rolesFor([
     { callTimes: [{ roles: ['Photographer', 'Gaffer'], time: '08:00' }] },
