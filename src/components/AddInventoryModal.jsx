@@ -46,7 +46,17 @@ function fromItem(item) {
 
 // Create or edit an inventory item (full field set). In edit mode the type is
 // locked and barcoded quantity is read-only (units are managed individually).
-export default function AddInventoryModal({ open, onClose, onCreate, onSave, onDelete, item }) {
+export default function AddInventoryModal({
+  open,
+  onClose,
+  onCreate,
+  onSave,
+  onDelete,
+  item,
+  // Create-mode starting values. The equipment picker opens this with the
+  // name already typed into its search box — retyping it would be silly.
+  prefill = null,
+}) {
   // Suggestions for the second level of the tree: the taxonomy for the category
   // being chosen, plus every subcategory already in use under it (so a value
   // someone typed last month is offered instead of retyped).
@@ -56,8 +66,9 @@ export default function AddInventoryModal({ open, onClose, onCreate, onSave, onD
   const [form, setForm] = useState(BLANK)
 
   useEffect(() => {
-    if (open) setForm(item ? fromItem(item) : BLANK)
-  }, [open, item])
+    if (open) setForm(item ? fromItem(item) : { ...BLANK, ...(prefill ?? {}) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, item, prefill?.name])
 
   // Categories are offered the same way subcategories are: the suggested list
   // merged with whatever the register actually uses. A migrated category that

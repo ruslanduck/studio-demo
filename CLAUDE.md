@@ -1633,6 +1633,51 @@
 > called it "a large studio" since V1 — but the request says "L-row **location** shoots". If L means
 > LOCATION, its label should say so (and it probably should not consume studio capacity the same way).
 > Not renamed on a guess.
+> **CHANGE — Equipment, Estimate and the pull sheet are ONE module; the pull sheet works at every status
+> but Canceled; and stock, vendors and a scanner all work from inside the equipment window** (frontend only,
+> no migration). Five requests.
+> (1) **One module, no comment.** Three bordered boxes made the same list read as three unrelated things:
+> the equipment IS what the estimate prices and what the pull sheet lists. Now one card — header
+> "Equipment · N pcs · N lines · N billable days", the lines, then an estimate strip (total + Estimate PDF)
+> and a pull-sheet strip (N/N packed + the two buttons). The explanatory paragraph ("Two forms of the same
+> pull sheet…") is gone; the buttons say what they are.
+> (2) **"Edit equipment" moved into the job header**, beside Edit — both are "change this job", and one of
+> them was buried three sections down. A closed job shows **Equipment locked** there instead.
+> (3) **The pull sheet is available at EVERY status except Canceled.** It used to require Confirmed, which
+> just moved the work off the system: a crew pulls gear before the paperwork is signed. Before confirming,
+> no copies are reserved, so the sheet lists what to pull without naming which piece — said in four words on
+> the strip ("not confirmed — no copies reserved yet") and per row in the checklist ("no unit reserved"),
+> which `packingRows` already emitted for exactly this case. Canceled is the one state with nothing to pull.
+> (4) **Stock and vendors are created from inside the equipment window.** Both used to dead-end: gear that
+> isn't in the register yet, or a rental house nobody has filed, sent the crew to another screen and lost
+> this window's picks. The picker now offers **New item "<what you typed>"** (the search text becomes the
+> name — `AddInventoryModal` gained a create-mode `prefill`) and the vendor dropdown offers **+ New vendor…**.
+> Both open the SAME editors the Inventory and People screens use, layered over this window: they own the
+> fields, the validation and the store call, and a lesser copy here would drift from them. A created item is
+> added to the order in the same commit — the line only needs the id, and `inventory` arrives through a prop
+> from the store, so the row resolves its name immediately.
+> (5) **Scan gear onto the order.** One input beside "Add item": the code names one physical copy, so the
+> item goes on the order AND that copy is pinned to it. Same three rules as the station and the kit window,
+> for the same reasons — `normalizeBarcode` (a code copied off the screen carries the decorative `#`), a
+> value that IS a known barcode fires without an Enter (a reader sends one, Ctrl+V doesn't), and every
+> outcome is REPORTED: pinned, already on this order, already in a kit, written off, not in the register, or
+> not free for these dates (naming the job that holds it — the item can still be added by name, which is the
+> deliberate over-capacity choice).
+> ⚠️ **A pre-existing bug my own feature made the normal path.** Pinned copies join `claimed` so no other
+> line or kit can grab them — but `overFor` subtracted that same set from what the order ASKS, so a line
+> reported ITSELF over capacity for every copy it named. Invisible while pinning was a rare manual step;
+> the moment a scan pins by default, a scanned Canon read "1 over capacity". A line's own pins are put back
+> before the comparison now. Measured: `7 pcs · $303.00 · 1 over capacity` → `7 pcs · $303.00`.
+> Verified in local mode on a HOLD job: the header carries Edit equipment + Edit; the module reads
+> "EQUIPMENT · 6 PCS / 4 lines · 1 billable day → ESTIMATE $291.00 → PULL SHEET 0/4 packed · not confirmed —
+> no copies reserved yet"; the digital checklist opens with 4 rows each marked "no unit reserved"; pasting
+> `#0851` with its hash and no Enter added the Magic Keyboard and pinned that copy (6 → 7 pcs, $291 → $303),
+> the same code again said "already on this order" and `#4242` "isn't in the register", neither adding
+> anything; typing "Profoto B10X" offered `New item "Profoto B10X"`, the editor opened with the name filled
+> in, and creating it reported "added to the register and to this order" (7 → 8 pcs); switching a line to
+> Sub-rental → **+ New vendor…** → "Lumen Rental House" created and selected on that line ("1 sub-rental").
+> A CLOSED job shows "Equipment locked"; a CANCELED one shows "Canceled — nothing to pull." with both
+> buttons gone. Demo data reseeded (the test item, vendor and status change gone), 0 new console errors.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

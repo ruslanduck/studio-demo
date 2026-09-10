@@ -31,6 +31,7 @@ import {
   orderStatusMeta,
   CLOSED_STATUS,
   isClosedStatus,
+  isCanceledStatus,
 } from '../data/orderStatus'
 import {
   searchOrders,
@@ -697,14 +698,37 @@ function OrderDetail({
           </div>
         </div>
         {canManage && (
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:border-violet-300 hover:text-violet-600"
-          >
-            <Pencil size={14} />
-            Edit
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* A closed job's equipment is the record of what went out, so it
+                stops being editable. Re-open it to change the gear — the store
+                refuses the write either way. */}
+            {isClosedStatus(order.status) ? (
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-400"
+                title="Closed jobs keep the gear they went out with. Re-open the job to change it."
+              >
+                <Lock size={12} />
+                Equipment locked
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={onEditEquipment}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:border-violet-300 hover:text-violet-600"
+              >
+                <Boxes size={14} />
+                Edit equipment
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-600 transition hover:border-violet-300 hover:text-violet-600"
+            >
+              <Pencil size={14} />
+              Edit
+            </button>
+          </div>
         )}
       </div>
 
@@ -836,37 +860,22 @@ function OrderDetail({
           </Row>
         </section>
 
-        {/* 5.3 equipment + 5.4 estimate */}
-        <section>
-          <div className="mb-2 flex items-center justify-between">
+        {/* Equipment, the estimate it prices and the pull sheet it fills are ONE
+            module: the same list read three ways, and three bordered boxes made
+            them look like three unrelated things. */}
+        <section className="overflow-hidden rounded-xl border border-slate-200">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/60 px-4 py-2.5">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Equipment
               {estimate.lineCount > 0 && ` · ${estimate.pieces} pcs`}
             </h4>
-            {canManage &&
-              // A closed order's equipment is the record of what went out, so it
-              // stops being editable. Re-open it to change the gear — the store
-              // refuses the write either way.
-              (isClosedStatus(order.status) ? (
-                <span
-                  className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-400"
-                  title="Closed jobs keep the gear they went out with. Re-open the job to change it."
-                >
-                  <Lock size={12} />
-                  Closed — locked
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onEditEquipment}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-violet-600 transition hover:bg-violet-50"
-                >
-                  <Boxes size={13} />
-                  Edit equipment
-                </button>
-              ))}
+            <span className="text-xs text-slate-400">
+              {estimate.lineCount} line{estimate.lineCount === 1 ? '' : 's'} · {estimate.days}{' '}
+              billable day{estimate.days === 1 ? '' : 's'}
+            </span>
           </div>
 
+          <div className="space-y-3 p-4">
           {estimate.groups.length > 0 ? (
             <div className="space-y-3">
               {estimate.groups.map((g) => (
@@ -964,92 +973,93 @@ function OrderDetail({
             </div>
           ) : (
             <p className="text-sm text-slate-400">
-              Nothing added yet — use “Edit equipment” to assign items, kits or a scenario list.
+              Nothing added yet — “Edit equipment” in the header assigns items, kits or a
+              scenario list.
             </p>
           )}
-        </section>
+          </div>
 
-        {/* 5.4 — estimate totals + PDF */}
-        <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          {/* The money the list above adds up to. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Estimate
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {estimate.lineCount} lines · {estimate.pieces} pieces · {estimate.days} billable
-                day(s)
-              </div>
+              </span>
+              <span className="text-lg font-semibold text-slate-900">{money(estimate.total)}</span>
+              <span className="text-[11px] text-slate-400">equipment only</span>
               {estimate.unratedCount > 0 && (
-                <div className="mt-1 text-xs text-amber-600">
+                <span className="text-xs text-amber-600">
                   {estimate.unratedCount} line(s) have no day rate and sit outside the total
-                </div>
+                </span>
               )}
             </div>
-            <div className="text-right">
-              <div className="text-lg font-semibold text-slate-900">{money(estimate.total)}</div>
-              <div className="text-[11px] text-slate-400">equipment only</div>
-            </div>
+            <button
+              type="button"
+              onClick={onDownloadPdf}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
+            >
+              <FileDown size={15} />
+              Estimate PDF
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onDownloadPdf}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
-          >
-            <FileDown size={15} />
-            Download estimate PDF
-          </button>
-        </section>
 
-        {/* 6.1 — packing list, generated once the order is Confirmed. A CLOSED
-            order keeps it: the pull sheet and its sign-offs are the record of
-            what went out and came back. */}
-        <section className="rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center gap-2">
-            <Package size={15} className="text-slate-500" />
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Packing list
-            </h4>
+          {/* The pull sheet the same list fills. Available at EVERY status except
+              Canceled, on request: a crew pulls gear before the paperwork is
+              confirmed, and refusing to print until then just moved the work off
+              the system. Canceled is the one state with nothing to pull. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3">
+            {isCanceledStatus(order.status) ? (
+              <span className="inline-flex items-center gap-2 text-xs text-slate-400">
+                <Package size={14} />
+                Canceled — nothing to pull.
+              </span>
+            ) : (
+              <>
+                <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    <Package size={14} className="text-slate-400" />
+                    Pull sheet
+                  </span>
+                  {estimate.lineCount === 0 ? (
+                    <span className="text-xs text-slate-400">no equipment yet</span>
+                  ) : (
+                    <span className="text-xs text-slate-500">
+                      <span className="font-medium text-slate-700">
+                        {packProg.packed}/{packProg.total}
+                      </span>{' '}
+                      packed
+                    </span>
+                  )}
+                  {/* Copies are fixed when the job is confirmed, so before that the
+                      sheet lists what to pull without naming which piece. A fact
+                      about this sheet, not an explanation of the feature. */}
+                  {estimate.lineCount > 0 && order.status !== 'confirmed' && !isClosedStatus(order.status) && (
+                    <span className="text-xs text-amber-600">
+                      not confirmed — no copies reserved yet
+                    </span>
+                  )}
+                </span>
+                <span className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={onOpenChecklist}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <ClipboardList size={15} />
+                    Digital checklist
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onDownloadPackingList}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                  >
+                    <FileDown size={15} />
+                    Print PDF
+                  </button>
+                </span>
+              </>
+            )}
           </div>
-          {order.status === 'confirmed' || isClosedStatus(order.status) ? (
-            <>
-              <p className="mt-1 text-xs text-slate-500">
-                Two forms of the same pull sheet: print a PDF, or run the digital checklist on the
-                iPad. One row per barcoded copy, one tick each. Returns are recorded by scanning.
-                {estimate.lineCount === 0 && ' This job has no equipment yet.'}
-              </p>
-              {estimate.lineCount > 0 && (
-                <p className="mt-1.5 text-xs text-slate-500">
-                  <span className="font-medium text-slate-700">
-                    {packProg.packed}/{packProg.total}
-                  </span>{' '}
-                  packed
-                </p>
-              )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={onOpenChecklist}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-700"
-                >
-                  <ClipboardList size={15} />
-                  Digital checklist
-                </button>
-                <button
-                  type="button"
-                  onClick={onDownloadPackingList}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                >
-                  <FileDown size={15} />
-                  Print PDF
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="mt-1 text-xs text-amber-600">
-              Confirm the job to generate its packing list.
-            </p>
-          )}
         </section>
 
         {/* Who changed what on this order. Reservation churn is filtered out —

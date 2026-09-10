@@ -17,6 +17,9 @@ import Modal from './Modal'
 import KitStagingModal from './KitStagingModal'
 import UnitPickList from './UnitPickList'
 import SelectField from './SelectField'
+import AddInventoryModal from './AddInventoryModal'
+import CompanyEditorModal from './CompanyEditorModal'
+import { normalizeBarcode } from '../lib/scanning'
 import { studioLabel } from '../data/studios'
 import { setSpanDays } from '../lib/setDays'
 import { useStore, notArchived } from '../store'
@@ -45,6 +48,8 @@ import { availableCount, freeUnitsOf, resolveUnitsForQuantities } from '../lib/a
 // Kit lines are in-house by definition: the staging window pins real units we own.
 const IN_HOUSE = 'in_house'
 const SUB_RENTAL = 'sub_rental'
+// A sentinel option value, not a company id: picking it opens the editor.
+const NEW_VENDOR = '__new_vendor__'
 
 export default function OrderEquipmentModal({
   open,
@@ -59,6 +64,15 @@ export default function OrderEquipmentModal({
   // Writes the staging window can make on real stock (repair log, barcode fix).
   const sendToRepair = useStore((st) => st.sendToRepair)
   const setUnitBarcode = useStore((st) => st.setUnitBarcode)
+  // Stock and vendors can be created from here: a piece of gear that isn't in
+  // the register yet, or a rental house nobody has filed, used to be a dead end
+  // that sent the crew to another screen and lost this window's picks.
+  const addInventoryItem = useStore((st) => st.addInventoryItem)
+  const createCompany = useStore((st) => st.createCompany)
+  const companyTypes = useStore((st) => st.companyTypes)
+  const createCompanyType = useStore((st) => st.createCompanyType)
+  const renameCompanyType = useStore((st) => st.renameCompanyType)
+  const archiveCompanyType = useStore((st) => st.archiveCompanyType)
   const [itemLines, setItemLines] = useState([]) // { itemId, quantity, source, vendorId }
   const [stagedUnits, setStagedUnits] = useState([]) // kit lines (unit-level)
   const [staging, setStaging] = useState(null)
@@ -70,6 +84,14 @@ export default function OrderEquipmentModal({
   const [copyPicker, setCopyPicker] = useState(null)
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  // What the last scan did — reported, because a reader that swallows a code
+  // silently is indistinguishable from a broken one.
+  const [scan, setScan] = useState('')
+  const [scanNote, setScanNote] = useState(null)
+  // Creating stock / a vendor without leaving this window. `newVendorFor` holds
+  // the line index that asked, so the company lands on the right one.
+  const [newItemOpen, setNewItemOpen] = useState(false)
+  const [newVendorFor, setNewVendorFor] = useState(null)
 
   // Load the order's existing lines back into the two buckets.
   useEffect(() => {
@@ -174,6 +196,16 @@ export default function OrderEquipmentModal({
     [stagedIds, ownUnits, dateWindow],
   )
 
+  // Every barcode the register holds, so a PASTED code can fire without waiting
+  // for an Enter a paste never sends (a reader does).
+  const knownBarcodes = useMemo(() => {
+    const set = new Set()
+    for (const item of inventory)
+      if (notArchived(item))
+        for (const u of item.units || []) if (notArchived(u) && u.barcode) set.add(u.barcode)
+    return set
+  }, [inventory])
+
   const vendors = useMemo(
     // Any company can be one we rented from: the client/vendor/both axis was
     // dropped, and the Type list is the studio's own to manage.
@@ -196,10 +228,22 @@ export default function OrderEquipmentModal({
   // capacity is ALLOWED (you can't always wait for the gear to come back), but it
   // must be visible on the line and in the footer — the resolver reserves only
   // what exists, so the difference is simply not held.
-  const overFor = (item) =>
-    item?.kind === 'barcoded'
-      ? Math.max(0, inHouseQty(item.id) - availableCount(item, avCtx))
-      : 0
+  //
+  // ⚠️ A copy THIS order pinned is part of what it asks for, not something taken
+  // away from it. Pinned ids join `claimed` (so no other line or kit can grab
+  // the same copy), and subtracting that from what we ask made a line report
+  // itself over capacity for every copy it named — visible the moment a scan
+  // pins one. Our own pins are put back before the comparison.
+  const overFor = (item) => {
+    if (item?.kind !== 'barcoded') return 0
+    const ownPins = new Set(
+      itemLines
+        .filter((l) => l.itemId === item.id && l.source === IN_HOUSE)
+        .flatMap((l) => (l.units ?? []).map((u) => u.unitId)),
+    )
+    const claimed = new Set([...stagedIds].filter((id) => !ownPins.has(id)))
+    return Math.max(0, inHouseQty(item.id) - availableCount(item, { ...avCtx, claimed }))
+  }
 
   const lines = useMemo(
     () => [
@@ -350,6 +394,98 @@ export default function OrderEquipmentModal({
     setPickerSearch('')
     setBlocked(null)
     setError(null)
+  }
+
+  // Add stock by SCANNING it, which is how a crew works at the shelf: the code
+  // names one physical copy, so the item goes on the order AND that copy is
+  // pinned to it. Same rule as the per-line copy picker — a scan fills the next
+  // unpinned piece and only grows the quantity once every piece is named.
+  //
+  // `normalizeBarcode` is shared with the scanning station: a code copied off
+  // the screen carries the decorative `#`, and a reader sends a trailing CR.
+  function scanIn(raw) {
+    const code = normalizeBarcode(raw)
+    if (!code) return
+    setScan('')
+    setError(null)
+    const item = inventory.find(
+      (i) => notArchived(i) && (i.units || []).some((u) => u.barcode === code),
+    )
+    const unit = item ? (item.units || []).find((u) => u.barcode === code) : null
+    if (!item || !unit) {
+      setScanNote({ bad: true, text: `#${code} isn't in the register.` })
+      return
+    }
+    if (!notArchived(unit)) {
+      setScanNote({ bad: true, text: `#${code} was written off.` })
+      return
+    }
+    // Already on this order — say so rather than counting it twice.
+    if (itemLines.some((l) => (l.units ?? []).some((u) => u.unitId === unit.id))) {
+      setScanNote({ bad: true, text: `#${code} is already on this order.` })
+      return
+    }
+    if (stagedUnits.some((u) => u.unitId === unit.id)) {
+      setScanNote({ bad: true, text: `#${code} is already in a kit on this order.` })
+      return
+    }
+    // A copy someone else holds for these days can't be pinned: the pull sheet
+    // would name a piece that isn't coming. The item can still be added by name
+    // ("add anyway"), which is a deliberate, visible over-capacity choice.
+    if (!freeUnitsOf(item, avCtx).some((u) => u.id === unit.id)) {
+      const held = (unit.reservations || [])[0]
+      setScanNote({
+        bad: true,
+        text: `#${code} ${item.name} isn't free for these dates${held?.setTitle ? ` — ${held.setTitle} has it` : ''}.`,
+      })
+      return
+    }
+    setItemLines((prev) => {
+      const at = prev.findIndex((l) => l.itemId === item.id && l.source === IN_HOUSE)
+      const pin = { unitId: unit.id, barcode: unit.barcode ?? null }
+      if (at === -1)
+        return [...prev, { itemId: item.id, quantity: 1, source: IN_HOUSE, vendorId: null, units: [pin] }]
+      const line = prev[at]
+      const units = line.units ?? []
+      const next = [...prev]
+      next[at] = {
+        ...line,
+        quantity: Math.max(line.quantity, units.length + 1),
+        units: [...units, pin],
+      }
+      return next
+    })
+    setScanNote({ bad: false, text: `#${code} → ${item.name} · copy pinned` })
+  }
+
+  // A brand-new item type, created here and added straight to the order. The
+  // line only needs the id: `inventory` comes from the store through a prop, so
+  // the row resolves its name in the same commit as this state change.
+  async function createItemAndAdd(payload) {
+    setNewItemOpen(false)
+    const id = await addInventoryItem(payload)
+    if (!id) {
+      setError('The item could not be created.')
+      return
+    }
+    setItemLines((prev) => [...prev, { itemId: id, quantity: 1, source: IN_HOUSE, vendorId: null }])
+    setPicker(false)
+    setPickerSearch('')
+    setBlocked(null)
+    setError(null)
+    setScanNote({ bad: false, text: `${payload.name} added to the register and to this order` })
+  }
+
+  // A vendor nobody has filed yet, created for the line that asked for one.
+  async function createVendorForLine(company) {
+    const index = newVendorFor
+    setNewVendorFor(null)
+    const id = await createCompany(company)
+    if (!id) {
+      setError('The company could not be created.')
+      return
+    }
+    if (index != null) updateLine(index, { vendorId: id })
   }
 
   const updateLine = (index, changes) =>
@@ -771,23 +907,27 @@ export default function OrderEquipmentModal({
                             </button>
                           ))}
                         </div>
-                        {isSub &&
-                          (vendors.length > 0 ? (
-                            <SelectField
-                              value={l.vendorId ?? ''}
-                              onChange={(e) => updateLine(i, { vendorId: e.target.value || null })}
-                              placeholder="pick a vendor…"
-                              options={vendors.map((c) => ({ value: c.id, label: c.name }))}
-                              className={[
-                                'w-40 rounded-md border px-2 py-1 text-xs outline-none transition focus:ring-2 focus:ring-violet-100',
-                                l.vendorId ? 'border-slate-300 text-slate-700' : 'border-amber-400 text-amber-700',
-                              ].join(' ')}
-                            />
-                          ) : (
-                            <span className="text-[11px] text-amber-600">
-                              no vendor companies on file
-                            </span>
-                          ))}
+                        {isSub && (
+                          <SelectField
+                            value={l.vendorId ?? ''}
+                            onChange={(e) => {
+                              // A rental house nobody has filed yet is the common
+                              // case for a sub-rental, so the list itself offers
+                              // creating one instead of sending you to People.
+                              if (e.target.value === NEW_VENDOR) return setNewVendorFor(i)
+                              updateLine(i, { vendorId: e.target.value || null })
+                            }}
+                            placeholder={vendors.length ? 'pick a vendor…' : 'new vendor…'}
+                            options={[
+                              ...vendors.map((c) => ({ value: c.id, label: c.name })),
+                              { value: NEW_VENDOR, label: '+ New vendor…' },
+                            ]}
+                            className={[
+                              'w-40 rounded-md border px-2 py-1 text-xs outline-none transition focus:ring-2 focus:ring-violet-100',
+                              l.vendorId ? 'border-slate-300 text-slate-700' : 'border-amber-400 text-amber-700',
+                            ].join(' ')}
+                          />
+                        )}
 
                         {/* The rental price for this line. A sub-rental is priced
                             by its vendor, so our own rate is only a starting
@@ -943,9 +1083,21 @@ export default function OrderEquipmentModal({
                   })}
                 </ul>
               ) : (
-                <p className="px-1 py-3 text-center text-xs text-slate-400">Nothing matching.</p>
+                <p className="px-1 py-3 text-center text-xs text-slate-400">
+                  Nothing matching{pickerSearch.trim() ? ' — register it below' : ''}.
+                </p>
               )}
-              <div className="mt-1 flex justify-end">
+              {/* Gear that isn't in the register yet used to dead-end here and
+                  send the crew to another screen, losing this window's picks. */}
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewItemOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-violet-600 transition hover:bg-violet-50"
+                >
+                  <Plus size={12} />
+                  {pickerSearch.trim() ? `New item “${pickerSearch.trim()}”` : 'New item type'}
+                </button>
                 <button
                   type="button"
                   onClick={() => setPicker(false)}
@@ -956,7 +1108,7 @@ export default function OrderEquipmentModal({
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -968,6 +1120,34 @@ export default function OrderEquipmentModal({
                 <Plus size={15} />
                 Add item
               </button>
+              {/* Scan the gear onto the order. A hardware reader ends with Enter;
+                  a code pasted with Ctrl+V does not, so a value that IS a known
+                  barcode fires on its own — the same rule as the station and the
+                  kit window, and for the same reason. */}
+              <label className="relative inline-flex items-center">
+                <ScanLine
+                  size={15}
+                  className="pointer-events-none absolute left-2.5 text-slate-400"
+                />
+                <input
+                  type="text"
+                  value={scan}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setScan(v)
+                    setScanNote(null)
+                    if (knownBarcodes.has(normalizeBarcode(v))) scanIn(v)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      scanIn(scan)
+                    }
+                  }}
+                  placeholder="Scan a barcode…"
+                  className="w-44 rounded-lg border border-dashed border-slate-300 py-2 pl-8 pr-2 text-sm outline-none transition focus:border-violet-400 focus:border-solid focus:ring-2 focus:ring-violet-100"
+                />
+              </label>
               {kits.length > 0 && (
                 <SelectField
                   value=""
@@ -981,6 +1161,17 @@ export default function OrderEquipmentModal({
                 />
               )}
             </div>
+          )}
+
+          {scanNote && (
+            <p
+              className={[
+                'text-xs font-medium',
+                scanNote.bad ? 'text-rose-600' : 'text-emerald-600',
+              ].join(' ')}
+            >
+              {scanNote.text}
+            </p>
           )}
 
           {error && (
@@ -1047,6 +1238,26 @@ export default function OrderEquipmentModal({
         // and left the count unchanged — which is exactly what it looked like.
         onMarkBroken={(itemId, unitId, details) => sendToRepair(itemId, unitId, details)}
         onSetBarcode={(itemId, unitId, barcode) => setUnitBarcode(itemId, unitId, barcode)}
+      />
+
+      {/* Both editors are the SAME ones the Inventory and People screens use,
+          layered over this window — they own the fields, the validation and the
+          store call, and a lesser copy here would drift from them. */}
+      <AddInventoryModal
+        open={newItemOpen}
+        prefill={pickerSearch.trim() ? { name: pickerSearch.trim() } : null}
+        onClose={() => setNewItemOpen(false)}
+        onCreate={createItemAndAdd}
+      />
+
+      <CompanyEditorModal
+        open={newVendorFor != null}
+        companyTypes={companyTypes.filter(notArchived)}
+        onClose={() => setNewVendorFor(null)}
+        onCreate={createVendorForLine}
+        onCreateType={(name) => createCompanyType(name)}
+        onRenameType={(id, name) => renameCompanyType(id, name)}
+        onDeleteType={(id) => archiveCompanyType(id)}
       />
     </>
   )
