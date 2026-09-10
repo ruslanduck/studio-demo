@@ -17,6 +17,7 @@ import {
   Layers,
   Lock,
   Tag,
+  AlertTriangle,
 } from 'lucide-react'
 import { useStore, notArchived, capacityError } from '../store'
 import { setSpanDays } from '../lib/setDays'
@@ -40,6 +41,7 @@ import {
   brandsIn,
   jobTypesIn,
   SORTS,
+  rangeIsBackwards,
 } from '../lib/orderSearch'
 import DateField from './DateField'
 import OrderEditorModal from './OrderEditorModal'
@@ -260,6 +262,9 @@ export default function Orders() {
     (from ? 1 : 0) +
     (to ? 1 : 0)
 
+  // An impossible period is worth naming rather than leaving as an empty list.
+  const backwardsRange = rangeIsBackwards(from, to)
+
   function clearAll() {
     setSearch('')
     setStatus('All')
@@ -380,9 +385,56 @@ export default function Orders() {
                 className={FILTER_FIELD}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <DateField value={from} onChange={(e) => setFrom(e.target.value)} className={FILTER_FIELD} />
-              <DateField value={to} onChange={(e) => setTo(e.target.value)} className={FILTER_FIELD} />
+            {/* Two bare date boxes said nothing about which was which — the
+                dropdowns beside them describe themselves ("Any studio"), a
+                filled date field just shows a date. Labelled, and the rule
+                stated: a job matches when any of ITS shooting days falls in the
+                period, so a multi-day job is found from either end. */}
+            <div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                    Shooting from
+                  </span>
+                  <DateField value={from} onChange={(e) => setFrom(e.target.value)} className={FILTER_FIELD} />
+                </label>
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                    Shooting until
+                  </span>
+                  <DateField value={to} onChange={(e) => setTo(e.target.value)} className={FILTER_FIELD} />
+                </label>
+              </div>
+              {backwardsRange ? (
+                <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-amber-700">
+                  <AlertTriangle size={12} className="shrink-0" />
+                  Until is before from, so nothing can match.
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Read the values being swapped, not the closure: both
+                      // setters fire in one tick.
+                      const a = from
+                      const b = to
+                      setFrom(b)
+                      setTo(a)
+                    }}
+                    className="rounded px-1.5 py-0.5 font-semibold text-violet-700 underline transition hover:bg-violet-50"
+                  >
+                    Swap them
+                  </button>
+                </p>
+              ) : (
+                <p className="mt-1.5 text-[11px] text-slate-400">
+                  {from && to
+                    ? 'Jobs shooting on any day in that period.'
+                    : from
+                      ? 'Jobs shooting on or after that date.'
+                      : to
+                        ? 'Jobs shooting on or before that date.'
+                        : 'Leave either side empty for an open end.'}
+                </p>
+              )}
             </div>
           </FilterBar>
 

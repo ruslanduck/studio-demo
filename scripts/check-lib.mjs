@@ -568,4 +568,42 @@ ok(
   eq(unitRows.duplicateTypedBarcode([{ barcode: '0900' }, {}, {}]), null, 'blanks never collide')
 }
 
+// The DATE filter on Jobs. The primitive was asserted; the FILTER was not, and
+// two unlabelled date boxes are exactly where a wrong answer hides. A job
+// matches when its own shooting window overlaps the asked-for period, and
+// either side may be left open.
+{
+  const dated = [
+    { id: 'jul', jobName: 'July', startsOn: '2026-07-31', endsOn: '2026-07-31' },
+    { id: 'sep', jobName: 'Sept', startsOn: '2026-09-10', endsOn: '2026-09-10' },
+    { id: 'span', jobName: 'Span', startsOn: '2026-08-30', endsOn: '2026-09-02' },
+    { id: 'nodate', jobName: 'No dates' },
+    // Spans BOTH ends of the backwards range below — the case that proved the
+    // "nothing can match" claim false, since each one-sided test passes alone.
+    { id: 'straddle', jobName: 'Straddle', startsOn: '2026-09-10', endsOn: '2026-09-11' },
+  ]
+  const found = (c) => orderSearch.searchOrders(dated, c).map((o) => o.id).sort()
+
+  eq(found({ from: '2026-09-01' }), ['sep', 'span', 'straddle'], '`from` alone means on or after')
+  eq(found({ to: '2026-08-01' }), ['jul'], '`to` alone means on or before')
+  eq(found({ from: '2026-07-01', to: '2026-08-31' }), ['jul', 'span'], 'a period matches what overlaps it')
+  // A multi-day job must be found from EITHER end of its span.
+  eq(found({ from: '2026-09-02', to: '2026-09-02' }), ['span'], 'a span is found from its last day')
+  eq(found({ from: '2026-09-10', to: '2026-09-11' }), ['sep', 'straddle'], 'and a straddling job is found by a real period')
+  eq(found({ from: '2026-08-30', to: '2026-08-30' }), ['span'], 'and from its first')
+  ok(!found({ from: '2026-01-01', to: '2026-12-31' }).includes('nodate'),
+    'a job with no dates cannot satisfy a date filter')
+  eq(found({}), ['jul', 'nodate', 'sep', 'span', 'straddle'], 'and with no dates asked, everything stays')
+
+  // The reported case: two boxes, the second earlier than the first.
+  // Including the job that covers BOTH of its ends — an empty interval holds
+  // no days, so the warning beside the fields is literally true.
+  eq(found({ from: '2026-09-11', to: '2026-09-10' }), [], 'a backwards period matches nothing, not even a job straddling it')
+  ok(orderSearch.rangeIsBackwards('2026-09-11', '2026-09-10'), 'which the UI names instead of just emptying')
+  ok(!orderSearch.rangeIsBackwards('2026-09-10', '2026-09-11'), 'a normal period is not flagged')
+  ok(!orderSearch.rangeIsBackwards('2026-09-10', '2026-09-10'), 'a single day is not backwards')
+  ok(!orderSearch.rangeIsBackwards('', '2026-09-10') && !orderSearch.rangeIsBackwards('2026-09-10', ''),
+    'and one open end can never be')
+}
+
 console.log(`OK — ${n} assertions passed`)

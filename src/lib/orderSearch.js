@@ -51,6 +51,13 @@ function haystack(order) {
     .toLowerCase()
 }
 
+// A period whose end is BEFORE its start. No job can match it, so the filter
+// has to say so — two bare date boxes gave no clue which was which, and a
+// backwards range just emptied the list in silence.
+export function rangeIsBackwards(from, to) {
+  return !!(from && to && from > to)
+}
+
 // Does [aFrom, aTo] overlap [bFrom, bTo]? Open ends mean "unbounded".
 function windowsOverlap(aFrom, aTo, bFrom, bTo) {
   const start = aFrom || aTo || null
@@ -80,6 +87,12 @@ export function matchesOrder(
   if (studio !== 'All' && (order.studioId ?? '') !== studio) return false
   if (brand !== 'All' && (order.brand ?? '') !== brand) return false
   if (jobType !== 'All' && (order.jobType ?? '') !== jobType) return false
+  // A period that ends before it starts contains no days, so nothing can be in
+  // it. Without this a job SPANNING both dates slipped through, because the two
+  // one-sided tests below are each satisfied independently — measured: the
+  // backwards range 09-11 → 09-10 still returned the job running 09-10 → 09-11,
+  // which made the warning beside those fields untrue.
+  if (rangeIsBackwards(from, to)) return false
   if ((from || to) && !windowsOverlap(order.startsOn, order.endsOn, from, to)) return false
 
   const terms = String(text).toLowerCase().split(/\s+/).filter(Boolean)
