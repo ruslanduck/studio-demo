@@ -160,7 +160,20 @@ export default function OrderEquipmentModal({
     setBlocked(null)
     setError(null)
     setBusy(false)
-  }, [open, order, kits])
+    // ⚠️ `kits` is deliberately NOT a dependency. It comes from the store, and
+    // `hydrate()` hands out a NEW ARRAY every time — including the quiet refetch
+    // that TWO actions in this very window perform (creating an item, creating a
+    // vendor). With `kits` listed here, that fresh identity re-ran this effect
+    // and re-seeded these buckets from the last SAVED lines, silently throwing
+    // away every pick the crew had made. Measured on prod: creating a vendor for
+    // a line dropped the line, and the footer fell back from 7 pcs to 6.
+    //
+    // `order` and `open` are the real triggers, and both are snapshots held in
+    // the parent's own state, so they change only when the window is opened or
+    // pointed at a different job. `kits` is read here only to name a staged
+    // kit — the render's copy is exactly what that needs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, order])
 
   const itemsById = useMemo(() => Object.fromEntries(inventory.map((i) => [i.id, i])), [inventory])
   // Copies chosen on a loose line are spoken for just like a kit's units — they
