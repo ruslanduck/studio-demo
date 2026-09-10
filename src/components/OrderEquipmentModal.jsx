@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Search,
   Plus,
@@ -73,7 +73,19 @@ export default function OrderEquipmentModal({
   const createCompanyType = useStore((st) => st.createCompanyType)
   const renameCompanyType = useStore((st) => st.renameCompanyType)
   const archiveCompanyType = useStore((st) => st.archiveCompanyType)
-  const [itemLines, setItemLines] = useState([]) // { itemId, quantity, source, vendorId }
+  const [itemLines, setLinesState] = useState([]) // { itemId, quantity, source, vendorId }
+  // ⚠️ React state is not readable until the next render, and handlers in this
+  // window can fire twice before one happens — two clicks on a quantity's + is
+  // the ordinary case. So every write also lands in a ref, giving the same live
+  // read that `useStore.getState()` gives for store state. `setItemLines` keeps
+  // its exact old shape (a value or an updater), so no call site changed; the
+  // difference is that an updater now runs against the CURRENT lines, at once.
+  const linesRef = useRef([])
+  const setItemLines = (next) => {
+    const value = typeof next === 'function' ? next(linesRef.current) : next
+    linesRef.current = value
+    setLinesState(value)
+  }
   const [stagedUnits, setStagedUnits] = useState([]) // kit lines (unit-level)
   const [staging, setStaging] = useState(null)
   const [picker, setPicker] = useState(false)
@@ -227,15 +239,28 @@ export default function OrderEquipmentModal({
   )
 
   // What this order already takes from our own stock for an item.
-  const inHouseQty = (itemId) =>
-    itemLines
-      .filter((l) => l.itemId === itemId && l.source === IN_HOUSE)
-      .reduce((n, l) => n + l.quantity, 0)
+  //
+  // Both of these take the LINES they are asked about rather than closing over
+  // `itemLines`, so the very same rule can be evaluated against the `prev` of a
+  // state updater — which is what a handler that can fire twice before a
+  // re-render has to do.
+  const inHouseQtyIn = (lines, itemId) =>
+    lines.filter((l) => l.itemId === itemId && l.source === IN_HOUSE).reduce((n, l) => n + l.quantity, 0)
+  const inHouseQty = (itemId) => inHouseQtyIn(itemLines, itemId)
 
   // Shared availability rule, minus what this order's own in-house lines take.
   // Sub-rental lines are deliberately not subtracted — that gear isn't ours.
-  const remainingFor = (item) =>
-    Math.max(0, availableCount(item, avCtx) - inHouseQty(item?.id))
+  const remainingIn = (lines, item) => {
+    if (!item) return 0
+    const pins = new Set(lines.flatMap((l) => (l.units ?? []).map((u) => u.unitId)))
+    const claimed = new Set([...stagedUnits.map((u) => u.unitId), ...pins])
+    return Math.max(
+      0,
+      availableCount(item, { claimed, alsoFree: ownUnits, window: dateWindow }) -
+        inHouseQtyIn(lines, item.id),
+    )
+  }
+  const remainingFor = (item) => remainingIn(itemLines, item)
 
   // How much this order's in-house lines exceed what's actually free. Over
   // capacity is ALLOWED (you can't always wait for the gear to come back), but it
@@ -554,23 +579,39 @@ export default function OrderEquipmentModal({
     )
   }
 
+  // ⚠️ Reads the LIVE line, not the render closure. Measured on prod: two clicks
+  // on + before a re-render both computed 6 + 1 and the second wrote the value
+  // the first already had, so 6 → 7 instead of 6 → 8. Seventh instance of the
+  // rule this codebase has written down — a handler that derives from state and
+  // can fire twice before a render must read the current value.
+  //
+  // The whole step happens inside ONE updater, capacity guard included: each +
+  // consumes a piece, so the guard has to judge the quantity as it stands, not
+  // as it was rendered. The updater itself stays pure — what it decides is
+  // reported out through `blocked` and applied after.
   function stepLine(index, delta) {
-    const line = itemLines[index]
+    // The LIVE line, not the render closure. Measured on prod: two clicks on +
+    // before a re-render both computed 6 + 1, so the second wrote the value the
+    // first already had — 6 → 7 instead of 6 → 8. Seventh instance of the rule
+    // this codebase has written down.
+    const lines = linesRef.current
+    const line = lines[index]
+    if (!line) return
     const item = itemsById[line.itemId]
     const next = line.quantity + delta
     if (next <= 0) return removeLine(index)
-    // Fewer pieces than pinned copies is a contradiction: drop the last pin with
-    // the piece it belonged to.
-    if (delta < 0 && next < (line.units ?? []).length) {
-      const last = line.units[line.units.length - 1]
-      unpinUnit(index, last.unitId)
-    }
-    // In-house is capped by what's actually free; a vendor's stock is not ours to cap.
-    if (line.source === IN_HOUSE && delta > 0 && remainingFor(item) <= 0) {
-      setBlocked({ itemId: line.itemId, name: item.name, intent: 'add' })
+    // In-house is capped by what's actually free — judged against the quantity
+    // as it stands, since each + consumes another piece. Over capacity stays
+    // reachable through the dialog this raises, which offers "Add anyway".
+    if (line.source === IN_HOUSE && delta > 0 && remainingIn(lines, item) <= 0) {
+      setBlocked({ itemId: line.itemId, name: item?.name, intent: 'add' })
       return
     }
-    updateLine(index, { quantity: next })
+    // Fewer pieces than pinned copies is a contradiction: drop the last pins
+    // with the pieces they belonged to.
+    const units = line.units ?? []
+    const kept = delta < 0 && next < units.length ? units.slice(0, next) : units
+    updateLine(index, { quantity: next, units: kept })
   }
 
   // Switching a line to sub-rental frees the in-house units it was holding.
