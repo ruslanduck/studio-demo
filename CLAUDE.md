@@ -1806,6 +1806,61 @@
 > ℹ️ **Left to the studio, not guessed:** those 51 items need subcategories NAMED before they can be filed
 > (10 of them were imported as "Stands", a category with no second level at all). The bulk tool places a
 > whole former-category group in one action once the names exist.
+> **CHANGE — Purchase price, and a barcoded item is created WITH its copies**
+> (`20260912120000_item_category_nullable.sql`; the feature itself is frontend-only). Two requests.
+> (1) **Replacement price → Purchase price.** Text only, in the three places a person reads it (the item
+> form, the card's detail grid, and the activity feed's diff labels). ⚠️ The COLUMN stays
+> `replacement_price`: it was added as an insurance value (`20260724160000`) and the studio uses it for what
+> a piece cost, which is why the label now sits beside Purchase date. Renaming the column would rewrite
+> stored data for no visible benefit — the same call as the `orders` table meaning Job — so the mismatch is
+> documented where `getInventory` maps it.
+> (2) **Creating a barcoded item took a QUANTITY and generated that many units with auto barcodes**, so
+> registering gear whose labels are already on it meant creating the item, then opening "Add unit" and
+> correcting every copy. The item form now carries the SAME one-row-per-copy control the card's "Add unit"
+> uses: blank rows are generated (a batch of identical stands), typed rows carry the label in hand. Counted
+> stock still takes a plain number and is offered no copies; an existing item still manages them from its
+> card, and switching the type toggle swaps between the two.
+> `src/components/UnitRowsField.jsx` is that control, extracted so the two places ask the question one way,
+> and **`src/lib/unitRows.js` is the RULE they share with the store**: a typed barcode must be free, no two
+> rows may claim one, and blank rows take the next free numbers skipping anything typed above. It was
+> written TWICE before (the store's `addUnits` and the form's greyed previews) and could drift — `test:lib`
+> now pins that **every preview equals the code the save actually assigns** (+18, **281 assertions**). One of
+> those assertions is the interesting one: `barcodePreviews` must claim each number it hands out, or two
+> blank rows preview the same barcode.
+> ⚠️ **`store.addInventoryItem` returns `{id}` or `{error}` now** — it used to return a bare id, so a
+> refused barcode had nowhere to be reported and the form closed on a write that never happened. Both
+> callers updated; the equipment window's "New item" names the reason instead of a generic "could not be
+> created". The copies are resolved BEFORE anything is written, so a clash costs nothing.
+> ⚠️ **That error surface immediately exposed a regression the taxonomy change had shipped 30 minutes
+> earlier: `inventory_items.category` is NOT NULL, and the item editor had deliberately stopped writing that
+> legacy text — so EVERY create failed on the real database** with `null value in column "category" …
+> violates not-null constraint`. Local mode has no constraint to violate, which is exactly why the browser
+> pass missed it, and the old bare-id return made it silent. `20260912120000` drops the NOT NULL: nullable is
+> the honest shape, because a newly registered item has no imported text and the 276 rows from the studio's
+> export keep theirs. **The lesson is the reporting, not the constraint** — the same write had been failing
+> invisibly, and one honest return value found it.
+> ⚠️ And the per-copy events had to be logged the SAME way in both modes. My first version passed a local
+> unit id in local mode and logged NOTHING in supabase mode, while the comment claimed "the same way
+> whichever door it came in" — caught by counting the events during the prod cleanup (1 removed, 3
+> expected). They hang off the ITEM with the barcode naming the copy, exactly as `addUnits` does it, so no
+> DB-generated id is needed.
+> Also fixed here: **`npm run audit:tdz` no longer flags PROPERTY reads.** `item.units` cannot trip a
+> temporal dead zone, only a bare `units` can, and my own memo tripped that false alarm. Verified the audit
+> still catches a real TDZ by staging one — a tool whose job is to be believed cannot cry wolf.
+> Verified in local mode by measurement: previews 1017/1018/1019 against a register topping out at 1016;
+> typing 1018 into row 1 re-previewed the blanks as 1017/1019; the same barcode in two rows was refused next
+> to the field and #0851 (the Magic Keyboard's) was refused by the store — both with the form kept open and
+> nothing written; a real create then wrote #1018 with its typed serial and #1017 generated, logged
+> `item.created` plus one `unit.added` per copy ("registered a unit · #1018 · SF2H29…"), and the card read
+> "PURCHASE PRICE $1,250.50". The shared control in "Add units" still previews, and two clicks on
+> "Add another copy" in ONE tick add two rows (it takes an updater). Counted stock shows a quantity and no
+> copies. Demo data reseeded, 0 console errors.
+> On prod in supabase mode, on the deployed build: the form reads Purchase price with no "Replacement
+> price" anywhere and previews 1026 (the register's highest is Clay's 1025); the first create surfaced the
+> NOT NULL regression above; after the migration the SAME form — every value still in it — wrote the item
+> with `category` null, both copies (typed **#9911 / ZZ-SERIAL-A** and generated **#1026** with a generated
+> serial) and `replacement_price` 899, and the card read "PURCHASE PRICE → $899.00". Probe item, its 2 units
+> and its events removed with service_role — prod back to **276 live items / 437 live units**.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
