@@ -8,7 +8,7 @@ import { CalendarRange, Boxes, Users, ClipboardList, ScanLine } from 'lucide-rea
 // pays for the width. The `disabled` support in TopBar/Sidebar stays, so adding
 // a not-yet-shipped tab back is a one-line change.
 export const WORKSPACE_NAV = [
-  { id: 'calendar', label: 'Studio Calendar', short: 'Calendar', icon: CalendarRange },
+  { id: 'calendar', label: 'Calendar', short: 'Calendar', icon: CalendarRange },
   { id: 'orders', label: 'Jobs', short: 'Jobs', icon: ClipboardList },
   { id: 'inventory', label: 'Inventory', short: 'Inventory', icon: Boxes },
   { id: 'people', label: 'People', short: 'People', icon: Users },

@@ -27,7 +27,7 @@ import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
 import {
   ORDER_STATUS,
-  ORDER_FLOW,
+  ORDER_STATUS_CHOICES,
   orderStatusMeta,
   CLOSED_STATUS,
   isClosedStatus,
@@ -84,10 +84,12 @@ function StatusPill({ status, onChange = null, closedBlockedBy = null }) {
       </span>
     )
   // Every state the job can be moved to, plus its CURRENT one even when that is
-  // a legacy value (draft / canceled) — a dropdown that cannot show where you
-  // already are reads as broken.
-  const flow = [...ORDER_FLOW, CLOSED_STATUS]
-  const values = flow.includes(status) ? flow : [status, ...flow]
+  // a legacy value ('draft') — a dropdown that cannot show where you already are
+  // reads as broken. One list with the calendar's status menu, so the two
+  // surfaces can never offer different sets.
+  const values = ORDER_STATUS_CHOICES.includes(status)
+    ? ORDER_STATUS_CHOICES
+    : [status, ...ORDER_STATUS_CHOICES]
   return (
     <SelectField
       value={status}

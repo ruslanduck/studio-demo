@@ -83,7 +83,7 @@ import { reservedUnitsForOrder, overlaps } from './lib/availability'
 import { coversDay, endsOnFor, firstFullDay, setSpanDays } from './lib/setDays'
 import { normalizeCallTimes } from './lib/callTimes'
 import { isClosedStatus } from './data/orderStatus'
-import { SCAN_OUT, SCAN_IN, expectedUnits, resolveScan } from './lib/scanning'
+import { SCAN_OUT, SCAN_IN, expectedUnits, outstandingUnits, resolveScan } from './lib/scanning'
 import { EVENT, diffOrderLines } from './lib/activity'
 
 const STORAGE_KEY = 'anntaylor-rental-demo'
@@ -2415,6 +2415,23 @@ export const useStore = create(
             excludeSetId: before.setId || null,
           })
           if (full) return { error: full }
+        }
+        // Closing asserts "the shoot happened and the gear came back", so it is
+        // refused while anything is still scanned out. The job card greys the row
+        // and names what's out, but the GUARD has to live here: the calendar's
+        // status menu (and any future surface) would otherwise be a way around a
+        // rule the card only enforces visually.
+        if (changes.status && isClosedStatus(changes.status) && before && !isClosedStatus(before.status)) {
+          const state0 = get()
+          const booking0 = before.setId ? state0.bookings.find((b) => b.id === before.setId) : null
+          const out = outstandingUnits(
+            expectedUnits(before, booking0, state0.inventory),
+            before.scans ?? [],
+          )
+          if (out.length)
+            return {
+              error: `${out.length} piece(s) are still scanned out — scan them back in before closing this job.`,
+            }
         }
         const statusMoved = changes.status && before && changes.status !== before.status
         const reopened = statusMoved && isClosedStatus(before?.status)

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, ChevronDown, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, AlertTriangle } from 'lucide-react'
 import {
   startOfWeek,
   endOfWeek,
@@ -22,11 +22,19 @@ import { useStore } from '../store'
 import { brandsIn, jobTypesIn } from '../lib/orderSearch'
 import { setDays, spanSummary } from '../lib/setDays'
 import { earliestCall, callSummary, rolesFor } from '../lib/callTimes'
-import { studioLabel, studioColor } from '../data/studios'
+import { studioLabel } from '../data/studios'
+import {
+  ORDER_STATUS_CHOICES,
+  orderStatusColor,
+  orderStatusMeta,
+  NO_STATUS_COLOR,
+} from '../data/orderStatus'
 import { useCan } from '../lib/useCan'
 import { useCalendarFlip } from '../lib/useCalendarFlip'
 import { CAP } from '../lib/permissions'
 import MonthYearPicker from './MonthYearPicker'
+import StatusMenu from './StatusMenu'
+import { useLongPress } from '../lib/useLongPress'
 import BookingModal from './BookingModal'
 import OrderEditorModal from './OrderEditorModal'
 
@@ -55,6 +63,116 @@ function chipStyle(color) {
   return { backgroundColor: c, color: readableText(c) }
 }
 
+// A chip is painted by its job's STATUS — Hold yellow, Confirmed green, Closed
+// grey, Canceled red — from the same definition as the pills, so the calendar
+// and the jobs list can never disagree about what a colour means. The per-shoot
+// seed colour is gone: a decorative rainbow said nothing, and this says the one
+// thing a person scanning a week actually needs.
+const chipColor = (b) => (b.status ? orderStatusColor(b.status) : NO_STATUS_COLOR)
+
+// ONE chip for both grids, because the gestures have to be identical.
+//
+// Three ways into the status menu, deliberately: RIGHT-CLICK (what a desktop
+// user reaches for), a LONG-PRESS (the only equivalent a phone has), and the
+// visible chevron (for everyone who tries neither, on either device). A plain
+// click/tap opens the job — that is the common action and it stays one tap.
+function BookingChip({ b, variant = 'week', onOpen, onStatus, canManage }) {
+  const meta = b.status ? orderStatusMeta(b.status) : null
+  const canChange = canManage && !!b.orderId
+  const press = useLongPress((at) => canChange && onStatus(b, at))
+  const month = variant === 'month'
+
+  const tip = [
+    month ? studioLabel(b.studioId) : null,
+    b.title,
+    meta ? meta.label : 'no job attached',
+    b.setLabel && `Set ${b.setLabel}`,
+    spanSummary(b.date, b.endDate),
+    b.spanDays > 1 && `day ${b.dayIndex} of ${b.spanDays}`,
+    // The whole call sheet on hover; the chip has room for one number, and
+    // "when do I have to be there" is that number.
+    callSummary(b.callTimes),
+    b.wrapTime && `wrap ${b.wrapTime}`,
+    canChange ? 'right-click (or hold) to change the status' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpen(b)
+      }}
+      {...press}
+      style={chipStyle(chipColor(b))}
+      // Job names follow the studio's convention
+      // (20260716_AT_MAIN_SepMM_Missy_OMSet1), which never fits a day cell —
+      // the full name is on hover.
+      title={tip}
+      className={[
+        'group/chip relative cursor-pointer shadow-sm ring-1 ring-black/5 transition hover:brightness-110',
+        month
+          ? 'flex items-center gap-1 rounded px-1 py-0.5 text-[10px] leading-tight'
+          : 'rounded-md px-1.5 py-1',
+      ].join(' ')}
+    >
+      {month ? (
+        <>
+          <span className="font-bold">{b.studioId}</span>
+          <span className="min-w-0 flex-1 truncate">{b.title}</span>
+          {b.spanDays > 1 && (
+            <span className="shrink-0 font-semibold opacity-80">
+              {b.dayIndex}/{b.spanDays}
+            </span>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="truncate pr-4 text-xs font-semibold leading-tight">{b.title}</div>
+          {(b.spanDays > 1 || b.setLabel || earliestCall(b.callTimes)) && (
+            <div className="truncate text-[10px] font-medium opacity-80">
+              {[
+                earliestCall(b.callTimes),
+                b.spanDays > 1 && `Day ${b.dayIndex}/${b.spanDays}`,
+                b.setLabel,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* The third way in — always there, not only on hover: a hover-only
+          control does not exist on a touch screen. */}
+      {canChange && (
+        <button
+          type="button"
+          aria-label={`Status: ${meta?.label ?? 'unknown'} — change it`}
+          title={`${meta?.label ?? 'Status'} — change the status`}
+          onClick={(e) => {
+            e.stopPropagation()
+            const r = e.currentTarget.getBoundingClientRect()
+            onStatus(b, { x: r.left, y: r.bottom + 4 })
+          }}
+          // The glyph stays small so it can't cover the job name in a narrow
+          // cell, but `after:-inset-2` extends the TOUCH area well past it —
+          // a 16px target is not something you hit with a thumb.
+          className={[
+            "absolute grid place-items-center rounded-full bg-black/10 transition after:absolute after:-inset-2 after:content-[''] hover:bg-black/25",
+            month ? 'right-0.5 top-0.5 h-3 w-3' : 'right-1 top-1 h-4 w-4',
+          ].join(' ')}
+        >
+          <ChevronDown size={month ? 9 : 11} />
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function StudioCalendar() {
   const studios = useStore((s) => s.studios)
   const bookings = useStore((s) => s.bookings)
@@ -77,15 +195,23 @@ export default function StudioCalendar() {
   // from the list that suggested it.
   const roleOptions = useMemo(() => rolesFor(bookings), [bookings])
   const openOrderDraft = useStore((s) => s.openOrderDraft)
+  const updateOrder = useStore((s) => s.updateOrder)
   const peek = useStore((s) => s.peek)
   const can = useCan()
   const canCreate = can(CAP.BOOKING_CREATE)
+  // Changing a job's status from the calendar is the same act as changing it on
+  // the job card, so it answers to the same capability.
+  const canManage = can(CAP.ORDER_MANAGE)
 
   // A shoot on the calendar IS an order: creating one opens the order editor
   // (which books the Set), and clicking a shoot opens its order. The booking
   // modal stays only as a fallback for legacy order-less shoots.
   const [modal, setModal] = useState({ open: false, booking: null, prefill: null })
   const [orderEditor, setOrderEditor] = useState({ open: false, prefill: null })
+  // The status menu: which chip raised it, and where the pointer was.
+  const [statusMenu, setStatusMenu] = useState(null)
+  // Why a status change was refused (closing with gear still scanned out).
+  const [statusError, setStatusError] = useState(null)
 
   const refDate = useMemo(() => parseISO(selectedDate), [selectedDate])
 
@@ -99,19 +225,22 @@ export default function StudioCalendar() {
   // `spanDays` are what let a chip say "Day 2/3" instead of pretending each
   // cell is a separate booking.
   const byDay = useMemo(() => {
-    const setLabelOf = new Map(orders.map((o) => [o.id, o.setLabel]))
+    const orderById = new Map(orders.map((o) => [o.id, o]))
     const map = new Map()
     for (const b of bookings) {
       if (b.status !== 'active') continue
       // An archived shoot is off the calendar — it lives in the Archive until
       // someone restores it (archiving its order takes it down with it).
       if (b.archivedAt) continue
+      const order = b.orderId ? orderById.get(b.orderId) : null
       const days = setDays(b.date, b.endDate)
       days.forEach((iso, i) => {
         if (!map.has(iso)) map.set(iso, [])
         map.get(iso).push({
           ...b,
-          setLabel: setLabelOf.get(b.orderId) || null,
+          setLabel: order?.setLabel || null,
+          // What the chip is painted by, and what its status menu edits.
+          status: order?.status || null,
           spanDays: days.length,
           dayIndex: i + 1,
         })
@@ -169,9 +298,30 @@ export default function StudioCalendar() {
   // day) without leaving the calendar; from there the order and every item are a
   // click deeper. A legacy shoot with no order at all still opens in the booking
   // modal, which is the only place left to edit or delete it.
+  // Click a shoot → open its JOB as a layered card, without leaving the
+  // calendar. It used to open a card for the SHOOT, from which the job was one
+  // more click — but a shoot is not a record anyone keeps; the job is, and it
+  // carries the crew, the gear and the estimate anyway. A legacy shoot with no
+  // job at all still opens in the booking modal, the only place left to edit it.
   const openEdit = (booking) => {
-    if (booking.orderId) peek({ type: 'job', id: booking.id })
+    if (booking.orderId) peek({ type: 'order', id: booking.orderId })
     else setModal({ open: true, booking, prefill: null })
+  }
+
+  const openStatus = (booking, at) => {
+    setStatusError(null)
+    setStatusMenu({ orderId: booking.orderId, status: booking.status, title: booking.title, at })
+  }
+
+  // The store owns the rules (closing refuses while gear is still scanned out,
+  // and confirming/releasing rewrites the reservations), so this only has to
+  // report what came back.
+  const pickStatus = async (status) => {
+    const target = statusMenu
+    setStatusMenu(null)
+    if (!target?.orderId) return
+    const res = await updateOrder(target.orderId, { status })
+    if (res?.error) setStatusError(res.error)
   }
   const closeModal = () => setModal((m) => ({ ...m, open: false }))
   const jumpToWeek = (day) => {
@@ -248,9 +398,7 @@ export default function StudioCalendar() {
       {/* Header / controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-            Studio Calendar
-          </h2>
+          <h2 className="text-xl font-semibold tracking-tight text-slate-900">Calendar</h2>
           {/* The period is the control: click it to pick a month and year. */}
           <button
             ref={jumpBtn}
@@ -268,6 +416,26 @@ export default function StudioCalendar() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* What the colours mean. Colour-coding without a key is decoration,
+              and this one carries a real instruction as its tooltip. */}
+          <div
+            className="hidden items-center gap-2.5 pr-1 sm:flex"
+            title={
+              canManage
+                ? 'A chip is painted by its status. Right-click or hold one to change it.'
+                : 'A chip is painted by its status.'
+            }
+          >
+            {ORDER_STATUS_CHOICES.map((v) => (
+              <span key={v} className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: orderStatusColor(v) }}
+                />
+                {orderStatusMeta(v).label}
+              </span>
+            ))}
+          </div>
           <ModeToggle mode={calendarMode} setMode={setCalendarMode} />
           {canCreate && (
             <button
@@ -341,6 +509,8 @@ export default function StudioCalendar() {
           byDay={byDay}
           onOpenEdit={openEdit}
           onJumpToWeek={jumpToWeek}
+          onStatus={openStatus}
+          canManage={canManage}
         />
       ) : (
         <WeekView
@@ -351,7 +521,35 @@ export default function StudioCalendar() {
           byDay={byDay}
           onOpenCreate={openCreate}
           onOpenEdit={openEdit}
+          onStatus={openStatus}
+          canManage={canManage}
         />
+      )}
+
+      {statusMenu && (
+        <StatusMenu
+          at={statusMenu.at}
+          status={statusMenu.status}
+          title={statusMenu.title || 'Job status'}
+          onPick={pickStatus}
+          onClose={() => setStatusMenu(null)}
+        />
+      )}
+
+      {/* A refusal has to be readable where the click happened, not only on the
+          job card. Closing with gear still scanned out is the one that fires. */}
+      {statusError && (
+        <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1">{statusError}</span>
+          <button
+            type="button"
+            onClick={() => setStatusError(null)}
+            className="shrink-0 rounded px-1 text-rose-500 hover:bg-rose-100"
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       <BookingModal
@@ -375,7 +573,7 @@ export default function StudioCalendar() {
         roleOptions={roleOptions}
         onClose={() => setOrderEditor({ open: false, prefill: null })}
         onProceed={(payload) => {
-          openOrderDraft(payload, { view: 'calendar', label: 'Studio Calendar', focus: {} })
+          openOrderDraft(payload, { view: 'calendar', label: 'Calendar', focus: {} })
           return { ok: true }
         }}
       />
@@ -407,7 +605,7 @@ function ModeToggle({ mode, setMode }) {
 
 /* ---------------------------------- Week ---------------------------------- */
 
-function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit, flip = '' }) {
+function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit, onStatus, canManage, flip = '' }) {
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = addDays(weekStart, i)
     return {
@@ -465,6 +663,8 @@ function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit, flip = 
             colTint={colTint}
             onOpenCreate={onOpenCreate}
             onOpenEdit={onOpenEdit}
+            onStatus={onStatus}
+            canManage={canManage}
           />
         ))}
       </div>
@@ -472,7 +672,7 @@ function WeekView({ weekStart, studios, byDay, onOpenCreate, onOpenEdit, flip = 
   )
 }
 
-function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
+function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit, onStatus, canManage }) {
   return (
     <>
       <div className="flex min-h-[92px] items-center justify-center border-b border-r border-slate-200 bg-slate-50">
@@ -495,47 +695,13 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
             ].join(' ')}
           >
             {cellBookings.map((b) => (
-              <div
+              <BookingChip
                 key={b.id}
-                role="button"
-                tabIndex={0}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onOpenEdit(b)
-                }}
-                style={chipStyle(b.color)}
-                // Job names follow the studio's convention
-                // (20260716_AT_MAIN_SepMM_Missy_OMSet1), which never fits a day
-                // cell — the full name is on hover.
-                title={[
-                  b.title,
-                  b.setLabel && `Set ${b.setLabel}`,
-                  spanSummary(b.date, b.endDate),
-                  b.spanDays > 1 && `day ${b.dayIndex} of ${b.spanDays}`,
-                  // The whole call sheet on hover; the chip has room for one
-                  // number, and "when do I have to be there" is that number.
-                  callSummary(b.callTimes),
-                  b.wrapTime && `wrap ${b.wrapTime}`,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                className="cursor-pointer rounded-md px-1.5 py-1 shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
-              >
-                <div className="truncate text-xs font-semibold leading-tight">
-                  {b.title}
-                </div>
-                {(b.spanDays > 1 || b.setLabel || earliestCall(b.callTimes)) && (
-                  <div className="truncate text-[10px] font-medium opacity-80">
-                    {[
-                      earliestCall(b.callTimes),
-                      b.spanDays > 1 && `Day ${b.dayIndex}/${b.spanDays}`,
-                      b.setLabel,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </div>
-                )}
-              </div>
+                b={b}
+                onOpen={onOpenEdit}
+                onStatus={onStatus}
+                canManage={canManage}
+              />
             ))}
             {cellBookings.length === 0 && (
               <span className="pointer-events-none absolute inset-0 grid place-items-center opacity-0 transition group-hover:opacity-100">
@@ -553,7 +719,7 @@ function WeekRow({ studioId, days, byDay, colTint, onOpenCreate, onOpenEdit }) {
 
 const MONTH_CHIP_MAX = 3
 
-function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek, flip = '' }) {
+function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek, onStatus, canManage, flip = '' }) {
   const gridStart = startOfWeek(startOfMonth(refDate), { weekStartsOn: 1 })
   const gridEnd = endOfWeek(endOfMonth(refDate), { weekStartsOn: 1 })
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
@@ -587,6 +753,8 @@ function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek, flip = '' }) {
             dayBookings={byDay.get(format(day, 'yyyy-MM-dd')) ?? []}
             onOpenEdit={onOpenEdit}
             onJumpToWeek={onJumpToWeek}
+            onStatus={onStatus}
+            canManage={canManage}
           />
         ))}
       </div>
@@ -594,7 +762,7 @@ function MonthView({ refDate, byDay, onOpenEdit, onJumpToWeek, flip = '' }) {
   )
 }
 
-function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek }) {
+function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek, onStatus, canManage }) {
   const inMonth = isSameMonth(day, refDate)
   const today = isToday(day)
   const weekend = isWeekend(day)
@@ -640,36 +808,14 @@ function MonthCell({ day, refDate, dayBookings, onOpenEdit, onJumpToWeek }) {
 
       <div className="min-h-0 flex-1 space-y-1 overflow-hidden">
         {shown.map((b) => (
-          <div
+          <BookingChip
             key={b.id}
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenEdit(b)
-            }}
-            style={chipStyle(studioColor(b.studioId))}
-            title={[
-              studioLabel(b.studioId),
-              b.title,
-              b.setLabel && `Set ${b.setLabel}`,
-              spanSummary(b.date, b.endDate),
-              b.spanDays > 1 && `day ${b.dayIndex} of ${b.spanDays}`,
-              callSummary(b.callTimes),
-              b.wrapTime && `wrap ${b.wrapTime}`,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-            className="flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-[10px] leading-tight shadow-sm ring-1 ring-black/5 transition hover:brightness-110"
-          >
-            <span className="font-bold">{b.studioId}</span>
-            <span className="truncate">{b.title}</span>
-            {b.spanDays > 1 && (
-              <span className="shrink-0 font-semibold opacity-80">
-                {b.dayIndex}/{b.spanDays}
-              </span>
-            )}
-          </div>
+            b={b}
+            variant="month"
+            onOpen={onOpenEdit}
+            onStatus={onStatus}
+            canManage={canManage}
+          />
         ))}
         {extra > 0 && (
           <div className="px-1 text-[10px] font-medium text-slate-400">

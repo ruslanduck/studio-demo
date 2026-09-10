@@ -156,6 +156,39 @@ eq(itemAvail.covers({ from: '2026-09-06' }, '2026-09-07'), false, 'a missing end
 eq(itemAvail.nextIso('2026-12-31'), '2027-01-01', 'the ISO stepper crosses a year')
 ok(orderStatus.isClosedStatus('fulfilled'), 'fulfilled is closed')
 ok(!orderStatus.isClosedStatus('confirmed'), 'confirmed is not')
+
+// ───────────────────────────────── the four statuses, and their four colours
+// The calendar paints a chip by its job's status, so a status with no colour —
+// or a colour that disagrees with its pill — is a chip that lies.
+eq(
+  orderStatus.ORDER_STATUS_CHOICES,
+  ['hold', 'confirmed', 'fulfilled', 'canceled'],
+  'the statuses a person can pick, in the order a job travels through them',
+)
+for (const v of orderStatus.ORDER_STATUS_CHOICES) {
+  const meta = orderStatus.ORDER_STATUS[v]
+  ok(meta, `${v} is in the vocabulary`)
+  ok(/^#[0-9a-f]{6}$/i.test(meta.calendar), `${v} has a calendar colour: ${meta.calendar}`)
+  eq(orderStatus.orderStatusColor(v), meta.calendar, `${v}: chip and pill read one definition`)
+}
+eq(
+  orderStatus.ORDER_STATUS_CHOICES.map((v) => orderStatus.ORDER_STATUS[v].label),
+  ['Hold', 'Confirmed', 'Closed', 'Canceled'],
+  'and the labels the crew asked for',
+)
+// Four distinct colours, or the coding says nothing.
+eq(
+  new Set(orderStatus.ORDER_STATUS_CHOICES.map(orderStatus.orderStatusColor)).size,
+  4,
+  'no two statuses share a colour',
+)
+ok(orderStatus.isCanceledStatus('canceled'), 'canceled is canceled')
+ok(!orderStatus.isCanceledStatus('hold'), 'a hold is not')
+ok(
+  orderStatus.orderStatusColor('nonsense') === orderStatus.ORDER_STATUS.draft.calendar,
+  'an unknown status still gets a colour rather than an undefined',
+)
+ok(/^#[0-9a-f]{6}$/i.test(orderStatus.NO_STATUS_COLOR), 'a shoot with no job has a neutral colour')
 {
   const ys = years.yearsFor(2026, new Date(Date.UTC(2027, 0, 15)))
   eq(ys[0], 2030, 'the year window slides with the calendar year')

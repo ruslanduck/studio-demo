@@ -90,7 +90,10 @@ const TYPE_META = {
   item: { icon: Boxes, label: 'Inventory item' },
   person: { icon: User, label: 'Person' },
   company: { icon: Building2, label: 'Company' },
-  job: { icon: Briefcase, label: 'Job' },
+  // The SHOOT, not the job: the job is the record (the `orders` row), and two
+  // card types labelled "Job" is what made the calendar's old chip click
+  // confusing — "открывает Job, хотя по факту такой сущности в системе нет".
+  job: { icon: Briefcase, label: 'Shoot' },
 }
 
 function PeekHeader({ stack, onBack, onClose }) {

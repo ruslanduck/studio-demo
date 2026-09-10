@@ -1516,6 +1516,66 @@
 > **0 call times and 0 wrap times on prod**, exactly as found.
 > Demo content: 3 of the 11 seeded shoots carry a call sheet (one with a note), one carries only a wrap, and
 > the rest deliberately carry nothing — a shoot nobody has scheduled yet is a real state.
+> **CHANGE — the calendar is "Calendar", its chips are painted by STATUS, and the status is editable from the
+> grid** (NO migration — see below). Four requests, one screen.
+> (1) **Renamed** to Calendar: the nav label, the heading and the back-trail label. The component file stays
+> `StudioCalendar.jsx` — same rule as the `orders` table, an identifier nobody reads.
+> (2) **Chip colour = job status.** `orderStatus.js` has carried a `calendar` hex per status since 5.5,
+> written for exactly this ("epic #7 pulls the same colour into the studio calendar") and never used: the week
+> chips took a per-shoot SEED colour and the month chips a per-studio one — a decorative rainbow that said
+> nothing about the week you were looking at. Both grids now read `orderStatusColor`: **Hold amber, Confirmed
+> emerald, Closed slate, Canceled rose.** A shoot with no job at all gets `NO_STATUS_COLOR` (neutral) rather
+> than a colour borrowed from a status it isn't in, and a LEGEND sits next to the toolbar — colour-coding
+> without a key is decoration, and its tooltip carries the instruction for (3).
+> **"Canceled" needed no migration and no new vocabulary:** it was already in `ORDER_STATUS` with its rose
+> pill and already allowed by the check constraint from `20260731120000` — it simply was never OFFERED.
+> New `ORDER_STATUS_CHOICES` is the one list the card's pill dropdown and the calendar's menu both read, so the
+> two surfaces can never offer different sets (the card's list was `[...ORDER_FLOW, CLOSED_STATUS]`).
+> (3) **Status from the grid, three ways in, deliberately:** right-click (what a desktop hand reaches for), a
+> long-press (the only equivalent a phone has), and a visible chevron on every chip (for everyone who tries
+> neither, on either device — and a hover-only control does not exist on a touch screen). A plain tap still
+> opens the job: that is the common action and it stays one tap. `src/components/StatusMenu.jsx` opens at the
+> POINTER rather than under a trigger, which is why it is not `SelectField` — same popover contract otherwise
+> (portal, `position: fixed`, outside-click, Escape, clamped to stay on screen). `src/lib/useLongPress.js`
+> holds the gesture (in lib/ with the other hooks: exporting a hook beside a component breaks fast refresh).
+> The tap that ENDS a long-press is suppressed with `preventDefault` on touchend — which is NOT passive in
+> React, unlike touchstart — or the menu would open with the job card behind it. The chevron's glyph stays
+> 16px so it cannot cover the job name in a narrow cell; `after:-inset-2` extends the touch area past it.
+> Both grids now render ONE `BookingChip`, because the gestures have to be identical.
+> ⚠️ **The close rule moved INTO the store.** `updateOrder` now refuses to close a job while units are still
+> scanned out. The job card had only greyed its dropdown row and named the reason — so the calendar's status
+> menu would have been a way around a rule that was enforced visually. The card keeps the greyed row (a reason
+> before the click beats an error after it); the store is what makes it true. Same reasoning as
+> `setOrderLines`' closed-job guard.
+> (4) **A chip opens the JOB**, not a card for the shoot: `peek({ type: 'order' })`. And the shoot card's
+> header now reads **Shoot** — `TYPE_META` had `order: 'Job'` AND `job: 'Job'`, two card types under one
+> label, which is exactly what made the old click read as a pointless hop ("открывает Job, хотя по факту такой
+> сущности в системе нет"). The shoot card is still reachable where it belongs: the job's own "Shoot" row, the
+> item availability calendar and the unit history.
+> ⚠️ **A defect in my own outside-click guard, found by my own test dispatch:** `ref.current.contains(e.target)`
+> THROWS when the target is not a Node, which a synthetic event produces. Guarded with `t instanceof Node`,
+> closing unless the click is provably inside. The same one-liner is missing in SelectField / DateField /
+> ComboField / MonthYearPicker — unreachable from real input (a real mousedown always targets an Element), so
+> left alone rather than swept.
+> **19 new assertions (186 total)** on the colour contract: the four choices in the order a job travels through
+> them, their four labels, four DISTINCT colours (or the coding says nothing), chip colour === the pill's own
+> definition for every status, and an unknown status still getting a colour instead of an `undefined`.
+> Verified in local mode by measurement: nav and heading read Calendar; chip backgrounds are
+> `rgb(16,185,129)` / `rgb(245,158,11)`, the hexes from `orderStatus.js`; right-click → a menu listing the four
+> with the current one checked → **Canceled** → that chip's inline style became `rgb(244,63,94)` and its set
+> released all 7 units it held; the chevron opens the menu WITHOUT opening the job behind it; a synthetic 450ms
+> long-press opened it too, and the tap that ended it came back `defaultPrevented`; at 375px every chip keeps
+> its chevron, a probe 5px outside the glyph still hits the button, the menu fits entirely on screen and there
+> is no horizontal overflow; a plain click opens the JOB card (header JOB · PO · THE SHOOT · EQUIPMENT · 8 PCS)
+> with no shoot card in between; and closing from the calendar with #0851 scanned out left the status
+> `confirmed` and printed "1 piece(s) are still scanned out". Demo data reseeded, 0 new console errors.
+> On prod (no schema change to make): **22 jobs — 9 hold, 10 confirmed, 3 closed, 0 canceled**, so the grid
+> reads amber/green/grey today; writing `status = 'canceled'` as the app's own role was ACCEPTED and an
+> invented status refused with **23514**; the probe put the row back and the counts are identical.
+> ℹ️ My probe printed a false "NO" on that last check — it compared two JSON strings whose KEY ORDER differed
+> (one query was ordered, the other wasn't). The values matched. Compare counts, not serialisations.
+> ⚠️ The stale-DOM-read trap again while verifying: a chip read emerald in the call that clicked the menu item
+> and rose in the next one. React had not flushed. Split the click and the measurement, always.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
