@@ -292,6 +292,12 @@ function OrderPeek({ id }) {
           <Field label="Set">{order.setLabel || '—'}</Field>
           <Field label="Brand">{order.brand || '—'}</Field>
           <Field label="Type">{order.jobType || '—'}</Field>
+          {/* Only when there is one, and the crew's own line breaks kept. */}
+          {order.notes && (
+            <Field label="Note">
+              <span className="whitespace-pre-line">{order.notes}</span>
+            </Field>
+          )}
           <Field label="Photographer">
             {order.photographer ? (
               photographer ? (
@@ -473,6 +479,11 @@ function ItemPeek({ id, unitId }) {
             {item.assetType && <Field label="Asset type">{item.assetType}</Field>}
             {item.placement && <Field label="Storage location">{item.placement}</Field>}
             {item.dayRate != null && <Field label="Day rate">{money(item.dayRate)}/day</Field>}
+            {item.notes && (
+              <Field label="Note">
+                <span className="whitespace-pre-line">{item.notes}</span>
+              </Field>
+            )}
           </div>
         </Section>
       )}

@@ -34,6 +34,7 @@ const BLANK = {
   placement: '',
   replacementPrice: '',
   purchaseDate: '',
+  notes: '',
   quantity: '1',
 }
 
@@ -47,6 +48,7 @@ function fromItem(item) {
     placement: item.placement ?? '',
     replacementPrice: item.replacementPrice != null ? String(item.replacementPrice) : '',
     purchaseDate: item.purchaseDate ?? '',
+    notes: item.notes ?? '',
     quantity:
       item.kind === 'barcoded' ? String(item.units.length) : String(item.quantity ?? 0),
   }
@@ -150,6 +152,7 @@ export default function AddInventoryModal({
       placement: form.placement.trim(),
       replacementPrice: price === '' ? null : Number(price),
       purchaseDate: form.purchaseDate || null,
+      notes: form.notes.trim(),
     }
     if (isEdit) {
       const changes = { ...base, kind: form.kind }
@@ -343,6 +346,18 @@ export default function AddInventoryModal({
             <div>
               <label className={label}>Purchase date</label>
               <DateField value={form.purchaseDate} onChange={set('purchaseDate')} className={field} />
+            </div>
+            {/* A free-text note on the ITEM — "focus ring sticks in the cold",
+                "kept in the padded case". Spans the grid because it is prose. */}
+            <div className="sm:col-span-2">
+              <label className={label}>Note</label>
+              <textarea
+                rows={2}
+                value={form.notes}
+                onChange={set('notes')}
+                placeholder="Anything worth knowing about this gear…"
+                className={`${field} resize-y`}
+              />
             </div>
             {/* Counted stock takes a number. Barcoded stock takes its COPIES —
                 see the block below — and an existing item manages them one at a

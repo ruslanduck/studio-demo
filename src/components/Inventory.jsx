@@ -1481,8 +1481,12 @@ function ItemDetailsGrid({ item }) {
     ['Purchase price', price],
     ['Purchase date', item.purchaseDate],
   ]
+  // The note is prose, so it gets its own row under the grid rather than a
+  // third-of-a-column cell, and only when there is one.
+  const note = String(item.notes ?? '').trim()
   return (
-    <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-2.5 border-b border-slate-200 px-5 py-3 sm:grid-cols-3">
+    <div className="shrink-0 border-b border-slate-200">
+    <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-5 py-3 sm:grid-cols-3">
       {rows.map(([k, v]) => (
         <div key={k} className="min-w-0">
           <div className="text-[11px] uppercase tracking-wide text-slate-400">{k}</div>
@@ -1491,6 +1495,13 @@ function ItemDetailsGrid({ item }) {
           </div>
         </div>
       ))}
+    </div>
+      {note && (
+        <div className="px-5 pb-3">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">Note</div>
+          <p className="whitespace-pre-line text-sm text-slate-700">{note}</p>
+        </div>
+      )}
     </div>
   )
 }

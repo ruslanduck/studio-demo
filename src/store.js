@@ -535,6 +535,9 @@ function resolveOrder(o, companies) {
     // it. Adding a column to `orders` means adding it in BOTH places.
     brand: trimmed(o.brand),
     jobType: trimmed(o.jobType),
+    // ⚠️ This list is a WHITELIST: adding a column to `orders` means editing
+    // BOTH modes, or the value is stored on prod and dropped locally.
+    notes: trimmed(o.notes),
     status: o.status || 'hold',
     kind: o.kind || 'client',
     orderedAt: startsOn,
@@ -1759,6 +1762,7 @@ export const useStore = create(
           placement: fields.placement || null,
           subcategory: fields.subcategory || null,
           subcategoryId: fields.subcategoryId || null,
+          notes: fields.notes || null,
           purchaseDate: fields.purchaseDate || null,
           replacementPrice: fields.replacementPrice || null,
         }
@@ -1823,6 +1827,7 @@ export const useStore = create(
           placement: 'storage location',
           subcategory: 'subcategory',
           subcategoryId: 'filed under',
+          notes: 'note',
           purchaseDate: 'purchase date',
           replacementPrice: 'purchase price',
           dayRate: 'day rate',
@@ -1874,6 +1879,7 @@ export const useStore = create(
             // SILENTLY in local mode while supabase mode stores it. Caught in
             // the browser — re-filing an item saved and changed nothing.
             'subcategoryId',
+            'notes',
             'purchaseDate',
             'replacementPrice',
           ]) {

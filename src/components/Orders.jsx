@@ -17,6 +17,7 @@ import {
   Layers,
   Lock,
   Tag,
+  StickyNote,
   AlertTriangle,
 } from 'lucide-react'
 import { useStore, notArchived, capacityError } from '../store'
@@ -874,6 +875,14 @@ function OrderDetail({
               <PeekLink onClick={() => peek({ type: 'job', id: order.setId })}>
                 Crew &amp; gear on the day
               </PeekLink>
+            </Row>
+          )}
+          {/* The note only appears when there IS one — an empty row labelled
+              "Note" on every job would be noise on most of them.
+              `whitespace-pre-line` keeps the crew's own line breaks. */}
+          {order.notes && (
+            <Row icon={StickyNote} label="Note">
+              <span className="whitespace-pre-line">{order.notes}</span>
             </Row>
           )}
         </section>

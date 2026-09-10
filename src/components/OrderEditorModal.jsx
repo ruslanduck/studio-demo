@@ -37,6 +37,7 @@ const blank = {
   setLabel: '',
   brand: '',
   jobType: '',
+  notes: '',
   studioId: '1',
   startsOn: '',
   endsOn: '',
@@ -76,6 +77,7 @@ export default function OrderEditorModal({
             setLabel: order.setLabel ?? '',
             brand: order.brand ?? '',
             jobType: order.jobType ?? '',
+            notes: order.notes ?? '',
             studioId: order.studioId ?? '1',
             startsOn: order.startsOn ?? '',
             endsOn: order.endsOn ?? order.startsOn ?? '',
@@ -137,6 +139,7 @@ export default function OrderEditorModal({
       setLabel: form.setLabel.trim(),
       brand: form.brand.trim(),
       jobType: form.jobType.trim(),
+      notes: form.notes.trim(),
       // A one-day shoot ends the day it starts; the store normalises this too,
       // so nothing downstream has to guess what an empty end means.
       endsOn: form.endsOn || form.startsOn,
@@ -319,6 +322,21 @@ export default function OrderEditorModal({
                 className={field}
               />
             </div>
+          </div>
+
+          {/* A free-text note on the JOB. Deliberately a textarea, not an input:
+              what the crew writes here is a sentence or three ("client brings
+              their own backdrop", "load in through the freight door"), and a
+              single-line box would hide most of it. */}
+          <div>
+            <label className={label}>Note</label>
+            <textarea
+              rows={3}
+              value={form.notes}
+              onChange={(e) => set({ notes: e.target.value })}
+              placeholder="Anything the crew should know about this job…"
+              className={`${field} resize-y`}
+            />
           </div>
 
           {/* 5.2 — the accounting PO, typed in by hand */}

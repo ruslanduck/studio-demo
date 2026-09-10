@@ -123,6 +123,7 @@ export const PEOPLE_SEED = [
     phone: '+1 212 555 0101',
     website: 'https://anntaylor.example.com',
     instagram: '@anntaylorstudio',
+    notes: 'Owns the studio. Prefers to be called about a booking, not emailed.',
   },
   {
     name: 'Marcus Reed',

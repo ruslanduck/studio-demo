@@ -281,14 +281,21 @@ export async function getInventory() {
     'id, name, category, kind, quantity,',
     'id, name, category, kind, quantity, subcategory_id,',
   )
+  // The newest column, so the first one dropped (20260913120000).
+  const withNotes = withSubcategory.replace(
+    'id, name, category, kind, quantity,',
+    'id, name, category, kind, quantity, notes,',
+  )
   const withUnitPlacement = stripArchive(withArchive)
   const withVendor = withUnitPlacement.replace('sub_rental_vendor_id, placement,', 'sub_rental_vendor_id,')
   const withoutVendor = withVendor.replace(', sub_rental_vendor_id', '')
   const withoutRate = withoutVendor.replace(', day_rate', '')
-  let { data, error } = await supabase
-    .from('inventory_items')
-    .select(withSubcategory)
-    .order('name')
+  let { data, error } = await supabase.from('inventory_items').select(withNotes).order('name')
+  if (error)
+    ({ data, error } = await supabase
+      .from('inventory_items')
+      .select(withSubcategory)
+      .order('name'))
   if (error)
     ({ data, error } = await supabase.from('inventory_items').select(withArchive).order('name'))
   if (error)
@@ -324,6 +331,7 @@ export async function getInventory() {
     // are the legacy TEXT the register was imported with — kept as the record of
     // where a piece came from, and shown as a hint while it is being assigned.
     subcategoryId: item.subcategory_id ?? null,
+    notes: item.notes ?? null,
     purchaseDate: item.purchase_date,
     // ⚠️ The COLUMN is `replacement_price` and the label is "Purchase price".
     // It was added as an insurance value (20260724160000) and the studio uses it
@@ -827,6 +835,7 @@ function itemFieldColumns(f = {}) {
   // Only when the caller actually said something about it: `undefined` means
   // "leave the assignment alone", `null` means "unassign".
   if ('subcategoryId' in f) cols.subcategory_id = clean(f.subcategoryId)
+  if ('notes' in f) cols.notes = clean(f.notes)
   return cols
 }
 
@@ -834,14 +843,25 @@ function itemFieldColumns(f = {}) {
 // without it rather than failing the user's action, and report that it went
 // missing so the loss is never silent (the `order_lines.day_rate` lesson).
 const MISSING_COLUMN = '42703'
+const ITEM_COLUMNS_ADDED_AFTER_LAUNCH = ['notes', 'subcategory_id']
 async function writeItemRow(run, patch) {
   const { error } = await run(patch)
   if (!error) return { ok: true }
-  if (error.code !== MISSING_COLUMN || !('subcategory_id' in patch)) throw error
-  const { subcategory_id, ...rest } = patch
+  if (error.code !== MISSING_COLUMN) throw error
+  // Drop the columns a pre-migration database hasn't got and retry, newest
+  // first — one of them is why the write was refused, and which one is not
+  // worth parsing out of the message.
+  const rest = { ...patch }
+  const dropped = []
+  for (const col of ITEM_COLUMNS_ADDED_AFTER_LAUNCH) {
+    if (!(col in rest)) continue
+    delete rest[col]
+    dropped.push(col)
+  }
+  if (!dropped.length) throw error
   const retry = await run(rest)
   if (retry.error) throw retry.error
-  return { ok: true, subcategoryNotStored: true }
+  return { ok: true, droppedColumns: dropped }
 }
 
 export async function addInventoryItem({
@@ -860,8 +880,9 @@ export async function addInventoryItem({
   // than refusing to register the gear at all.
   const insertItem = async (body) => {
     let res = await supabase.from('inventory_items').insert(body).select('id').single()
-    if (res.error?.code === MISSING_COLUMN && 'subcategory_id' in body) {
-      const { subcategory_id, ...rest } = body
+    if (res.error?.code === MISSING_COLUMN) {
+      const rest = { ...body }
+      for (const col of ITEM_COLUMNS_ADDED_AFTER_LAUNCH) delete rest[col]
       res = await supabase.from('inventory_items').insert(rest).select('id').single()
     }
     if (res.error) throw res.error
@@ -1426,13 +1447,19 @@ export async function getOrders() {
   // two layers above: a column added last must be the first thing dropped, or a
   // database that hasn't run this migration loses equipment it does have.
   const withBrandType = `${withLineRate}, brand, job_type`
+  // ⚠️ OUTERMOST layer, as every column added after launch has to be: put it
+  // anywhere else and a database without 20260913120000 fails the rich layers
+  // and degrades to the stub shape, losing the equipment it does have.
+  const withNotes = `${withBrandType}, notes`
   const withKind = `id, order_number, status, ordered_at, kind, company_id,
      company:companies ( id, name ),
      order_lines ( quantity, item:inventory_items ( id, name ) ),
      sets ( id, title, date )`
   const withoutKind = withKind.replace('kind, ', '')
 
-  let { data, error } = await supabase.from('orders').select(withBrandType).order('ordered_at')
+  let { data, error } = await supabase.from('orders').select(withNotes).order('ordered_at')
+  if (error)
+    ({ data, error } = await supabase.from('orders').select(withBrandType).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withLineRate).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withSetLabel).order('ordered_at'))
   if (error) ({ data, error } = await supabase.from('orders').select(withArchive).order('ordered_at'))
@@ -1465,6 +1492,7 @@ export async function getOrders() {
     // renders as "—" rather than inventing a brand or a shoot type.
     brand: o.brand ?? null,
     jobType: o.job_type ?? null,
+    notes: o.notes ?? null,
     photographerId: o.photographer?.id ?? null,
     photographer: o.photographer?.full_name ?? null,
     createdBy: o.creator?.full_name ?? null,
@@ -1498,6 +1526,8 @@ function orderColumns(o) {
   if (o.number !== undefined) row.order_number = o.number?.trim() || null
   // The order date follows the first working day so history lines up.
   if (o.startsOn !== undefined) row.ordered_at = o.startsOn || null
+  // Empty means "no note", not an empty string sitting in the column.
+  if (o.notes !== undefined) row.notes = o.notes?.trim() || null
   return row
 }
 
@@ -1506,7 +1536,7 @@ function orderColumns(o) {
 // insert is a crew that cannot write the job down at all. So the newest two
 // columns are dropped and the write retried, like the reads' outermost layer.
 const withoutNewestColumns = (row) => {
-  const { brand, job_type, ...rest } = row
+  const { brand, job_type, notes, ...rest } = row
   return rest
 }
 const isUndefinedColumn = (e) => e?.code === '42703' || /column .* does not exist/i.test(e?.message || '')
