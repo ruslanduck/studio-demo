@@ -1713,6 +1713,19 @@ export const useStore = create(
           }))
         }
 
+        // One event per copy registered, shaped exactly like `addUnits` does it:
+        // hung off the ITEM with the barcode naming the copy, so it needs no
+        // DB-generated unit id and reads the same whichever door it came in.
+        const logCopies = (itemId, itemName) => {
+          for (const u of copies ?? [])
+            get().logActivity({
+              type: EVENT.UNIT_ADDED,
+              entityType: 'item',
+              entityId: itemId,
+              data: { barcode: u.barcode, serial: u.serial, itemName },
+            })
+        }
+
         if (usingSupabase) {
           try {
             const id = await sbAddInventoryItem({
@@ -1724,6 +1737,7 @@ export const useStore = create(
               ...fields,
             })
             logCreate(id)
+            logCopies(id, name.trim())
             await get().hydrate({ quiet: true })
             return { id }
           } catch (e) {
@@ -1755,16 +1769,7 @@ export const useStore = create(
             : { ...base_, quantity, units: [] }
         set({ inventory: [item, ...state.inventory] })
         logCreate(id)
-        // One event per copy, exactly as `addUnits` logs them: "how did this
-        // unit get here" is answered the same way whichever door it came in.
-        for (const u of item.units)
-          get().logActivity({
-            type: EVENT.UNIT_ADDED,
-            entityType: 'item',
-            entityId: id,
-            unitId: u.id,
-            data: { barcode: u.barcode, serial: u.serial, itemName: item.name },
-          })
+        logCopies(id, item.name)
         return { id }
       },
 

@@ -1,0 +1,19 @@
+-- `inventory_items.category` is no longer a LINK, so it must stop being required.
+--
+-- Since 20260911120000 an item belongs to a SUBCATEGORY and its category is
+-- derived by following that. The item editor therefore stopped writing the
+-- legacy `category` TEXT — it is the record of what a piece was IMPORTED as,
+-- and a second place saying where an item lives is how the two get to disagree.
+--
+-- The column was NOT NULL from the very first schema, so that change made
+-- creating an item fail outright on the real database:
+--   null value in column "category" of relation "inventory_items"
+--     violates not-null constraint
+-- Local mode has no constraint to violate, which is exactly why the browser
+-- pass missed it; it surfaced the moment `addInventoryItem` started returning
+-- the reason instead of a bare id.
+--
+-- Nullable is the honest shape: a newly registered item has no imported text,
+-- and the 276 rows that came from the studio's export keep theirs. Nothing is
+-- rewritten and nothing is dropped.
+alter table public.inventory_items alter column category drop not null;
