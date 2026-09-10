@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes] =
+const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy] =
   await Promise.all([
     load('src/lib/activity.js'),
     load('src/lib/scanning.js'),
@@ -29,6 +29,7 @@ const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packi
     load('src/data/orderStatus.js'),
     load('src/lib/setDays.js'),
     load('src/lib/callTimes.js'),
+    load('src/lib/taxonomy.js'),
   ])
 
 let n = 0
@@ -354,6 +355,133 @@ ok(
   ok(opts.includes('Photographer'), 'the offered roles are always there')
   eq(opts.filter((r) => r === 'Gaffer').length, 1, 'a typed role joins the list exactly once')
   eq(callTimes.rolesFor([]), callTimes.CALL_ROLES, 'with no shoots, just the defaults')
+}
+
+// ---------------------------------------------------------------------------
+// lib/taxonomy — categories hold subcategories, an item belongs to a
+// subcategory, and the two removal rules.
+{
+  const tax = {
+    categories: [
+      { id: 'c-strobes', name: 'Strobes', position: 1 },
+      { id: 'c-mod', name: 'Lighting Modification', position: 2 },
+      { id: 'c-empty', name: 'Stands', position: 5 },
+      { id: 'c-gone', name: 'Retired', position: 6, archivedAt: '2026-09-01' },
+    ],
+    subcategories: [
+      { id: 's-pro-strobe', categoryId: 'c-strobes', name: 'Profoto', position: 1 },
+      { id: 's-bron', categoryId: 'c-strobes', name: 'Broncolor', position: 2 },
+      // The SAME name under another category — the case a text column could not
+      // express, and the reason a subcategory is a row with an owner.
+      { id: 's-pro-mod', categoryId: 'c-mod', name: 'Profoto', position: 1 },
+      { id: 's-old', categoryId: 'c-mod', name: 'Retired kind', archivedAt: '2026-09-01' },
+    ],
+  }
+  const items = [
+    { id: 'i1', name: 'D2 head', subcategoryId: 's-pro-strobe' },
+    { id: 'i2', name: 'Siros L', subcategoryId: 's-bron' },
+    { id: 'i3', name: 'Softbox', subcategoryId: 's-pro-mod' },
+    { id: 'i4', name: 'C-stand', category: 'Stands' }, // no subcategory at all
+    { id: 'i5', name: 'Old head', subcategoryId: 's-pro-strobe', archivedAt: '2026-08-01' },
+  ]
+
+  eq(taxonomy.liveCategories(tax).map((c) => c.name),
+    ['Strobes', 'Lighting Modification', 'Stands'], 'archived categories are not offered')
+  eq(taxonomy.liveCategories(tax)[0].name, 'Strobes', 'and they keep the studio’s own order')
+  eq(taxonomy.liveSubcategories(tax, 'c-mod').map((s) => s.name), ['Profoto'],
+    'an archived subcategory is not offered either')
+
+  // The derivation: an item names a subcategory, the category comes from it.
+  eq(taxonomy.categoryOf(items[0], tax)?.name, 'Strobes', 'category derived through the subcategory')
+  eq(taxonomy.categoryOf(items[2], tax)?.name, 'Lighting Modification',
+    'the same subcategory NAME under another category resolves to that one')
+  eq(taxonomy.categoryOf(items[3], tax), null, 'an unassigned item has no category — not a guessed one')
+  eq(taxonomy.subcategoryPath(taxonomy.subcategoryById(tax, 's-pro-mod'), tax),
+    'Lighting Modification / Profoto', 'a subcategory reads with its category')
+
+  // Two identically named subcategories must both be pickable, distinctly.
+  const opts = taxonomy.subcategoryOptions(tax)
+  eq(opts.filter((o) => o.name === 'Profoto').length, 2, 'both Profotos are offered')
+  eq(new Set(opts.map((o) => o.label)).size, opts.length, 'and every option label is distinct')
+
+  // Counting.
+  eq(taxonomy.itemsInCategory(items, tax, 'c-strobes').map((i) => i.id), ['i1', 'i2'],
+    'a category counts the items of its subcategories, live only')
+  eq(taxonomy.itemsInSubcategory(items, 's-pro-strobe').map((i) => i.id), ['i1'],
+    'archived stock is not attached')
+  eq(taxonomy.unassignedItems(items).map((i) => i.id), ['i4'], 'unassigned is a real state')
+  eq(taxonomy.unassignedByFormerCategory(items)[0].former, 'Stands',
+    'and it remembers the text it was imported with, as a hint')
+
+  const tree = taxonomy.taxonomyTree(tax, items)
+  eq(tree.length, 3, 'the tree lists every live category, empty ones included')
+  eq(tree[0].itemCount, 2, 'with its stock counted through its subcategories')
+  eq(tree.find((c) => c.id === 'c-empty').subs.length, 0, 'a category with no subcategories still shows')
+
+  // RULE: a category goes only when it has no stock AND no subcategories.
+  ok(taxonomy.categoryRemovalBlock('c-strobes', tax, items)?.includes('2 items'),
+    'a category holding stock cannot be removed, and says how much')
+  ok(taxonomy.categoryRemovalBlock('c-strobes', tax, items)?.includes('2 subcategories'),
+    'and names the subcategories in the way')
+  eq(taxonomy.categoryRemovalBlock('c-empty', tax, items), null,
+    'an empty category can be removed')
+  {
+    // Stock gone, subcategories left: still blocked, and it says which.
+    const emptied = items.filter((i) => i.subcategoryId !== 's-pro-strobe' && i.subcategoryId !== 's-bron')
+    const why = taxonomy.categoryRemovalBlock('c-strobes', tax, emptied)
+    ok(why?.includes('Profoto') && why?.includes('Broncolor'), 'the reason names them')
+  }
+
+  // RULE: a subcategory goes only when it has no stock.
+  ok(taxonomy.subcategoryRemovalBlock('s-pro-strobe', tax, items)?.includes('1 item'),
+    'a subcategory holding stock cannot be removed')
+  eq(taxonomy.subcategoryRemovalBlock('s-bron', tax, items.filter((i) => i.id !== 'i2')), null,
+    'once empty it can')
+  // Retired stock does not block it — but it is said out loud.
+  eq(taxonomy.subcategoryRemovalBlock('s-pro-strobe', tax, items.filter((i) => i.id !== 'i1')), null,
+    'archived stock alone does not block removal')
+  ok(taxonomy.subcategoryRemovalNote('s-pro-strobe', items)?.includes('1 archived item'),
+    'and the archived record is reported instead')
+  eq(taxonomy.subcategoryRemovalNote('s-bron', items), null, 'no note when there is nothing to say')
+
+  // Naming.
+  ok(taxonomy.categoryNameError('  ', tax), 'a category needs a name')
+  ok(taxonomy.categoryNameError('strobes', tax)?.includes('Strobes'),
+    'a duplicate category is refused case-insensitively')
+  eq(taxonomy.categoryNameError('Strobes', tax, { exceptId: 'c-strobes' }), null,
+    'renaming a category to its own name is fine')
+  eq(taxonomy.categoryNameError('Retired', tax), null,
+    'a name freed by archiving can be used again')
+  ok(taxonomy.subcategoryNameError('profoto', tax, 'c-strobes'),
+    'a duplicate subcategory within one category is refused')
+  eq(taxonomy.subcategoryNameError('Profoto', tax, 'c-empty'), null,
+    'but the same name under a DIFFERENT category is allowed')
+  ok(taxonomy.subcategoryNameError('Anything', tax, null)?.includes('category'),
+    'a subcategory with no category is refused — that is the invariant')
+}
+
+// Building a taxonomy from the legacy text — the seed's job, and the SQL
+// migration's, so the rule is asserted once here.
+{
+  const rows = [
+    { id: 'a', category: 'Strobes', subcategory: 'Profoto' },
+    { id: 'b', category: 'Strobes', subcategory: 'profoto' }, // same, differently typed
+    { id: 'c', category: 'Lighting Modification', subcategory: 'Profoto' },
+    { id: 'd', category: 'Stands' }, // a category with no subcategory
+    { id: 'e', category: '', subcategory: 'Nowhere' }, // no category at all
+    { id: 'f', category: 'Retired', subcategory: 'Old', archivedAt: '2026-01-01' },
+  ]
+  const built = taxonomy.taxonomyFromItems(rows, { order: ['Strobes', 'Stands'] })
+  eq(built.categories.map((c) => c.name), ['Strobes', 'Stands', 'Lighting Modification'],
+    'categories come out in the given order, unknown ones after')
+  eq(built.subcategories.length, 2, 'the pair is the key: one Profoto per category')
+  eq(built.assignments.a, built.assignments.b, 'a case variant is the same subcategory')
+  ok(built.assignments.a !== built.assignments.c, 'but the other category gets its own')
+  eq(built.assignments.d, undefined, 'an item with no subcategory is left unassigned')
+  eq(built.categories.find((c) => c.name === 'Retired'), undefined,
+    'archived stock does not shape the taxonomy')
+  eq(taxonomy.categoryOf({ subcategoryId: built.assignments.c }, built)?.name,
+    'Lighting Modification', 'and the result derives back correctly')
 }
 
 console.log(`OK — ${n} assertions passed`)

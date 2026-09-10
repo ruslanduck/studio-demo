@@ -1,0 +1,14 @@
+-- A category the previous migration's ordered list did not name kept the
+-- column default of 0 and therefore sorted FIRST — ahead of Strobes. On prod
+-- that was "Digital Capture Station", a category the studio added after the
+-- inventory import, so the list nobody edited pushed the newest heading to the
+-- top of every grouped view.
+--
+-- Anything still at 0 belongs AFTER the named headings and before the catch-all
+-- (Uncategorized, at 99). Written as a rule rather than by name so any other
+-- category that arrived the same way is fixed with it.
+--
+-- A second migration, not an edit to the applied one: prod and this repo have to
+-- describe the same schema, and an applied file that has since changed makes
+-- that untrue (the lesson from the call-times CHECK constraint).
+update public.inventory_categories set position = 50 where position = 0;

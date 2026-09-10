@@ -273,11 +273,24 @@ export async function getInventory() {
        set_units ( status, reserved_from, reserved_to,
                    set:sets ( id, title, date, studio_id, status ) )
      )`
+  // ⚠️ `subcategory_id` is the OUTERMOST layer — SIXTH time this rule has
+  // mattered. A column added last must be the first one dropped, or a database
+  // without the migration fails every rich layer and degrades to the stub
+  // shape, losing the units and reservations it does have.
+  const withSubcategory = withArchive.replace(
+    'id, name, category, kind, quantity,',
+    'id, name, category, kind, quantity, subcategory_id,',
+  )
   const withUnitPlacement = stripArchive(withArchive)
   const withVendor = withUnitPlacement.replace('sub_rental_vendor_id, placement,', 'sub_rental_vendor_id,')
   const withoutVendor = withVendor.replace(', sub_rental_vendor_id', '')
   const withoutRate = withoutVendor.replace(', day_rate', '')
-  let { data, error } = await supabase.from('inventory_items').select(withArchive).order('name')
+  let { data, error } = await supabase
+    .from('inventory_items')
+    .select(withSubcategory)
+    .order('name')
+  if (error)
+    ({ data, error } = await supabase.from('inventory_items').select(withArchive).order('name'))
   if (error)
     ({ data, error } = await supabase
       .from('inventory_items')
@@ -306,6 +319,11 @@ export async function getInventory() {
     assetType: item.asset_type,
     placement: item.placement,
     subcategory: item.subcategory,
+    // The only real link: an item belongs to a SUBCATEGORY, and its category is
+    // derived by following that (lib/taxonomy). `category`/`subcategory` above
+    // are the legacy TEXT the register was imported with — kept as the record of
+    // where a piece came from, and shown as a hint while it is being assigned.
+    subcategoryId: item.subcategory_id ?? null,
     purchaseDate: item.purchase_date,
     replacementPrice: item.replacement_price,
     dayRate: item.day_rate != null ? Number(item.day_rate) : null,
@@ -793,7 +811,7 @@ export async function logItemUsage(itemId, { jobTitle, studioId, quantity, usedO
 // Map the item's optional attribute fields to DB columns (blank → null).
 function itemFieldColumns(f = {}) {
   const clean = (v) => (v === '' || v == null ? null : v)
-  return {
+  const cols = {
     brand: clean(f.brand),
     asset_type: clean(f.assetType),
     placement: clean(f.placement),
@@ -801,29 +819,49 @@ function itemFieldColumns(f = {}) {
     purchase_date: clean(f.purchaseDate),
     replacement_price: clean(f.replacementPrice),
   }
+  // Only when the caller actually said something about it: `undefined` means
+  // "leave the assignment alone", `null` means "unassign".
+  if ('subcategoryId' in f) cols.subcategory_id = clean(f.subcategoryId)
+  return cols
+}
+
+// A write that carries a column a pre-migration database hasn't got: retry
+// without it rather than failing the user's action, and report that it went
+// missing so the loss is never silent (the `order_lines.day_rate` lesson).
+const MISSING_COLUMN = '42703'
+async function writeItemRow(run, patch) {
+  const { error } = await run(patch)
+  if (!error) return { ok: true }
+  if (error.code !== MISSING_COLUMN || !('subcategory_id' in patch)) throw error
+  const { subcategory_id, ...rest } = patch
+  const retry = await run(rest)
+  if (retry.error) throw retry.error
+  return { ok: true, subcategoryNotStored: true }
 }
 
 export async function addInventoryItem({ name, category, quantity, kind = 'barcoded', ...fields }) {
   const attrs = itemFieldColumns(fields)
 
   // Non-barcoded items store a quantity and have no unit rows.
+  // A pre-migration database has no `subcategory_id`; insert without it rather
+  // than refusing to register the gear at all.
+  const insertItem = async (body) => {
+    let res = await supabase.from('inventory_items').insert(body).select('id').single()
+    if (res.error?.code === MISSING_COLUMN && 'subcategory_id' in body) {
+      const { subcategory_id, ...rest } = body
+      res = await supabase.from('inventory_items').insert(rest).select('id').single()
+    }
+    if (res.error) throw res.error
+    return res.data
+  }
+
   if (kind !== 'barcoded') {
-    const { data: item, error } = await supabase
-      .from('inventory_items')
-      .insert({ name: name.trim(), category, kind, quantity, ...attrs })
-      .select('id')
-      .single()
-    if (error) throw error
+    const item = await insertItem({ name: name.trim(), category, kind, quantity, ...attrs })
     return item.id
   }
 
   // Barcoded: generate `quantity` tracked units with fresh barcodes.
-  const { data: item, error } = await supabase
-    .from('inventory_items')
-    .insert({ name: name.trim(), category, kind: 'barcoded', ...attrs })
-    .select('id')
-    .single()
-  if (error) throw error
+  const item = await insertItem({ name: name.trim(), category, kind: 'barcoded', ...attrs })
   const { data: rows } = await supabase.from('units').select('barcode')
   let maxB = 0
   for (const r of rows || []) {
@@ -851,8 +889,122 @@ export async function updateInventoryItem(itemId, { name, category, kind, quanti
   // only the quantity — requiring kind here made those writes silent no-ops.
   if (quantity != null && kind !== 'barcoded') patch.quantity = quantity
   if (!Object.keys(patch).length) return
-  const { error } = await supabase.from('inventory_items').update(patch).eq('id', itemId)
+  return writeItemRow(
+    (body) => supabase.from('inventory_items').update(body).eq('id', itemId),
+    patch,
+  )
+}
+
+// ---------------------------------------------------------------------------
+// The inventory taxonomy (20260911120000). Categories hold subcategories; an
+// item points at a subcategory and NEVER at a category.
+//
+// Read in ONE go with the items, and try/caught like every other table added
+// after launch: a database without the migration answers with an empty taxonomy
+// and the register still loads — the items simply have nothing to be assigned
+// to yet.
+export async function getInventoryTaxonomy() {
+  const empty = { categories: [], subcategories: [] }
+  try {
+    const [cats, subs] = await Promise.all([
+      supabase
+        .from('inventory_categories')
+        .select(`id, name, position, created_at, created_by, ${ARCHIVE_COLS}`)
+        .order('position')
+        .order('name'),
+      supabase
+        .from('inventory_subcategories')
+        .select(`id, category_id, name, position, created_at, created_by, ${ARCHIVE_COLS}`)
+        .order('position')
+        .order('name'),
+    ])
+    if (cats.error || subs.error) return empty
+    return {
+      categories: (cats.data || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        position: c.position ?? 0,
+        createdAt: c.created_at ?? null,
+        createdBy: c.created_by ?? null,
+        ...archiveFields(c),
+      })),
+      subcategories: (subs.data || []).map((r) => ({
+        id: r.id,
+        categoryId: r.category_id,
+        name: r.name,
+        position: r.position ?? 0,
+        createdAt: r.created_at ?? null,
+        createdBy: r.created_by ?? null,
+        ...archiveFields(r),
+      })),
+    }
+  } catch {
+    return empty
+  }
+}
+
+export async function createInventoryCategory({ name, position = 0 }) {
+  const { data, error } = await supabase
+    .from('inventory_categories')
+    .insert({ name: String(name).trim(), position })
+    .select('id')
+    .single()
   if (error) throw error
+  return data.id
+}
+
+export async function updateInventoryCategory(id, { name, position }) {
+  const patch = {}
+  if (name != null) patch.name = String(name).trim()
+  if (position != null) patch.position = position
+  if (!Object.keys(patch).length) return
+  const { error } = await supabase.from('inventory_categories').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function createInventorySubcategory({ categoryId, name, position = 0 }) {
+  const { data, error } = await supabase
+    .from('inventory_subcategories')
+    .insert({ category_id: categoryId, name: String(name).trim(), position })
+    .select('id')
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+// Moving a subcategory to another category is allowed on purpose: a piece of
+// gear filed under the wrong heading is exactly what "edit" is for. It changes
+// the derived category of every item in it, which is the point.
+export async function updateInventorySubcategory(id, { name, categoryId, position }) {
+  const patch = {}
+  if (name != null) patch.name = String(name).trim()
+  if (categoryId != null) patch.category_id = categoryId
+  if (position != null) patch.position = position
+  if (!Object.keys(patch).length) return
+  const { error } = await supabase.from('inventory_subcategories').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+// Removing either level ARCHIVES it — the app holds no DELETE (20260808120000),
+// and the caller checks the usage rules first (lib/taxonomy).
+export const archiveInventoryCategory = (id, actorId = null) =>
+  archiveRow('inventory_categories', id, actorId)
+export const restoreInventoryCategory = (id) => restoreRow('inventory_categories', id)
+export const archiveInventorySubcategory = (id, actorId = null) =>
+  archiveRow('inventory_subcategories', id, actorId)
+export const restoreInventorySubcategory = (id) => restoreRow('inventory_subcategories', id)
+
+// Assign many items at once — the answer to a register where 51 pieces arrived
+// with no subcategory. One statement, so it cannot half-apply.
+export async function setItemsSubcategory(itemIds, subcategoryId) {
+  const ids = [...new Set((itemIds || []).filter(Boolean))]
+  if (!ids.length) return { ok: true, count: 0 }
+  const { error } = await supabase
+    .from('inventory_items')
+    .update({ subcategory_id: subcategoryId || null })
+    .in('id', ids)
+  if (error) throw error
+  return { ok: true, count: ids.length }
 }
 
 // Delete an item (write-off). Frees any reservations on its units first, then

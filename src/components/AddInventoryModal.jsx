@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Archive as ArchiveIcon, AlertTriangle } from 'lucide-react'
-import { CATEGORIES, SUBCATEGORIES, ITEM_KINDS } from '../data/inventory'
+import { ITEM_KINDS } from '../data/inventory'
 import { useStore } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
 import DateField from './DateField'
-import ComboField from './ComboField'
+import SelectField from './SelectField'
+import {
+  liveCategories,
+  subcategoryById,
+  subcategoryNameError,
+  subcategoryOptions as subcategoryOptionsFor,
+} from '../lib/taxonomy'
 
 const MAX_QTY = 500
+// A sentinel option value, not an id: picking it opens the inline creator.
+const NEW_SUB = '__new_subcategory__'
 
 const KIND_HELP = {
   barcoded: 'Each unit tracked by barcode & serial.',
@@ -18,8 +26,7 @@ const KIND_HELP = {
 const BLANK = {
   name: '',
   kind: 'barcoded',
-  category: CATEGORIES[0],
-  subcategory: '',
+  subcategoryId: '',
   brand: '',
   assetType: '',
   placement: '',
@@ -32,8 +39,7 @@ function fromItem(item) {
   return {
     name: item.name ?? '',
     kind: item.kind ?? 'barcoded',
-    category: item.category ?? CATEGORIES[0],
-    subcategory: item.subcategory ?? '',
+    subcategoryId: item.subcategoryId ?? '',
     brand: item.brand ?? '',
     assetType: item.assetType ?? '',
     placement: item.placement ?? '',
@@ -57,41 +63,48 @@ export default function AddInventoryModal({
   // name already typed into its search box — retyping it would be silly.
   prefill = null,
 }) {
-  // Suggestions for the second level of the tree: the taxonomy for the category
-  // being chosen, plus every subcategory already in use under it (so a value
-  // someone typed last month is offered instead of retyped).
-  const inventory = useStore((s) => s.inventory)
+  // ONE field decides where a piece of gear lives: its SUBCATEGORY. The
+  // category comes from that (lib/taxonomy), which is why there is no category
+  // field here — an item is never attached to a category directly.
+  const taxonomy = useStore((st) => st.taxonomy)
+  const createSubcategory = useStore((st) => st.createSubcategory)
   const can = useCan()
   const isEdit = !!item
   const [form, setForm] = useState(BLANK)
+  // The inline "+ New subcategory…" panel: `null` when closed.
+  const [newSub, setNewSub] = useState(null)
+  const [subError, setSubError] = useState(null)
 
   useEffect(() => {
-    if (open) setForm(item ? fromItem(item) : { ...BLANK, ...(prefill ?? {}) })
+    if (open) {
+      setForm(item ? fromItem(item) : { ...BLANK, ...(prefill ?? {}) })
+      setNewSub(null)
+      setSubError(null)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, item, prefill?.name])
 
-  // Categories are offered the same way subcategories are: the suggested list
-  // merged with whatever the register actually uses. A migrated category that
-  // nobody added to the constant is still selectable, so the dropdown can never
-  // silently omit a value the data already holds.
-  const categoryOptions = useMemo(() => {
-    const inUse = inventory.map((i) => i.category).filter(Boolean)
-    return [...new Set([...CATEGORIES, ...inUse])]
-  }, [inventory])
-
-  const subcategoryOptions = useMemo(() => {
-    const fromTaxonomy = SUBCATEGORIES[form.category] ?? []
-    const inUse = inventory
-      .filter((i) => i.category === form.category && i.subcategory)
-      .map((i) => i.subcategory)
-    return [...new Set([...fromTaxonomy, ...inUse])].sort((a, b) => a.localeCompare(b))
-  }, [form.category, inventory])
+  const filedOptions = useMemo(() => subcategoryOptionsFor(taxonomy), [taxonomy])
+  const categories = useMemo(() => liveCategories(taxonomy), [taxonomy])
+  const filed = subcategoryById(taxonomy, form.subcategoryId)
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
   const qty = Math.floor(Number(form.quantity))
   const isBarcoded = form.kind === 'barcoded'
   const showQty = !isEdit || !isBarcoded
+  // Creating the missing subcategory from here, so a half-typed item is never
+  // abandoned to go and make one elsewhere.
+  async function addSubcategory() {
+    const bad = subcategoryNameError(newSub?.name, taxonomy, newSub?.categoryId)
+    if (bad) return setSubError(bad)
+    setSubError(null)
+    const res = await createSubcategory(newSub.categoryId, newSub.name)
+    if (res?.error) return setSubError(res.error)
+    setForm((f) => ({ ...f, subcategoryId: res.id }))
+    setNewSub(null)
+  }
+
   const canSubmit =
     form.name.trim() !== '' && (isEdit || (Number.isFinite(qty) && qty >= 1))
 
@@ -101,8 +114,10 @@ export default function AddInventoryModal({
     const price = form.replacementPrice.trim()
     const base = {
       name: form.name.trim(),
-      category: form.category,
-      subcategory: form.subcategory.trim(),
+      // The legacy `category`/`subcategory` TEXT is deliberately NOT written:
+      // it records what the register was imported as, and a second place saying
+      // where an item lives is exactly how the two get to disagree.
+      subcategoryId: form.subcategoryId || null,
       brand: form.brand.trim(),
       assetType: form.assetType.trim(),
       placement: form.placement.trim(),
@@ -181,34 +196,85 @@ export default function AddInventoryModal({
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={label}>Category</label>
-              {/* Free text with suggestions, exactly like Subcategory below. A
-                  closed list meant the app could DISPLAY a category (imported,
-                  say) but never let anyone create one — and `category` is a plain
-                  text column, so nothing but this control was stopping it. */}
-              <ComboField
-                value={form.category}
-                onChange={set('category')}
-                options={categoryOptions}
-                placeholder="Select or type…"
+            <div className="sm:col-span-2">
+              <label className={label}>Filed under</label>
+              {/* Category / Subcategory as ONE choice, because an item belongs
+                  to a subcategory and its category follows from that. The option
+                  shows the whole path: two categories may each have a
+                  "Profoto", and on this register two do. */}
+              <SelectField
+                value={form.subcategoryId}
+                onChange={(e) => {
+                  if (e.target.value === NEW_SUB) {
+                    setNewSub({
+                      categoryId: filed?.categoryId ?? categories[0]?.id ?? '',
+                      name: '',
+                    })
+                    return
+                  }
+                  setForm((f) => ({ ...f, subcategoryId: e.target.value }))
+                }}
+                options={[
+                  { value: '', label: 'Not filed yet' },
+                  ...filedOptions,
+                  ...(categories.length ? [{ value: NEW_SUB, label: '+ New subcategory…' }] : []),
+                ]}
+                placeholder="Not filed yet"
                 className={field}
               />
-            </div>
-            <div>
-              <label className={label}>Subcategory</label>
-              {/* A list, so one kind of gear doesn't end up under three
-                  spellings — but still typeable, because new kinds arrive and
-                  refusing them would be worse than one new entry. The options
-                  are the taxonomy for the chosen category PLUS whatever the
-                  register already uses, so the list maintains itself. */}
-              <ComboField
-                value={form.subcategory}
-                onChange={set('subcategory')}
-                options={subcategoryOptions}
-                placeholder="Select or type…"
-                className={field}
-              />
+              {newSub ? (
+                <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50/60 p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SelectField
+                      value={newSub.categoryId}
+                      onChange={(e) => setNewSub((v) => ({ ...v, categoryId: e.target.value }))}
+                      options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                      placeholder="Category…"
+                      className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none"
+                    />
+                    <span className="text-slate-400">/</span>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newSub.name}
+                      onChange={(e) => setNewSub((v) => ({ ...v, name: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addSubcategory()
+                        }
+                      }}
+                      placeholder="New subcategory"
+                      className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-violet-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={addSubcategory}
+                      className="rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700"
+                    >
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewSub(null)}
+                      className="rounded-md px-2 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-white"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {subError && (
+                    <p className="mt-1 text-[11px] font-medium text-rose-600">{subError}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  {filed
+                    ? 'Its category comes from the subcategory.'
+                    : item?.category
+                      ? `Imported as “${item.category}”${item.subcategory ? ` / ${item.subcategory}` : ''} — pick where it belongs.`
+                      : 'Stock can be registered before it is filed.'}
+                </p>
+              )}
             </div>
             <div>
               <label className={label}>Brand</label>

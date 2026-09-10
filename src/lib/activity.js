@@ -29,6 +29,12 @@ export const EVENT = {
   // Non-barcoded stock moves by QUANTITY, not by unit rows, so a
   // delta is the whole story: who put 20 more J-hooks on the shelf, and when.
   STOCK_ADJUSTED: 'item.stock_adjusted',
+  // The inventory taxonomy (20260911120000). An item's own feed is where
+  // "why is this filed here" gets answered, so a reassignment is logged on the
+  // ITEM — one row per piece, which is what an audit trail is.
+  ITEM_FILED: 'item.filed',
+  TAXONOMY_ADDED: 'taxonomy.added',
+  TAXONOMY_RENAMED: 'taxonomy.renamed',
   UNIT_ADDED: 'unit.added',
   UNIT_UPDATED: 'unit.updated',
   UNIT_WRITTEN_OFF: 'unit.written_off',
@@ -55,6 +61,8 @@ export const ARCHIVE_KINDS = {
   kit: 'kit',
   scenario: 'scenario list',
   companyType: 'company type',
+  category: 'category',
+  subcategory: 'subcategory',
 }
 
 export const archiveKindLabel = (what) => ARCHIVE_KINDS[what] ?? 'record'
@@ -206,6 +214,28 @@ export function describeEvent(ev) {
       }
     case EVENT.ITEM_DELETED:
       return { icon: 'trash', title: 'Wrote off the item', detail: d.name ?? null }
+    case EVENT.ITEM_FILED:
+      return {
+        icon: 'pencil',
+        // Says where it went AND where it came from: "filed under X" alone
+        // doesn't tell you whether anything actually moved.
+        title: d.to ? 'Filed the item' : 'Took the item out of its subcategory',
+        detail: [d.from ? `was ${d.from}` : null, d.to ? `now ${d.to}` : null]
+          .filter(Boolean)
+          .join(' · ') || null,
+      }
+    case EVENT.TAXONOMY_ADDED:
+      return {
+        icon: 'plus',
+        title: `Added a ${archiveKindLabel(d.what)}`,
+        detail: d.path || d.name || null,
+      }
+    case EVENT.TAXONOMY_RENAMED:
+      return {
+        icon: 'pencil',
+        title: `Renamed a ${archiveKindLabel(d.what)}`,
+        detail: [d.from, d.to].filter(Boolean).join(' → ') || null,
+      }
     case EVENT.ARCHIVED:
       return {
         icon: 'archive',

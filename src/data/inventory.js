@@ -269,10 +269,73 @@ export function dayRateFor({ id, category }) {
   return DAY_RATE_OVERRIDES[id] ?? DAY_RATE_BY_CATEGORY[category] ?? 20
 }
 
+// Where each demo item is FILED (the second level of the tree). Values all come
+// from SUBCATEGORIES above — that map was written for exactly these seven demo
+// categories and lost its last consumer when the taxonomy became real rows, so
+// it is the seed's own source of truth now.
+//
+// A few pieces are deliberately left OUT: stock arriving before anyone has
+// filed it is a real state (the studio's own register had 51 such items after
+// the import), and the demo should show the "Not filed" group and the
+// file-in-bulk tool doing something.
+const SEED_SUBCATEGORY = {
+  // Grip
+  'aclamp-2': 'Clamps',
+  'aclamp-3': 'Clamps',
+  'big-ben-clamp': 'Clamps',
+  'avenger-riser': 'Applebox & Risers',
+  'applebox-full': 'Applebox & Risers',
+  'applebox-half': 'Applebox & Risers',
+  'applebox-quarter': 'Applebox & Risers',
+  'applebox-pancake': 'Applebox & Risers',
+  'cstand-40': 'Stands',
+  'sandbag-25': 'Sandbags & Weights',
+  'j-hook-2': 'Rigging',
+  // Electric/Lighting
+  'arri-2k': 'Fresnel & Open Face',
+  'arri-750': 'Fresnel & Open Face',
+  'aputure-600d': 'LED Panels',
+  'aputure-300x': 'LED Panels',
+  'quasar-4ft': 'LED Tubes',
+  'astera-titan': 'LED Tubes',
+  'stinger-25': 'Power & Distro',
+  'aa-batteries': 'Power & Distro',
+  'flag-24x36': 'Modifiers',
+  // Computers
+  'macbook-16': 'Laptops',
+  'monitor-lg-27': 'Monitors',
+  'kbd-magic': 'Peripherals',
+  'mouse-magic': 'Peripherals',
+  'anker-hub': 'Adapters & Hubs',
+  // Cables
+  'usbc-power-96w': 'Power',
+  'hdmi-10ft': 'Video',
+  'lightning-cable': 'Data',
+  'usbc-cable-2m': 'Data',
+  // Camera
+  'sony-fx6': 'Bodies',
+  'canon-r5': 'Bodies',
+  'sony-2470': 'Lenses',
+  'smallhd-702': 'Monitoring',
+  'cfexpress-512': 'Media',
+  // Furniture
+  bench: 'Seating',
+  'director-chair': 'Seating',
+  'folding-table-6': 'Tables & Surfaces',
+  'wardrobe-rack': 'Props & Set Dressing',
+  // Audio
+  'mkh-416': 'Microphones',
+  'wireless-go-2': 'Wireless',
+  'zoom-h6': 'Recorders & Mixers',
+  'mixpre-6': 'Recorders & Mixers',
+  // NOT filed on purpose: 'gaff-tape', 'safety-cable'.
+}
+
 export const INVENTORY_SEED = CATALOG.map(([id, name, category, qty, kind = 'barcoded']) => {
   if (kind !== 'barcoded') {
     return {
-      id, name, category, kind, quantity: qty, units: [], brand: brandFor(name),
+      id, name, category, subcategory: SEED_SUBCATEGORY[id] ?? null, kind,
+      quantity: qty, units: [], brand: brandFor(name),
       dayRate: dayRateFor({ id, category, kind }),
     }
   }
@@ -282,7 +345,8 @@ export const INVENTORY_SEED = CATALOG.map(([id, name, category, qty, kind = 'bar
     if (i % 7 === 6) u.ownership = 'sub_rental'
   })
   return {
-    id, name, category, kind, quantity: 0, units, brand: brandFor(name),
+    id, name, category, subcategory: SEED_SUBCATEGORY[id] ?? null, kind,
+    quantity: 0, units, brand: brandFor(name),
     dayRate: dayRateFor({ id, category, kind }),
   }
 })

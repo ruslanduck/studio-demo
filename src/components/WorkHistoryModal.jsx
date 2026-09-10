@@ -6,6 +6,8 @@ import DateField from './DateField'
 import SelectField from './SelectField'
 import { STUDIOS, studioLabel } from '../data/studios'
 import { usageSummary } from '../data/usage'
+import { categoryLabel } from '../lib/taxonomy'
+import { useStore } from '../store'
 
 const todayISO = () => format(new Date(), 'yyyy-MM-dd')
 
@@ -61,6 +63,9 @@ function UsageRow({ e }) {
 // Per-item work history: aggregate counters + a usage timeline, plus an
 // optional "log usage" form (the analytics foundation for all item types).
 export default function WorkHistoryModal({ open, onClose, item, canLog, onLog }) {
+  // The item's category comes from its subcategory; read the taxonomy here
+  // rather than taking it as a prop.
+  const taxonomy = useStore((s) => s.taxonomy)
   const events = item?.usage || []
   const [form, setForm] = useState({ quantity: '1', jobTitle: '', studioId: '1', usedOn: todayISO() })
   const [busy, setBusy] = useState(false)
@@ -101,7 +106,7 @@ export default function WorkHistoryModal({ open, onClose, item, canLog, onLog })
           <div className="mb-4">
             <div className="truncate font-semibold text-slate-900">{item.name}</div>
             <div className="mt-0.5 text-xs text-slate-500">
-              {item.category}
+              {categoryLabel(item, taxonomy)}
               {item.brand ? ` · ${item.brand}` : ''}
             </div>
           </div>

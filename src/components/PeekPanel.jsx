@@ -18,6 +18,7 @@ import {
   Clock,
   Camera,
 } from 'lucide-react'
+import { categoryLabel } from '../lib/taxonomy'
 import { useStore } from '../store'
 import { studioLabel } from '../data/studios'
 import { orderStatusMeta } from '../data/orderStatus'
@@ -421,6 +422,7 @@ function OrderActivity({ orderId, eqBy, eqAt }) {
 
 function ItemPeek({ id, unitId }) {
   const inventory = useStore((s) => s.inventory)
+  const taxonomy = useStore((s) => s.taxonomy)
   const bookings = useStore((s) => s.bookings)
   const orders = useStore((s) => s.orders)
   const companies = useStore((s) => s.companies)
@@ -446,7 +448,7 @@ function ItemPeek({ id, unitId }) {
         badges={
           <>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-              {item.category}
+              {categoryLabel(item, taxonomy)}
             </span>
             <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
               {kindLabel(item.kind)}

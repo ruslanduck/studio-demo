@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { startOfWeek, addDays, format } from 'date-fns'
 import { STUDIOS, studioLabel } from './data/studios'
-import { INVENTORY_SEED, createUnits, serialFor } from './data/inventory'
+import { CATEGORIES, INVENTORY_SEED, createUnits, serialFor } from './data/inventory'
 import { REPAIR_TEMPLATES, repairDates } from './data/repairs'
 import { generateUsage } from './data/usage'
 import { KIT_SEED } from './data/kits'
@@ -75,6 +75,14 @@ import {
   syncSetForOrder as sbSyncSetForOrder,
   activeSetsInRange as sbActiveSetsInRange,
   setOrderLines as sbSetOrderLines,
+  getInventoryTaxonomy as sbGetInventoryTaxonomy,
+  createInventoryCategory as sbCreateInventoryCategory,
+  updateInventoryCategory as sbUpdateInventoryCategory,
+  archiveInventoryCategory as sbArchiveInventoryCategory,
+  createInventorySubcategory as sbCreateInventorySubcategory,
+  updateInventorySubcategory as sbUpdateInventorySubcategory,
+  archiveInventorySubcategory as sbArchiveInventorySubcategory,
+  setItemsSubcategory as sbSetItemsSubcategory,
   setPackingSignoff as sbSetPackingSignoff,
   clearPackingSignoff as sbClearPackingSignoff,
 } from './data/repository'
@@ -82,6 +90,15 @@ import { supabase } from './lib/supabase'
 import { reservedUnitsForOrder, overlaps } from './lib/availability'
 import { coversDay, endsOnFor, firstFullDay, setSpanDays } from './lib/setDays'
 import { normalizeCallTimes } from './lib/callTimes'
+import {
+  categoryNameError,
+  categoryRemovalBlock,
+  subcategoryById,
+  subcategoryNameError,
+  subcategoryPath,
+  subcategoryRemovalBlock,
+  taxonomyFromItems,
+} from './lib/taxonomy'
 import { isClosedStatus } from './data/orderStatus'
 import { SCAN_OUT, SCAN_IN, expectedUnits, outstandingUnits, resolveScan } from './lib/scanning'
 import { EVENT, diffOrderLines } from './lib/activity'
@@ -343,9 +360,17 @@ function buildSeedData() {
   const reservedInventory = withReservations(inventory, reservedBookings)
   orders.sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
 
+  // The taxonomy, derived from the register's own text by the SAME rule the SQL
+  // migration applies to the real database (lib/taxonomy `taxonomyFromItems`),
+  // so the two modes cannot describe different shapes.
+  const taxonomy = taxonomyFromItems(reservedInventory, { order: CATEGORIES })
+  for (const item of reservedInventory)
+    item.subcategoryId = taxonomy.assignments[item.id] ?? null
+
   return {
     inventory: reservedInventory,
     bookings: reservedBookings,
+    taxonomy: { categories: taxonomy.categories, subcategories: taxonomy.subcategories },
     kits,
     scenarios,
     people,
@@ -755,6 +780,7 @@ export const useStore = create(
             people: [],
             companies: [],
             companyTypes: [],
+            taxonomy: { categories: [], subcategories: [] },
             orders: [],
             loading: true,
           }
@@ -774,17 +800,27 @@ export const useStore = create(
         if (!usingSupabase) return
         if (!quiet) set({ loading: true })
         try {
-          const [inventory, bookings, kits, scenarios, people, companies, companyTypes, orders] =
-            await Promise.all([
-              sbGetInventory(),
-              sbGetBookings(),
-              sbGetKits(),
-              sbGetScenarioLists(),
-              sbGetPeople(),
-              sbGetCompanies(),
-              sbGetCompanyTypes(),
-              sbGetOrders(),
-            ])
+          const [
+            inventory,
+            bookings,
+            kits,
+            scenarios,
+            people,
+            companies,
+            companyTypes,
+            taxonomy,
+            orders,
+          ] = await Promise.all([
+            sbGetInventory(),
+            sbGetBookings(),
+            sbGetKits(),
+            sbGetScenarioLists(),
+            sbGetPeople(),
+            sbGetCompanies(),
+            sbGetCompanyTypes(),
+            sbGetInventoryTaxonomy(),
+            sbGetOrders(),
+          ])
           set({
             inventory,
             bookings,
@@ -793,6 +829,7 @@ export const useStore = create(
             people,
             companies,
             companyTypes,
+            taxonomy,
             orders,
             loading: false,
           })
@@ -1675,6 +1712,7 @@ export const useStore = create(
           assetType: fields.assetType || null,
           placement: fields.placement || null,
           subcategory: fields.subcategory || null,
+          subcategoryId: fields.subcategoryId || null,
           purchaseDate: fields.purchaseDate || null,
           replacementPrice: fields.replacementPrice || null,
         }
@@ -1737,6 +1775,7 @@ export const useStore = create(
           assetType: 'asset type',
           placement: 'storage location',
           subcategory: 'subcategory',
+          subcategoryId: 'filed under',
           purchaseDate: 'purchase date',
           replacementPrice: 'replacement price',
           dayRate: 'day rate',
@@ -1779,7 +1818,18 @@ export const useStore = create(
           const next = { ...item }
           if (name != null) next.name = name.trim()
           if (category != null) next.category = category
-          for (const k of ['brand', 'assetType', 'placement', 'subcategory', 'purchaseDate', 'replacementPrice']) {
+          for (const k of [
+            'brand',
+            'assetType',
+            'placement',
+            'subcategory',
+            // ⚠️ This list is a WHITELIST: a field missing from it is dropped
+            // SILENTLY in local mode while supabase mode stores it. Caught in
+            // the browser — re-filing an item saved and changed nothing.
+            'subcategoryId',
+            'purchaseDate',
+            'replacementPrice',
+          ]) {
             if (k in fields) next[k] = fields[k] || null
           }
           if (item.kind !== 'barcoded' && quantity != null) next.quantity = quantity
@@ -2149,6 +2199,269 @@ export const useStore = create(
       restoreCompany: (id) => get().restoreRecord('company', id),
 
       // ---- Editable company Type options (4.4) --------------------------
+      // ---------------------------------------------------------------------
+      // The inventory taxonomy (20260911120000).
+      //
+      // The RULES are in lib/taxonomy and the guards live HERE, not only in the
+      // form: a picker left open while someone else fills a subcategory would
+      // otherwise still remove it. Same reasoning as the closed-job guard on
+      // `setOrderLines`. Every action returns `{ error }` or `{ ok: true }`.
+
+      createCategory: async (name) => {
+        const state = get()
+        const bad = categoryNameError(name, state.taxonomy)
+        if (bad) return { error: bad }
+        const clean = String(name).trim()
+        const position = (state.taxonomy.categories?.length ?? 0) + 1
+        const log = (id) =>
+          get().logActivity({
+            type: EVENT.TAXONOMY_ADDED,
+            entityType: 'category',
+            entityId: id,
+            data: { what: 'category', name: clean },
+          })
+        if (usingSupabase) {
+          const id = await sbCreateInventoryCategory({ name: clean, position })
+          log(id)
+          await get().hydrate({ quiet: true })
+          return { ok: true, id }
+        }
+        const id = uniqueId(`cat-${slugify(clean)}`, state.taxonomy.categories.map((c) => c.id))
+        set({
+          taxonomy: {
+            ...state.taxonomy,
+            categories: [...state.taxonomy.categories, { id, name: clean, position }],
+          },
+        })
+        log(id)
+        return { ok: true, id }
+      },
+
+      // Renaming a category relabels every item filed under it — the item points
+      // at a subcategory, so nothing has to be rewritten.
+      renameCategory: async (id, name) => {
+        const state = get()
+        const bad = categoryNameError(name, state.taxonomy, { exceptId: id })
+        if (bad) return { error: bad }
+        const before = state.taxonomy.categories.find((c) => c.id === id)
+        const clean = String(name).trim()
+        if (!before) return { error: 'That category no longer exists.' }
+        if (before.name === clean) return { ok: true, id }
+        const log = () =>
+          get().logActivity({
+            type: EVENT.TAXONOMY_RENAMED,
+            entityType: 'category',
+            entityId: id,
+            data: { what: 'category', from: before.name, to: clean },
+          })
+        if (usingSupabase) {
+          await sbUpdateInventoryCategory(id, { name: clean })
+          log()
+          await get().hydrate({ quiet: true })
+          return { ok: true, id }
+        }
+        set({
+          taxonomy: {
+            ...state.taxonomy,
+            categories: state.taxonomy.categories.map((c) =>
+              c.id === id ? { ...c, name: clean } : c,
+            ),
+          },
+        })
+        log()
+        return { ok: true, id }
+      },
+
+      // Removing a category is an ARCHIVE (the app holds no DELETE), and only
+      // when nothing hangs off it — no stock, no subcategories.
+      removeCategory: async (id) => {
+        const state = get()
+        const blocked = categoryRemovalBlock(id, state.taxonomy, state.inventory)
+        if (blocked) return { error: blocked }
+        const cat = state.taxonomy.categories.find((c) => c.id === id)
+        const stamp = new Date().toISOString()
+        const actor = state.session?.user?.id ?? null
+        const log = () =>
+          get().logActivity({
+            type: EVENT.ARCHIVED,
+            entityType: 'category',
+            entityId: id,
+            data: { what: 'category', name: cat?.name ?? null },
+          })
+        if (usingSupabase) {
+          await sbArchiveInventoryCategory(id, actor)
+          log()
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        set({
+          taxonomy: {
+            ...state.taxonomy,
+            categories: state.taxonomy.categories.map((c) =>
+              c.id === id ? { ...c, archivedAt: stamp, archivedBy: actor } : c,
+            ),
+          },
+        })
+        log()
+        return { ok: true }
+      },
+
+      createSubcategory: async (categoryId, name) => {
+        const state = get()
+        const bad = subcategoryNameError(name, state.taxonomy, categoryId)
+        if (bad) return { error: bad }
+        const clean = String(name).trim()
+        const position = (state.taxonomy.subcategories?.length ?? 0) + 1
+        const path = `${state.taxonomy.categories.find((c) => c.id === categoryId)?.name ?? '?'} / ${clean}`
+        const log = (id) =>
+          get().logActivity({
+            type: EVENT.TAXONOMY_ADDED,
+            entityType: 'subcategory',
+            entityId: id,
+            data: { what: 'subcategory', name: clean, path },
+          })
+        if (usingSupabase) {
+          const id = await sbCreateInventorySubcategory({ categoryId, name: clean, position })
+          log(id)
+          await get().hydrate({ quiet: true })
+          return { ok: true, id }
+        }
+        const id = uniqueId(
+          `sub-${slugify(clean)}`,
+          state.taxonomy.subcategories.map((x) => x.id),
+        )
+        set({
+          taxonomy: {
+            ...state.taxonomy,
+            subcategories: [
+              ...state.taxonomy.subcategories,
+              { id, categoryId, name: clean, position },
+            ],
+          },
+        })
+        log(id)
+        return { ok: true, id }
+      },
+
+      // Editing a subcategory can also MOVE it to another category — gear filed
+      // under the wrong heading is what "edit" is for. Every item in it follows,
+      // because the item's category was only ever derived through this row.
+      updateSubcategory: async (id, { name, categoryId } = {}) => {
+        const state = get()
+        const before = subcategoryById(state.taxonomy, id)
+        if (!before) return { error: 'That subcategory no longer exists.' }
+        const nextCat = categoryId ?? before.categoryId
+        const clean = name != null ? String(name).trim() : before.name
+        const bad = subcategoryNameError(clean, state.taxonomy, nextCat, { exceptId: id })
+        if (bad) return { error: bad }
+        if (clean === before.name && nextCat === before.categoryId) return { ok: true, id }
+        const from = subcategoryPath(before, state.taxonomy)
+        const to = subcategoryPath({ ...before, name: clean, categoryId: nextCat }, state.taxonomy)
+        const log = () =>
+          get().logActivity({
+            type: EVENT.TAXONOMY_RENAMED,
+            entityType: 'subcategory',
+            entityId: id,
+            data: { what: 'subcategory', from, to },
+          })
+        if (usingSupabase) {
+          await sbUpdateInventorySubcategory(id, { name: clean, categoryId: nextCat })
+          log()
+          await get().hydrate({ quiet: true })
+          return { ok: true, id }
+        }
+        set({
+          taxonomy: {
+            ...state.taxonomy,
+            subcategories: state.taxonomy.subcategories.map((x) =>
+              x.id === id ? { ...x, name: clean, categoryId: nextCat } : x,
+            ),
+          },
+        })
+        log()
+        return { ok: true, id }
+      },
+
+      removeSubcategory: async (id) => {
+        const state = get()
+        const blocked = subcategoryRemovalBlock(id, state.taxonomy, state.inventory)
+        if (blocked) return { error: blocked }
+        const sub = subcategoryById(state.taxonomy, id)
+        const stamp = new Date().toISOString()
+        const actor = state.session?.user?.id ?? null
+        const log = () =>
+          get().logActivity({
+            type: EVENT.ARCHIVED,
+            entityType: 'subcategory',
+            entityId: id,
+            data: { what: 'subcategory', name: sub?.name ?? null },
+          })
+        if (usingSupabase) {
+          await sbArchiveInventorySubcategory(id, actor)
+          log()
+          await get().hydrate({ quiet: true })
+          return { ok: true }
+        }
+        set({
+          taxonomy: {
+            ...state.taxonomy,
+            subcategories: state.taxonomy.subcategories.map((x) =>
+              x.id === id ? { ...x, archivedAt: stamp, archivedBy: actor } : x,
+            ),
+          },
+        })
+        log()
+        return { ok: true }
+      },
+
+      // File many items at once — the answer to a register where 51 pieces
+      // arrived with no subcategory at all. `subcategoryId` of null unfiles them,
+      // which is a legitimate move and not an error.
+      assignItemsSubcategory: async (itemIds, subcategoryId) => {
+        const state = get()
+        const ids = [...new Set((itemIds || []).filter(Boolean))]
+        if (!ids.length) return { error: 'Pick at least one item.' }
+        if (subcategoryId && !subcategoryById(state.taxonomy, subcategoryId))
+          return { error: 'That subcategory no longer exists.' }
+        // Only the pieces that actually move: re-filing an item where it already
+        // is would write a log line saying nothing happened.
+        const moving = state.inventory.filter(
+          (i) => ids.includes(i.id) && (i.subcategoryId ?? null) !== (subcategoryId ?? null),
+        )
+        if (!moving.length) return { ok: true, count: 0 }
+        const to = subcategoryId
+          ? subcategoryPath(subcategoryById(state.taxonomy, subcategoryId), state.taxonomy)
+          : null
+        const logMoves = () => {
+          for (const item of moving)
+            get().logActivity({
+              type: EVENT.ITEM_FILED,
+              entityType: 'item',
+              entityId: item.id,
+              data: {
+                from: item.subcategoryId
+                  ? subcategoryPath(subcategoryById(state.taxonomy, item.subcategoryId), state.taxonomy)
+                  : null,
+                to,
+              },
+            })
+        }
+        if (usingSupabase) {
+          const res = await sbSetItemsSubcategory(moving.map((i) => i.id), subcategoryId)
+          logMoves()
+          await get().hydrate({ quiet: true })
+          return { ok: true, count: res.count }
+        }
+        const movingIds = new Set(moving.map((i) => i.id))
+        set({
+          inventory: state.inventory.map((i) =>
+            movingIds.has(i.id) ? { ...i, subcategoryId: subcategoryId ?? null } : i,
+          ),
+        })
+        logMoves()
+        return { ok: true, count: moving.length }
+      },
+
       createCompanyType: async (name) => {
         const clean = String(name || '').trim()
         if (!clean) return { error: 'Type name cannot be empty.' }
@@ -3017,9 +3330,9 @@ export const useStore = create(
       // v5 adds the archive fields. A v4 snapshot's records have no `archivedAt`,
       // which reads as "live" — harmless in itself, but the seed also gains the
       // archive-aware projections, so it is reseeded like every bump before it.
-      version: 5,
+      version: 6,
       migrate: (persisted, version) => {
-        if (version >= 5) return persisted
+        if (version >= 6) return persisted
         return usingSupabase
           ? { activeView: persisted?.activeView ?? 'calendar' }
           : { ...buildSeedData(), activeView: persisted?.activeView ?? 'calendar' }
@@ -3045,6 +3358,7 @@ export const useStore = create(
               people: state.people,
               companies: state.companies,
               companyTypes: state.companyTypes,
+              taxonomy: state.taxonomy,
               orders: state.orders,
               activity: state.activity,
               activeView: state.activeView,

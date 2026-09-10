@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine, ClipboardList, Trash2, AlertTriangle } from 'lucide-react'
+import {
+  FolderTree, Search, Plus, Boxes, PackageOpen, History, ChevronLeft, Pencil, X, Wrench, Activity, Layers, Lock, ScanLine, ClipboardList, Trash2, AlertTriangle } from 'lucide-react'
 import { useStore, notArchived } from '../store'
 import { usePersisted } from '../lib/usePersisted'
-import { CATEGORIES, ITEM_KINDS, itemCount, kindLabel, activeUnits } from '../data/inventory'
+import { ITEM_KINDS, itemCount, kindLabel, activeUnits } from '../data/inventory'
 import { availableCount } from '../lib/availability'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -17,6 +18,18 @@ import StockModal from './StockModal'
 import ActivityList from './ActivityList'
 import ItemAvailability from './ItemAvailability'
 import SelectField from './SelectField'
+import TaxonomyModal from './TaxonomyModal'
+import {
+  UNASSIGNED,
+  categoryOf,
+  liveCategories,
+  categoryLabel,
+  liveSubcategories,
+  subcategoryById,
+  subcategoryPath,
+  subcategoryOptions as subcategoryOptionsFor,
+  unassignedItems,
+} from '../lib/taxonomy'
 import FilterBar, { FILTER_FIELD } from './FilterBar'
 import { useActivity } from '../lib/useActivity'
 
@@ -56,6 +69,11 @@ function bookedDates(unit) {
 // NO serial (231 of 435 in the real register do), and `null.toLowerCase()` threw
 // inside the search's useMemo — which white-screened the whole Inventory view.
 // The demo seed always generated a serial, so this only ever showed on real data.
+// The "unfile these" choice in the bulk bar. A sentinel, not '': SelectField
+// shows the option whose value equals the control's own value as the current
+// selection, and the control sits at '' so the placeholder shows.
+const UNFILE = '__unfile__'
+
 const hay = (v) => String(v ?? '').toLowerCase()
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -213,9 +231,18 @@ export default function Inventory() {
   const people = useStore((s) => s.people)
   const can = useCan()
 
+  const taxonomy = useStore((s) => s.taxonomy)
+  const assignItemsSubcategory = useStore((s) => s.assignItemsSubcategory)
+  // Managing the tree, and filing several pieces at once. `picked` is a Set of
+  // item ids; select mode is off by default so the ordinary list stays a list.
+  const [taxOpen, setTaxOpen] = useState(false)
+  const [selecting, setSelecting] = useState(false)
+  const [picked, setPicked] = useState(() => new Set())
+  const [fileNote, setFileNote] = useState(null)
   const [entryType, setEntryType] = usePersisted('inventory', 'entryType', 'items') // 'items' | 'kits' | 'lists'
   const [search, setSearch] = usePersisted('inventory', 'search', '')
   const [category, setCategory] = usePersisted('inventory', 'category', 'All')
+  const [subcategory, setSubcategory] = usePersisted('inventory', 'subcategory', 'All')
   const [brand, setBrand] = usePersisted('inventory', 'brand', 'All')
   const [kind, setKind] = usePersisted('inventory', 'kind', 'All')
   const [selectedId, setSelectedId] = usePersisted('inventory', 'itemId', null)
@@ -301,9 +328,15 @@ export default function Inventory() {
 
   // Search matches name, barcode, or serial (scan a barcode/serial → find the
   // item). Category / brand / type narrow the list independently.
+  // Both levels of the tree filter, and both read the TAXONOMY — an item's
+  // category is derived through its subcategory, so filtering on the legacy
+  // text column would answer a different question than the headers show.
+  const catOf = (item) => categoryOf(item, taxonomy)?.id ?? null
   const filtered = useMemo(() => {
     return liveInventory.filter((item) => {
-      if (category !== 'All' && item.category !== category) return false
+      if (category === UNASSIGNED && item.subcategoryId) return false
+      if (category !== 'All' && category !== UNASSIGNED && catOf(item) !== category) return false
+      if (subcategory !== 'All' && (item.subcategoryId ?? null) !== subcategory) return false
       if (brand !== 'All' && item.brand !== brand) return false
       if (kind !== 'All' && item.kind !== kind) return false
       if (query === '') return true
@@ -312,11 +345,35 @@ export default function Inventory() {
         (u) => hay(u.barcode).includes(query) || hay(u.serial).includes(query),
       )
     })
-  }, [liveInventory, query, category, brand, kind])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveInventory, query, category, subcategory, brand, kind, taxonomy])
 
   // How many filters are narrowing the list — the count the Filters button shows.
   const activeFilters =
-    (category !== 'All' ? 1 : 0) + (brand !== 'All' ? 1 : 0) + (kind !== 'All' ? 1 : 0)
+    (category !== 'All' ? 1 : 0) +
+    (subcategory !== 'All' ? 1 : 0) +
+    (brand !== 'All' ? 1 : 0) +
+    (kind !== 'All' ? 1 : 0)
+
+  // File every picked item under one subcategory. `''` unfiles them, which is a
+  // legitimate move — gear can be taken out of a subcategory that was wrong.
+  async function filePicked(choice) {
+    const ids = [...picked]
+    if (!ids.length) return
+    const subcategoryId = choice === UNFILE ? null : choice || null
+    const res = await assignItemsSubcategory(ids, subcategoryId)
+    if (res?.error) return setFileNote({ bad: true, text: res.error })
+    const where = subcategoryId
+      ? subcategoryPath(subcategoryById(taxonomy, subcategoryId), taxonomy)
+      : 'nothing'
+    setFileNote({
+      bad: false,
+      text: res.count
+        ? `${res.count} item${res.count === 1 ? '' : 's'} filed under ${where}.`
+        : 'Nothing moved — they were already there.',
+    })
+    setPicked(new Set())
+  }
 
   const clearAll = () => {
     setSearch('')
@@ -324,56 +381,78 @@ export default function Inventory() {
   }
 
   const filtersActive =
-    query !== '' || category !== 'All' || brand !== 'All' || kind !== 'All'
+    query !== '' ||
+    category !== 'All' ||
+    subcategory !== 'All' ||
+    brand !== 'All' ||
+    kind !== 'All'
 
   function clearFilters() {
     setSearch('')
     setCategory('All')
+    setSubcategory('All')
     setBrand('All')
     setKind('All')
   }
 
-  // Group the list by category → subcategory in the predefined category order
-  // (the same order items appear in an order). Categories are surfaced as
-  // headers in the main view, not just the filter.
-  // Suggested categories plus every one the register actually uses — otherwise
-  // a filter built from a constant cannot find migrated stock.
+  // The filter offers exactly what the taxonomy holds — plus "not filed", which
+  // is a real state and the only way to find the stock that needs placing.
   const categoryOptions = useMemo(() => {
-    const inUse = liveInventory.map((i) => i.category).filter(Boolean)
-    return [...new Set([...CATEGORIES, ...inUse])]
-  }, [liveInventory])
+    const rows = liveCategories(taxonomy).map((c) => ({ value: c.id, label: c.name }))
+    const unfiled = unassignedItems(liveInventory).length
+    return unfiled
+      ? [...rows, { value: UNASSIGNED, label: `Not filed (${unfiled})` }]
+      : rows
+  }, [taxonomy, liveInventory])
 
+  // Narrowed to the chosen category when there is one: offering every
+  // subcategory in the register under one category is noise.
+  const subcategoryOptions = useMemo(() => {
+    if (category !== 'All' && category !== UNASSIGNED)
+      return liveSubcategories(taxonomy, category).map((x) => ({ value: x.id, label: x.name }))
+    return subcategoryOptionsFor(taxonomy)
+  }, [taxonomy, category])
+
+  // Group the list by category → subcategory, derived through the taxonomy and
+  // in the studio's own category order. Unfiled stock groups last, under a
+  // header that says so rather than an empty one.
   const groups = useMemo(() => {
-    const catRank = (c) => {
-      const i = CATEGORIES.indexOf(c)
-      return i === -1 ? CATEGORIES.length : i
-    }
+    const order = liveCategories(taxonomy)
+    const rank = new Map(order.map((c, i) => [c.id, i]))
     const byCat = new Map()
     for (const item of filtered) {
-      if (!byCat.has(item.category)) byCat.set(item.category, [])
-      byCat.get(item.category).push(item)
+      const cat = categoryOf(item, taxonomy)
+      const key = cat?.id ?? UNASSIGNED
+      if (!byCat.has(key)) byCat.set(key, { name: cat?.name ?? 'Not filed', items: [] })
+      byCat.get(key).items.push(item)
     }
-    return [...byCat.keys()]
-      .sort((a, b) => catRank(a) - catRank(b) || a.localeCompare(b))
-      .map((cat) => {
+    return [...byCat.entries()]
+      .sort(([a], [b]) => {
+        if (a === UNASSIGNED) return 1
+        if (b === UNASSIGNED) return -1
+        return (rank.get(a) ?? 99) - (rank.get(b) ?? 99)
+      })
+      .map(([catId, group]) => {
         const bySub = new Map()
-        for (const item of byCat.get(cat)) {
-          const sub = item.subcategory || ''
-          if (!bySub.has(sub)) bySub.set(sub, [])
-          bySub.get(sub).push(item)
+        for (const item of group.items) {
+          const sub = subcategoryById(taxonomy, item.subcategoryId)
+          const key = sub?.id ?? ''
+          if (!bySub.has(key)) bySub.set(key, { name: sub?.name ?? '', items: [] })
+          bySub.get(key).items.push(item)
         }
-        const subs = [...bySub.keys()].sort((a, b) =>
-          a === '' ? 1 : b === '' ? -1 : a.localeCompare(b),
+        const subs = [...bySub.entries()].sort(([a, x], [b, y]) =>
+          a === '' ? 1 : b === '' ? -1 : x.name.localeCompare(y.name),
         )
         return {
-          category: cat,
-          subgroups: subs.map((sub) => ({
-            subcategory: sub,
-            items: bySub.get(sub).sort((x, y) => x.name.localeCompare(y.name)),
+          categoryId: catId,
+          category: group.name,
+          subgroups: subs.map(([, sub]) => ({
+            subcategory: sub.name,
+            items: sub.items.sort((x, y) => x.name.localeCompare(y.name)),
           })),
         }
       })
-  }, [filtered])
+  }, [filtered, taxonomy])
 
   // Selection resolves against the LIVE collections: an archived record has no
   // Archive screen any more and must not be viewable anywhere — not even via a
@@ -450,6 +529,20 @@ export default function Inventory() {
             {totalUnits} units
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        {/* Managing the tree is a separate, non-destructive job from adding
+            stock, so it gets its own quiet button rather than a menu nobody
+            would find. */}
+        {entryType === 'items' && can(CAP.INVENTORY_EDIT) && (
+          <button
+            type="button"
+            onClick={() => setTaxOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+          >
+            <FolderTree size={15} />
+            Categories
+          </button>
+        )}
         {/* The primary action follows the active tab: add stock, author a kit
             (3.6), or author a scenario list (3.6). */}
         {entryType === 'kits'
@@ -484,6 +577,7 @@ export default function Inventory() {
                   Add inventory
                 </button>
               )}
+        </div>
       </div>
 
       {/* Body: list + detail (side-by-side on desktop; separate screens on
@@ -567,8 +661,22 @@ export default function Inventory() {
                 <div className="grid grid-cols-2 gap-2">
                   <SelectField
                     value={category}
-                    onChange={(e) => setCategory(e.target.value)}
+                    onChange={(e) => {
+                      // A subcategory of the category you just left would filter
+                      // everything away and read as "no stock".
+                      setCategory(e.target.value)
+                      setSubcategory('All')
+                    }}
                     options={[{ value: 'All', label: 'All categories' }, ...categoryOptions]}
+                    className={FILTER_FIELD}
+                  />
+                  <SelectField
+                    value={subcategory}
+                    onChange={(e) => setSubcategory(e.target.value)}
+                    options={[
+                      { value: 'All', label: 'All subcategories' },
+                      ...subcategoryOptions,
+                    ]}
                     className={FILTER_FIELD}
                   />
                   <SelectField
@@ -626,8 +734,84 @@ export default function Inventory() {
               </div>
             ) : (
               <div className="space-y-1">
+                {/* Filing several pieces at once — what a register with 51
+                    unplaced items actually needs. Off by default: the list is a
+                    list first, and checkboxes on every row would be noise. */}
+                {can(CAP.INVENTORY_EDIT) && (
+                  <div className="mb-1 rounded-lg bg-slate-50 px-2 py-1.5">
+                    {selecting ? (
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-semibold text-slate-600">
+                            {picked.size} selected
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setPicked(new Set(filtered.map((i) => i.id)))}
+                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-violet-600 transition hover:bg-white"
+                          >
+                            All {filtered.length}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPicked(new Set())}
+                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-white"
+                          >
+                            None
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelecting(false)
+                              setPicked(new Set())
+                              setFileNote(null)
+                            }}
+                            className="ml-auto rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-white"
+                          >
+                            Done
+                          </button>
+                        </div>
+                        <SelectField
+                          value=""
+                          onChange={(e) => filePicked(e.target.value)}
+                          options={[
+                            ...subcategoryOptionsFor(taxonomy),
+                            // A distinct sentinel, NOT '': an option whose value
+                            // equals the control's own value renders as the
+                            // current selection, so the trigger read
+                            // "take out of its subcategory" before anyone chose
+                            // anything. Measured in the browser.
+                            { value: UNFILE, label: '— take out of its subcategory —' },
+                          ]}
+                          placeholder={
+                            picked.size ? `File ${picked.size} under…` : 'Pick items first…'
+                          }
+                          className={FILTER_FIELD}
+                        />
+                        {fileNote && (
+                          <p
+                            className={[
+                              'text-[11px] font-medium',
+                              fileNote.bad ? 'text-rose-600' : 'text-emerald-600',
+                            ].join(' ')}
+                          >
+                            {fileNote.text}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSelecting(true)}
+                        className="text-[11px] font-medium text-violet-600 transition hover:underline"
+                      >
+                        Select items to file under a subcategory…
+                      </button>
+                    )}
+                  </div>
+                )}
                 {groups.map((g) => (
-                  <div key={g.category}>
+                  <div key={g.categoryId}>
                     <div className="sticky top-0 z-10 -mx-2 bg-white/95 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 backdrop-blur">
                       {g.category}
                     </div>
@@ -640,16 +824,36 @@ export default function Inventory() {
                         )}
                         <ul className="space-y-0.5">
                           {sg.items.map((item) => (
-                            <li key={item.id}>
-                              <ItemRow
-                                item={item}
-                                active={item.id === selectedId}
-                                query={query}
-                                onSelect={() => {
-                                  setSelectedId(item.id)
-                                  setShowDetailMobile(true)
-                                }}
-                              />
+                            <li key={item.id} className="flex items-center gap-1.5">
+                              {selecting && (
+                                <input
+                                  type="checkbox"
+                                  checked={picked.has(item.id)}
+                                  onChange={(e) => {
+                                    // A Set, updated from the CURRENT one: two
+                                    // ticks before a re-render must both count.
+                                    setPicked((prev) => {
+                                      const next = new Set(prev)
+                                      if (e.target.checked) next.add(item.id)
+                                      else next.delete(item.id)
+                                      return next
+                                    })
+                                  }}
+                                  aria-label={`Select ${item.name}`}
+                                  className="ml-1 h-4 w-4 shrink-0 accent-violet-600"
+                                />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <ItemRow
+                                  item={item}
+                                  active={item.id === selectedId}
+                                  query={query}
+                                  onSelect={() => {
+                                    setSelectedId(item.id)
+                                    setShowDetailMobile(true)
+                                  }}
+                                />
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -802,6 +1006,8 @@ export default function Inventory() {
         </div>
       </div>
 
+      <TaxonomyModal open={taxOpen} onClose={() => setTaxOpen(false)} />
+
       <AddInventoryModal
         open={itemModal.open}
         item={itemModal.item}
@@ -904,6 +1110,10 @@ export default function Inventory() {
 }
 
 function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggleOwnership, vendors, onSetVendor, onShowHistory, onShowRepair, onShowWorkHistory, canWriteOff, unitError, onDismissUnitError, onAddUnit, onAddStock, onEditUnit, onDeleteUnit }) {
+  // Read from the store, not threaded down: which category an item is in is
+  // this header's own business, and passing collections through the tree is
+  // exactly how `companies={companies}` white-screened a whole view.
+  const taxonomy = useStore((s) => s.taxonomy)
   const isBarcoded = item.kind === 'barcoded'
   // Writing off a physical unit archives it — confirm in place, per row.
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
@@ -941,7 +1151,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-              {item.category}
+              {categoryLabel(item, taxonomy)}
             </span>
             <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600">
               {kindLabel(item.kind)}
@@ -1232,6 +1442,12 @@ function ItemActivity({ item }) {
 }
 
 function ItemDetailsGrid({ item }) {
+  // Where this piece lives, resolved through the taxonomy. Read from the store
+  // rather than threaded down: that chain is this row's own business, and
+  // passing collections through the tree is how `companies={companies}`
+  // white-screened a whole view.
+  const taxonomy = useStore((s) => s.taxonomy)
+  const filedPath = subcategoryPath(subcategoryById(taxonomy, item.subcategoryId), taxonomy)
   const price =
     item.replacementPrice == null
       ? null
@@ -1243,7 +1459,9 @@ function ItemDetailsGrid({ item }) {
     ['Brand', item.brand],
     ['Asset type', item.assetType],
     ['Storage location', item.placement],
-    ['Subcategory', item.subcategory],
+    // The derived path, not the legacy text: this is where the item actually
+    // lives now, and the two can differ until it has been filed.
+    ['Filed under', filedPath || null],
     ['Replacement price', price],
     ['Purchase date', item.purchaseDate],
   ]
