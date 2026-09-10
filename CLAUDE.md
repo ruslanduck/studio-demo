@@ -1861,6 +1861,140 @@
 > with `category` null, both copies (typed **#9911 / ZZ-SERIAL-A** and generated **#1026** with a generated
 > serial) and `replacement_price` 899, and the card read "PURCHASE PRICE → $899.00". Probe item, its 2 units
 > and its events removed with service_role — prod back to **276 live items / 437 live units**.
+> **FIX — the two date filters say what they are, and a backwards range says so.** Reported from a
+> screenshot: two bare date boxes in the Jobs filters with no clue which is which ("непонятно что за две
+> разные даты?"), and the pair in that screenshot (2026-09-11 → 2026-09-10) had emptied the list with no
+> explanation. The dropdowns beside them describe themselves ("Any studio"); a filled date field just shows
+> a date. Both are labelled now — **SHOOTING FROM / SHOOTING UNTIL** — with the rule stated under them and
+> changing with what is filled (a period matches jobs shooting on any day in it, `from` alone means on or
+> after, `to` alone on or before, either side may be left open), and a backwards period is NAMED with a
+> one-click **Swap them** — measured: 0 of 14 becomes 4 of 14.
+> ⚠️ Two things I got wrong on the way, both caught by measuring rather than reading. I first read
+> `windowsOverlap(startsOn, endsOn, from, to)` as passing four strings to `setDays`' two-object function and
+> called it a bug: it is not — `orderSearch` has its OWN correct local helper of that signature, proved by
+> running `searchOrders` itself. And my first "a backwards period matches nothing" assertion passed on a weak
+> fixture: a job SPANNING both dates slips through, because the two one-sided tests are each satisfied alone
+> (the screenshot said "1 of 14", not 0), so the warning text was untrue. An empty interval holds no days, so
+> the filter now rejects everything when `from > to`, and the fixture includes a straddling job.
+> The date filter had NO assertions at all — the primitive was covered, the CALL SITE was not, which is
+> exactly where a wrong answer hides. 13 added (294 total).
+> **FIX — a job with no shoot no longer takes a call sheet and drops it.** Found while verifying on prod. A
+> call sheet lives on the SHOOT (`set_call_times` + `sets.wrap_time`), and three legacy jobs have no shoot
+> row at all — they are sub-rental history, we rented FROM a vendor and no studio was booked. The form
+> offered the full control anyway: measured on prod, typed 07:15 for Producer + Photographer with an 18:30
+> wrap, saved, got no error, and the card came back "Call times: not set". The work just vanished. Editing
+> such a job now states the situation instead of showing a control that cannot keep anything, and says the
+> rest of the form still saves; creating a job is unaffected (its shoot is written in the same action).
+> Confirmed it is the missing shoot and not a broken chain: the same call sheet on a set-backed job wrote
+> through to Postgres as `{"roles":["Producer"],"call_time":"06:45:00"}` and read back on the card. Both prod
+> probes reverted — 0 call times, 0 wrap times.
+> **FEATURE — a free-text Note on a job and on an inventory item** (`20260913120000_notes_fields.sql`,
+> applied). Requested: "Добавить поле Note в: job, inventory, people, companies". **People and companies
+> ALREADY had one** — `contacts.notes` and `companies.notes` exist since the first schema, both editors write
+> them and both cards show them. Checked rather than assumed: 4 prod companies already carry a note. So the
+> migration adds only the two that were missing, `orders.notes` and `inventory_items.notes`.
+> ⚠️ `sets.notes` already existed and is a DIFFERENT note — it belongs to the SHOOT (the legacy
+> `BookingModal` writes it). This one belongs to the JOB, the record the crew actually opens, which is why it
+> is a new column and not a read of that one.
+> Both are textareas, not inputs: what gets written is a sentence or three ("load in through the freight
+> door"), and the cards render it with `whitespace-pre-line` so the crew's own line breaks survive. A row
+> appears only when there IS a note — an empty "Note" row on every job would be noise on most of them.
+> Plumbing, both traps this file has already written down: `notes` is the OUTERMOST select layer in
+> `getOrders` AND `getInventory` (**sixth** time that rule has mattered) and joins the columns a
+> pre-migration write strips and retries — `writeItemRow`'s retry used to drop `subcategory_id` alone and now
+> drops every column added after launch, or the second such column would refuse the whole write; and
+> `resolveOrder` in store.js is a WHITELIST, as are the local item field lists, so both were edited or the
+> note would store on prod and vanish in local mode. The item edit logs "note" in the activity diff.
+> Demo content: ONE seeded person carries a note, because 0 of 31 did and a field the demo never shows
+> demonstrates nothing — not all of them, which would read as a required field.
+> **REMOVED — the scanning station.** Requested: "УБрать модуль сканирования / Сканирование
+> применяем только для скана инвентаря внутри job при редактирвоание equipment". Epic #6's station was a
+> whole view that stayed open by the door for a shift; what the studio actually wants from scanning is the one
+> field that puts a copy on a job. Gone: the Scanning view and its nav tab, `store.scanUnit` +
+> `scanSyncError` + `clearScanSyncError` + the `scans` slice, `openScanning`, the repository's
+> `getScansByOrder` / `logScan` / `setSetUnitStatus`, `order.scans`, the job card's SCANNING block, the `SCAN`
+> capability, and `src/lib/scanning.js` — whose only surviving rule, `normalizeBarcode` (a code copied off the
+> screen carries the decorative `#`; a reader sends a trailing CR), moved to `src/lib/barcode.js`. A browser
+> that persisted `activeView: 'scanning'` falls back to the calendar — verified, that fallback already
+> existed for the hidden Archive. What SURVIVES is what was asked for: the scan field inside the equipment
+> window, verified after the removal (`#0851` with its hash and no Enter took the footer 4 → 5 pcs).
+> ⚠️ Two consequences, both deliberate: **nothing records the return of gear any more** (the pull sheet's
+> `ret` column is still in `packing_signoffs`, unwritten and waiting), and **closing a job is no longer
+> blocked** by units still scanned out — that guard read a log nothing writes, so it was a rule that could
+> never fire. The `scans` TABLE is left in place, as always: no app code reads it and dropping a table
+> destroys data.
+> **FEATURE — a DARK THEME, by redefining the palette rather than prefixing ~1800 classes.** Requested:
+> "Добавить темную тему и протестировать ее очень качественно".
+> **Mechanism.** Every colour utility in Tailwind v4 compiles to `var(--color-*)`, and those are plain
+> INHERITING custom properties on `:root,:host` (only the internal `--tw-*` ones are registered with
+> `@property`, which would not inherit). So the whole theme is a REDEFINITION of the palette under
+> `:root.dark` — not one `dark:` prefix anywhere, and every existing utility keeps working. The values are
+> Tailwind's OWN, generated from `node_modules/tailwindcss/theme.css`, never hexes I invented. ⚠️ Reading
+> them out of the COMPILED bundle looks equivalent and is not: it tree-shakes the steps the app does not use,
+> so `slate-950` was simply missing.
+> **Three states, not a boolean.** `src/lib/theme.js` is pure (14 assertions, **313 total**): System / Light
+> / Dark, because a two-way toggle cannot express "follow the device" once it has been touched.
+> `src/lib/useApplyTheme.js` puts the class on `<html>` and, ONLY while the preference is System, listens for
+> `prefers-color-scheme`. One button in the top bar (not the account menu — local mode has no account menu),
+> whose icon shows the state in effect and whose tooltip says what the next click does.
+> **No flash.** An inline script in `<head>` reads the same persisted store and sets the class before React
+> mounts; applying it from an effect means a white flash on every load, which is the one thing a dark theme
+> must not do. A synchronous head script always precedes first paint, and `dist/index.html` keeps it. A
+> corrupted `localStorage` falls back to the device — verified by corrupting it: the app still rendered, dark,
+> with the preference back at System.
+> **What could not be themed by the ramp, and why each got its own token.** `bg-white` meant TWO things —
+> the surface of a card/modal/popover (58 uses) and the text on a coloured button (`text-white`, 67) — and
+> one variable cannot invert one and leave the other, so the surface became `--color-surface` (`bg-white` is
+> now 0 occurrences). A modal backdrop is a veil over content and stays dark in both themes
+> (`--color-scrim`); the strong neutral chip carries white text so it must stay darker than whatever surface
+> it sits on (`--color-chip`). And the SOLID BUTTONS: every one of the 48 `bg-violet-600` and 9 `bg-rose-600`
+> occurrences carries `text-white` (checked, not assumed). White on violet-600 measures 5.89 and on
+> violet-500 only 4.4, so lifting the fill with the ramp would have failed 48 button labels — while leaving
+> the step where it was would have kept `text-violet-600` (75 uses) at 3.46 on a dark tint. They are now
+> `bg-brand` / `bg-danger` (+ `-strong` for the hovers) with **NO dark override**: a fill under white text has
+> no business changing with the theme. In the light theme `bg-brand` computes to exactly the old violet-600 —
+> measured, so the 96 class replacements are a visual no-op there.
+> **The neutral ramp is assigned BY ROLE, not mirrored.** A symmetric mirror (50↔950 … 400↔600) is the
+> obvious answer and it read badly, measurably: it puts muted text at 44% lightness on a 28% card (contrast
+> **2.35**) and `text-slate-400` is this app's most-used text colour. Counted, each step does exactly one job
+> — 100/200 are backgrounds and borders with **0** text uses, 400/500/600 are text with **0** border uses —
+> so the text steps land in the readable 70–98% band and the surfaces stay at 13–45%. No single mirror can do
+> both. Accents are mapped PER FAMILY for the same reason: violet-500 as text reads 3.46 on a dark tint while
+> amber-500 already reads 7.03, so lifting them identically would only wash amber out.
+> ⚠️ **One step's direction FLIPS.** `bg-slate-100` is an inset panel (120 uses), and in the light theme an
+> inset is slightly DARKER than the card around it. Mirrored, it landed on exactly the dark card's own colour
+> — caught by measuring, not reading: every well, sticky group header, row hover and inactive segment was
+> invisible. Nothing is darker than the page, so nesting on a dark ground reads by getting LIGHTER.
+> **Measured, every view and every modal, with transitions FROZEN** (`getComputedStyle` during a transition
+> returns the interpolated value — that once reported a dark amber cell as 1.4 against a true 10.37) and
+> colours converted through a CANVAS (an `rgb()`-only regex reads `oklch()` as "no colour" and invents
+> white-on-white; a second regex read `rgb()`'s blue channel as alpha). Text failures below WCAG AA, dark vs
+> light: calendar **0/10**, jobs **0/46**, inventory **0/63**, people **0/49**, and **0** in the job editor,
+> the equipment window, kit staging, the unit pick list, add-inventory, add-units, the item editor, work
+> history, the kit and list editors, the person and company editors, the packing checklist, peek cards two
+> deep, the select / date / month-year / status popovers, the mobile drawer, and each of those at 375px with
+> no horizontal overflow. The harness was proved to still bark by planting a 1.48 element.
+> The four that remain in dark are shared with the light theme and BETTER here than there: the "—" and "→"
+> placeholders (2.35 vs light's 1.49), out-of-month day numbers (2.54 vs 1.45), a DISABLED button (3.94 vs
+> 2.13) and the inert minute column before an hour is picked (which disappears the moment one is — checked).
+> Also better in dark, measured: card/popover separation from the page (1.13–1.18 vs light's 1.05), borders
+> against their own surface (1.72 vs 1.23), input placeholders (5.05 vs 3.05) and every coloured chip
+> (9.2–11.1 vs 4.85–6.65). `color-scheme: dark` hands the UA canvas, form controls and scrollbars over too.
+> ℹ️ **Two spots fail EQUALLY in both themes**, because their fill is theme-independent:
+> `bg-amber-500 text-white` on the calendar's "today" date badge (**2.13**) and `bg-emerald-500 text-white` on
+> the Confirmed toggle (**2.47**). Pre-existing, not introduced by the dark theme, and left alone rather than
+> quietly restyling an approved light theme — a one-line change each if the studio wants them fixed. The same
+> goes for the light theme's own muted labels (`text-slate-400` on white, **2.63**, 282 uses): dark reads 6.78
+> there, and "fix the light theme too" is a separate decision.
+> ℹ️ The PDFs stay light in both themes: a pull sheet is printed on paper.
+> ⚠️ Browser-tool lesson, twice over: a synthetic `change` on a MediaQueryList reaches only listeners on
+> THAT object, so my first "the device-follow is broken" reading was my own invalid test — patching
+> `matchMedia` and re-running the effect is what actually proves it (with System it attaches exactly ONE
+> listener and follows the device both ways; on an explicit choice the listener is REMOVED and a device flip
+> no longer overrides it). And this pane's `resize_window({colorScheme})` emulation is RE-SYNCED to the app's
+> own theme, so it cannot be used to test that at all. Screenshots were unavailable for this pass (the pane
+> draws nothing while Claude's window is behind another) — and a screenshot taken then returns a STALE frame
+> rather than failing, which is worth knowing before believing one.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
