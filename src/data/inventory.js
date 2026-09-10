@@ -33,10 +33,11 @@ export const CATEGORIES = [
   'Uncategorized',
 ]
 
-// Subcategories per category (the second level of the inventory tree). Offered
-// as a LIST so the same gear doesn't end up under three spellings — but not a
-// closed one: new kinds of equipment arrive, and the field also suggests
-// whatever the register is already using.
+// Subcategories per category, for the DEMO register only. Since
+// 20260911120000 the app's taxonomy is real rows (inventory_categories /
+// inventory_subcategories) and nothing reads this at runtime — it is the
+// vocabulary SEED_SUBCATEGORY below draws on, and `npm run test:lib` asserts
+// that it still covers every seeded item.
 export const SUBCATEGORIES = {
   Grip: ['Clamps', 'Stands', 'Sandbags & Weights', 'Aprons & Flags', 'Applebox & Risers', 'Rigging'],
   'Electric/Lighting': [
@@ -269,10 +270,11 @@ export function dayRateFor({ id, category }) {
   return DAY_RATE_OVERRIDES[id] ?? DAY_RATE_BY_CATEGORY[category] ?? 20
 }
 
-// Where each demo item is FILED (the second level of the tree). Values all come
-// from SUBCATEGORIES above — that map was written for exactly these seven demo
-// categories and lost its last consumer when the taxonomy became real rows, so
-// it is the seed's own source of truth now.
+// Where each demo item is FILED (the second level of the tree). Every value is
+// one SUBCATEGORIES lists for that item's category — that map was written for
+// exactly these seven demo categories, and it lost its last CODE consumer when
+// the taxonomy became real rows, so nothing but `npm run test:lib` keeps the two
+// in agreement. That assertion is the reason this can be trusted.
 //
 // A few pieces are deliberately left OUT: stock arriving before anyone has
 // filed it is a real state (the studio's own register had 51 such items after

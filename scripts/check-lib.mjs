@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy] =
+const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData] =
   await Promise.all([
     load('src/lib/activity.js'),
     load('src/lib/scanning.js'),
@@ -30,6 +30,7 @@ const [activity, scanning, orderSearch, estimate, estimatePdf, packingPdf, packi
     load('src/lib/setDays.js'),
     load('src/lib/callTimes.js'),
     load('src/lib/taxonomy.js'),
+    load('src/data/inventory.js'),
   ])
 
 let n = 0
@@ -482,6 +483,20 @@ ok(
     'archived stock does not shape the taxonomy')
   eq(taxonomy.categoryOf({ subcategoryId: built.assignments.c }, built)?.name,
     'Lighting Modification', 'and the result derives back correctly')
+}
+
+// The demo register's second level must stay inside the SUBCATEGORIES map: that
+// constant has no code consumer any more (the taxonomy is real rows now), so
+// without this it would drift out of agreement with the seed silently.
+{
+  const { SUBCATEGORIES, INVENTORY_SEED } = inventoryData
+  const filed = INVENTORY_SEED.filter((i) => i.subcategory)
+  ok(filed.length > 30, 'most of the demo register is filed')
+  const strays = filed.filter((i) => !(SUBCATEGORIES[i.category] ?? []).includes(i.subcategory))
+  eq(strays.map((i) => `${i.name}: ${i.category}/${i.subcategory}`), [],
+    'every seeded subcategory is one SUBCATEGORIES lists for that category')
+  const unfiled = INVENTORY_SEED.filter((i) => !i.subcategory)
+  ok(unfiled.length >= 1, 'and some stock is deliberately left unfiled — that state is real')
 }
 
 console.log(`OK — ${n} assertions passed`)

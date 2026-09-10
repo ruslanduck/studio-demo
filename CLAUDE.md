@@ -1791,10 +1791,11 @@
 > with their reasons, per-category name uniqueness allowing the same name elsewhere, a subcategory with no
 > category being refused, and `taxonomyFromItems` — the rule the SQL backfill applies, written once so the
 > demo seed and the migration cannot describe different shapes.
-> Demo content: the seed register is filed from the `SUBCATEGORIES` constant, which lost its last consumer
-> when the taxonomy became rows and is the seed's own source of truth now — 42 of 44 items, every assignment
-> checked against that map, with **two left unfiled on purpose** so the demo shows that state and the bulk
-> tool doing something.
+> Demo content: the seed register is filed with values drawn from the `SUBCATEGORIES` constant — 42 of 44
+> items, with **two left unfiled on purpose** so the demo shows that state and the bulk tool doing something.
+> ⚠️ That constant now has **no code consumer** (the taxonomy is rows), so nothing but an assertion keeps the
+> two in agreement: `test:lib` checks every seeded subcategory is one the map lists for that item's category
+> (**266 assertions**). A comment claiming they agree would have been the only thing holding it together.
 > Verified on prod as the app's own `authenticated` role: the backfill counts, the derived-category match,
 > NOT NULL refusing an orphan subcategory (**23502**), the per-category unique index refusing a duplicate
 > (**23505**) while the same name under another category is accepted, rename/archive/bulk-assign all working,
