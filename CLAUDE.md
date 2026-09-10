@@ -1576,6 +1576,24 @@
 > (one query was ordered, the other wasn't). The values matched. Compare counts, not serialisations.
 > ⚠️ The stale-DOM-read trap again while verifying: a chip read emerald in the call that clicked the menu item
 > and rose in the next one. React had not flushed. Split the click and the measurement, always.
+> **FIX — a dropdown is as wide as its LABELS, not as wide as its trigger.** Reported on the status pill:
+> the list read "Hold / Conf… / Clos… / Can…". `SelectField`'s popover took the trigger's width, which is
+> right for a full-width form field and wrong for a 97px pill — the four labels arrived in a box that could
+> not hold them. The trigger's width is now a **minimum** (`minWidth` + `width: max-content`), so a form
+> field still gets a field-wide list and a small trigger grows to its longest label; `maxWidth` caps it at
+> 24rem, the row keeps its ellipsis for a label long enough to need one (a disabled row that explains itself),
+> and every row now carries a `title` so a clipped label is still readable.
+> ⚠️ **Two things this needed that the obvious version missed.** (1) `width: max-content` did NOTHING at
+> first: the label span was `flex-1`, i.e. a flex BASIS of 0, and a flex item with a zero basis contributes
+> nothing to its container's max-content width. `flex-auto` makes the label count towards the intrinsic width
+> while still shrinking when the cap bites. (2) Growing can push a list off the right edge, so it is measured
+> once it exists and slid back — from `offsetWidth`, which does not depend on the shift, so re-running the
+> measurement cannot walk the popover across the screen. That clamp is skipped below a 200px viewport: a
+> HIDDEN browser pane reports `innerWidth: 0`, and the first version dutifully computed a negative bound and
+> parked the list at x = -105.
+> Measured: the status pill's list went 97 → **115px with none of the four labels truncated**, and the Jobs
+> filter's status dropdown still matches its 164px field exactly (164 → 164), so nothing that was already
+> right changed.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

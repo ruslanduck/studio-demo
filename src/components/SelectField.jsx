@@ -29,6 +29,9 @@ export default function SelectField({
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState(null)
   const [active, setActive] = useState(-1)
+  // How far the popover has to slide left to stay on screen once it is WIDER
+  // than its trigger (see the width note below).
+  const [shiftX, setShiftX] = useState(0)
   const btnRef = useRef(null)
   const popRef = useRef(null)
 
@@ -46,7 +49,11 @@ export default function SelectField({
     setCoords({
       top: openUp ? Math.max(8, r.top - Math.min(wanted, r.top - 8) - 4) : r.bottom + 4,
       left: r.left,
-      width: r.width,
+      // The trigger's width is a MINIMUM, not the width. A full-width form field
+      // still gets a full-width list, but a small trigger — the status pill is
+      // ~95px — used to hand its labels a box they didn't fit in, and "Confirmed"
+      // arrived as "Conf…". The list now grows to its longest label instead.
+      minWidth: r.width,
       maxHeight: Math.min(wanted, openUp ? r.top - 12 : below),
     })
   }
@@ -63,6 +70,22 @@ export default function SelectField({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, options.length])
+
+  // Growing to fit the content can push the list off the right edge, so it is
+  // measured once it exists and slid back. `offsetWidth` doesn't depend on the
+  // shift, so re-running this can't walk the popover across the screen.
+  useLayoutEffect(() => {
+    if (!open || !coords) {
+      setShiftX(0)
+      return
+    }
+    const el = popRef.current
+    // A degenerate viewport (a hidden pane reports 0) would compute a negative
+    // maxLeft and slide the list off the screen it is supposed to stay on.
+    if (!el || window.innerWidth < 200) return
+    const maxLeft = window.innerWidth - el.offsetWidth - 8
+    setShiftX(coords.left > maxLeft ? Math.min(0, maxLeft - coords.left) : 0)
+  }, [open, coords])
 
   useEffect(() => {
     if (!open) return
@@ -162,8 +185,13 @@ export default function SelectField({
             style={{
               position: 'fixed',
               top: coords.top,
-              left: coords.left,
-              width: coords.width,
+              left: coords.left + shiftX,
+              width: 'max-content',
+              minWidth: coords.minWidth,
+              // A label long enough to need this (a disabled row that explains
+              // itself) wraps up in an ellipsis with the full text on hover,
+              // rather than running past the window.
+              maxWidth: `min(24rem, calc(100vw - 16px))`,
               maxHeight: coords.maxHeight,
             }}
             className="z-[70] overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
@@ -182,6 +210,7 @@ export default function SelectField({
                   disabled={o.disabled}
                   onMouseEnter={() => setActive(i)}
                   onClick={() => pick(o)}
+                  title={o.label}
                   className={[
                     'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition',
                     o.disabled
@@ -196,7 +225,12 @@ export default function SelectField({
                     size={14}
                     className={['shrink-0', selected ? 'text-violet-600' : 'invisible'].join(' ')}
                   />
-                  <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                  {/* `flex-auto`, NOT `flex-1`: a flex item with a basis of 0
+                      contributes nothing to its container's max-content width,
+                      so the list would not grow to fit its labels at all — the
+                      whole point of the width rule above. It still shrinks (and
+                      ellipsises) when the maxWidth clamp bites. */}
+                  <span className="min-w-0 flex-auto truncate">{o.label}</span>
                 </button>
               )
             })}
