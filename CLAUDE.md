@@ -2157,6 +2157,19 @@
 > ℹ️ The legacy `BookingModal` got the same field, but the seed has no order-less shoot to open it
 > with (archiving an order now takes its shoot down too), so that one is covered by the build, the
 > lint and `audit:jsx` rather than by a click.
+> **FIX — the call sheet shows on the JOB's peek card too.** Reported against the card a calendar chip
+> opens: "надо call time светить внутри джобы". The sheet was on the job's FULL card and on the
+> SHOOT's peek card, but not on the job's peek — which is exactly the card you land on from the grid,
+> and the first thing anyone asks of a job on the day is what time people are due. It now sits in THE
+> SHOOT block under the Shoot row: every call with its roles and note, then the wrap.
+> ⚠️ That would have been a THIRD copy of the same rendering, so `src/components/CallSheetList.jsx`
+> is the one definition and all three read through it. `wrapTime` is optional: the full job card keeps
+> the wrap in its own labelled row, while the peek cards want the whole sheet in one block.
+> Verified on the seeded 3-day job: the job peek reads "Call times · 07:30 Producer · 08:00
+> Photographer, Digital tech · 08:30 Hair & makeup, Stylist · 10:00 Model · 18:00 wrap"; the shoot
+> peek shows the same list from the same component; the full card is unchanged in shape. A job whose
+> shoot has no sheet reads "not set" on the card and the job peek, "No call times set for this shoot."
+> on the shoot card.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
