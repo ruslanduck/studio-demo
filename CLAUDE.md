@@ -2170,6 +2170,48 @@
 > peek shows the same list from the same component; the full card is unchanged in shape. A job whose
 > shoot has no sheet reads "not set" on the card and the job peek, "No call times set for this shoot."
 > on the shoot card.
+> **FIX — the call sheet reads as a schedule, and one call is one line.** Reported against a job's
+> peek card that printed "08:15 Producer" **twice**: "вот это работает? … нужно как-то подметить их
+> более ярко". Both halves were fair.
+> **(1) The duplicate was real data, and the app had no reason to keep it.** Nothing duplicates rows —
+> the write path DELETEs and re-INSERTs — so those were two rows someone typed. But a call sheet is
+> read BY TIME (that is why `roles` is a list in the first place), so a second "08:15 Producer" line
+> adds nothing and reads as a rendering fault. `normalizeCallTimes` now unions the roles of rows that
+> share a time. ⚠️ Rows sharing a time with DIFFERENT notes stay apart: the note is what tells them
+> apart ("freight door" vs "park on 9th"), and folding them would strand it on a role it was never
+> about. It runs on READ as well as on write (the repository maps `set_call_times` through it, and
+> `CallSheetList` does it again), so a shoot saved before this change reads right **without its rows
+> being rewritten** — proved by planting the reported pair in storage and reloading: 4 stored rows,
+> 3 lines on the card, the two 06:45s with different notes still two.
+> **(2) The time is what is being looked up**, so it is set in a chip at the card's strongest text
+> colour instead of reading as one more grey line among the "—" rows around it. Measured with
+> transitions frozen: chip 13.97 dark / 16.28 light, roles 16.28 / 10.36, wrap 12 / 4.76 — the wrap
+> takes the same shape in OUTLINE because it is the end of the day, not somebody's call. The job
+> card's separate "Wrap" row folded into it, so all three surfaces (job card, job peek, shoot peek)
+> show one block from `CallSheetList`. No overflow at 375px.
+> 7 new assertions (**332 total**), including the reported pair collapsing and `earliestCall` still
+> answering from it.
+> **CUT — the hints that teach how to click.** Requested against the note field's "Click away or ⌘↵ to
+> save": "поубирай такого рода подсказки с разных мест, определи важность этой подсказки и поудаляй
+> подобные". The Save button sits under the box and says it already.
+> Judged the same way and cut with it: three peek-card headings that narrated their own rows ("Open a
+> line to see that item's units and history", "Open a unit that's out to jump to the job holding it",
+> "Shoots this person was crewed on"), the taxonomy banner's directions to another screen (the COUNT
+> of unfiled items stays — that is a fact), and both "Edit anything below" tails on the
+> scenario-applied banners (BookingModal and OrderEquipmentModal — the second one only surfaced in the
+> BUNDLE grep, not in the source sweep I ran first).
+> Kept, by the rule this file already carries: validation that prevents silent loss ("this row won't
+> be saved"), the REASON a blocked action is blocked, what a destructive click will do, the
+> FIXED/GENERIC legend, and empty states that say what to do next. Tooltips were left alone — they are
+> asked for, not standing on screen.
+> `PeekPanel`'s `Section` lost its now-unused `hint` slot: dead plumbing that reads as live is worse
+> than no plumbing.
+> Verified in local mode: the note header reads just "NOTE" with the Save button while dirty, Escape
+> still reverts the draft without closing the card behind it, the sections render straight into their
+> content, and the bundle greps **0** for all six strings.
+> ⚠️ My own measurement slip, worth remembering: `innerText` applies `text-transform`, so a check for
+> "The shoot" on a card whose heading is uppercased comes back FALSE and reads as "the card closed".
+> Use `textContent` when asserting that something is on screen.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
