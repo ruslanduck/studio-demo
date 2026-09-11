@@ -2058,6 +2058,19 @@
 > ⚠️ My own measurement error, for the second time in two days: reading a computed colour right after
 > toggling the theme class returned the INTERPOLATED value and reported the light theme as dark.
 > Freeze transitions before believing any colour.
+> ⚠️ **A SECOND pre-existing bug, found by checking the supabase path rather than trusting the
+> browser pass.** `itemFieldColumns` in the repository emitted ALL six of its older columns on every
+> call, filling the absent ones with null. That is right for the item FORM (which always submits its
+> whole shape) and destructive for a partial write — so the note saved from the item card would have
+> written null over brand, asset type, storage location, subcategory, purchase date and purchase
+> price. **Local mode guards its own field list with `in`, so the browser pass could never have
+> caught it: only the real database would have lost the data** — the "same logic written twice" class
+> again. Worse, it was ALREADY losing something: the item form deliberately does not submit the
+> legacy `subcategory` TEXT (the record of what a piece was imported as), so every item edit on prod
+> had been nulling that column.
+> `src/lib/patch.js` `pickPatch(source, map)` is the rule written once — `undefined` leaves a column
+> alone, null or '' clears it — with 6 assertions (**325 total**). The item form's own saves are
+> byte-identical through it (every key it sends is present), so nothing that worked changes.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),

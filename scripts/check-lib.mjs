@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows, theme, ordering] =
+const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows, theme, ordering, patch] =
   await Promise.all([
     load('src/lib/activity.js'),
     load('src/lib/barcode.js'),
@@ -34,6 +34,7 @@ const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packin
     load('src/lib/unitRows.js'),
     load('src/lib/theme.js'),
     load('src/lib/ordering.js'),
+    load('src/lib/patch.js'),
   ])
 
 let n = 0
@@ -664,6 +665,23 @@ ok(
   // A missing field must not throw or reorder randomly.
   const partial = [{ id: 'x' }, { id: 'y', on: '2026-01-01' }]
   eq([...partial].sort(newest).map((r) => r.id).join(''), 'yx', 'a row with no date sorts last, deterministically')
+}
+
+// ---------------------------------------------------------------------------
+// lib/patch — a partial write must not blank the columns it said nothing about.
+{
+  const MAP = { brand: 'brand', assetType: 'asset_type', notes: 'notes' }
+  const only = patch.pickPatch({ notes: 'a thought' }, MAP)
+  eq(Object.keys(only).join(','), 'notes', 'a notes-only patch touches ONLY notes')
+  eq(only.notes, 'a thought', 'and carries it')
+  // The bug this replaced: the item mapper emitted every column it knew, so
+  // saving one field wrote null over five others — on the real database only,
+  // because local mode guards its own list with `in`.
+  const whole = patch.pickPatch({ brand: 'Profoto', assetType: '', notes: null }, MAP)
+  eq(whole.brand, 'Profoto', 'a supplied value is written')
+  eq(whole.asset_type, null, "an empty string CLEARS the column")
+  eq(whole.notes, null, 'and so does an explicit null')
+  eq(Object.keys(patch.pickPatch({}, MAP)).length, 0, 'nothing supplied writes nothing at all')
 }
 
 console.log(`OK — ${n} assertions passed`)

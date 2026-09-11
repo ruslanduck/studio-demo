@@ -9,6 +9,7 @@
 // models), so switching the source is transparent to components.
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { newestFirst } from '../lib/ordering'
+import { pickPatch } from '../lib/patch'
 import { studioLabel, studioColor } from './studios'
 import { createUnits } from './inventory'
 import { normalizeCallTimes, toHHMM } from '../lib/callTimes'
@@ -823,21 +824,25 @@ export async function logItemUsage(itemId, { jobTitle, studioId, quantity, usedO
 }
 
 // Map the item's optional attribute fields to DB columns (blank → null).
+// ⚠️ ONLY the keys the caller supplied. This used to emit all six of the older
+// columns unconditionally, filling the absent ones with null — which is right
+// for the item form (it always submits its whole shape) and DESTRUCTIVE for a
+// partial write. The moment one field was saved on its own (the note on the
+// item card) the same UPDATE wrote null over brand, asset type, storage
+// location, subcategory, purchase date and purchase price. Local mode guards
+// its own field list with `in`, so only the real database would have lost it.
+// `undefined` leaves a column alone; null or '' clears it.
 function itemFieldColumns(f = {}) {
-  const clean = (v) => (v === '' || v == null ? null : v)
-  const cols = {
-    brand: clean(f.brand),
-    asset_type: clean(f.assetType),
-    placement: clean(f.placement),
-    subcategory: clean(f.subcategory),
-    purchase_date: clean(f.purchaseDate),
-    replacement_price: clean(f.replacementPrice),
-  }
-  // Only when the caller actually said something about it: `undefined` means
-  // "leave the assignment alone", `null` means "unassign".
-  if ('subcategoryId' in f) cols.subcategory_id = clean(f.subcategoryId)
-  if ('notes' in f) cols.notes = clean(f.notes)
-  return cols
+  return pickPatch(f, {
+    brand: 'brand',
+    assetType: 'asset_type',
+    placement: 'placement',
+    subcategory: 'subcategory',
+    purchaseDate: 'purchase_date',
+    replacementPrice: 'replacement_price',
+    subcategoryId: 'subcategory_id',
+    notes: 'notes',
+  })
 }
 
 // A write that carries a column a pre-migration database hasn't got: retry
