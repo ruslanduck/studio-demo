@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Check, Plus, AlertTriangle } from 'lucide-react'
+import { Check, Plus } from 'lucide-react'
 import Modal from './Modal'
+import ErrorNote from './ErrorNote'
 import UnitRowsField, { blankUnitRow } from './UnitRowsField'
 import { duplicateTypedBarcode } from '../lib/unitRows'
 
@@ -123,13 +124,9 @@ export default function UnitEditorModal({
             />
           </div>
 
-          {error && (
-            <div className="flex items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              {error}
-            </div>
-          )}
         </div>
+
+        <ErrorNote>{error}</ErrorNote>
 
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
           <button

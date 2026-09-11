@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Check, AlertTriangle, Archive as ArchiveIcon, Boxes } from 'lucide-react'
+import { Check, Archive as ArchiveIcon, Boxes } from 'lucide-react'
 import Modal from './Modal'
+import ErrorNote from './ErrorNote'
 import DateRangeField from './DateRangeField'
 import SelectField from './SelectField'
 import ComboField from './ComboField'
@@ -347,13 +348,9 @@ export default function OrderEditorModal({
             </div>
           </div>
 
-          {error && (
-            <div className="flex items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              {error}
-            </div>
-          )}
         </div>
+
+        <ErrorNote>{error}</ErrorNote>
 
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 py-3">
           {isEdit && onDelete ? (

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   UserPlus,
   Check,
-  AlertTriangle,
   Globe,
   AtSign,
   FileText,
@@ -12,6 +11,7 @@ import {
   Archive as ArchiveIcon,
 } from 'lucide-react'
 import Modal from './Modal'
+import ErrorNote from './ErrorNote'
 import SelectField from './SelectField'
 import { PEOPLE_CATEGORIES } from '../data/people'
 
@@ -342,13 +342,9 @@ export default function PersonEditorModal({
             />
           </div>
 
-          {error && (
-            <div className="flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
-              <AlertTriangle size={13} />
-              {error}
-            </div>
-          )}
         </div>
+
+        <ErrorNote>{error}</ErrorNote>
 
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 py-3">
           {/* Job history no longer BLOCKS this. Deleting was impossible for anyone

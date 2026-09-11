@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, Pencil, Plus, X } from 'lucide-react'
+import { Check, ChevronRight, Pencil, Plus, X } from 'lucide-react'
 import Modal from './Modal'
+import ErrorNote from './ErrorNote'
 import SelectField from './SelectField'
 import { useStore } from '../store'
 import { useCan } from '../lib/useCan'
@@ -103,10 +104,32 @@ export default function TaxonomyModal({ open, onClose }) {
   return (
     <Modal open={open} onClose={onClose} title="Categories & subcategories" size="lg">
       <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-        {error && (
-          <div className="flex items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-            {error}
+        {/* Creating a category is the first thing this window is for, so it is
+            the first thing in it — it used to sit under the whole tree. */}
+        {mayEdit && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={newCat}
+              onChange={(e) => setNewCat(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addCategory()
+                }
+              }}
+              placeholder="New category"
+              className={`${FIELD} max-w-xs`}
+            />
+            <button
+              type="button"
+              onClick={addCategory}
+              disabled={!newCat.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+            >
+              <Plus size={14} />
+              Add category
+            </button>
           </div>
         )}
 
@@ -120,7 +143,7 @@ export default function TaxonomyModal({ open, onClose }) {
         <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
           {tree.length === 0 && (
             <p className="px-3 py-6 text-center text-xs text-slate-400">
-              No categories yet. Add the first one below.
+              No categories yet.
             </p>
           )}
 
@@ -322,34 +345,9 @@ export default function TaxonomyModal({ open, onClose }) {
             </div>
           ))}
         </div>
-
-        {mayEdit && (
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={newCat}
-              onChange={(e) => setNewCat(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addCategory()
-                }
-              }}
-              placeholder="New category"
-              className={`${FIELD} max-w-xs`}
-            />
-            <button
-              type="button"
-              onClick={addCategory}
-              disabled={!newCat.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
-            >
-              <Plus size={14} />
-              Add category
-            </button>
-          </div>
-        )}
       </div>
+
+      <ErrorNote>{error}</ErrorNote>
 
       <div className="flex shrink-0 justify-end border-t border-slate-200 px-5 py-3">
         <button

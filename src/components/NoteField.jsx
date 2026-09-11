@@ -37,7 +37,6 @@ export default function NoteField({
   const [draft, setDraft] = useState(text)
   const [status, setStatus] = useState('') // '' | 'saving' | 'saved' | 'error'
   const [error, setError] = useState('')
-  const [focused, setFocused] = useState(false)
 
   // ⚠️ Every write in this app ends in a quiet `hydrate()`, which hands out new
   // objects — so `value` changes identity constantly, and a naive
@@ -203,11 +202,7 @@ export default function NoteField({
           ref={box}
           value={draft}
           onChange={(e) => setText(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => {
-            setFocused(false)
-            save()
-          }}
+          onBlur={save}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.stopPropagation() // close the note, not the card behind it
@@ -221,13 +216,13 @@ export default function NoteField({
           }}
           placeholder={placeholder}
           rows={compact ? 1 : 2}
-          className={`w-full resize-none overflow-hidden rounded-lg border px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 ${
-            // Quiet until touched: a card is a place to read, and six boxed
-            // form fields would make every card look like a form.
-            focused || dirty || draft
-              ? 'border-slate-300 bg-surface'
-              : 'border-dashed border-slate-300 bg-slate-50'
-          }`}
+          // No frame until it is being used: a card is a place to read, and a
+          // dashed box on every one of the seven records this appears on made
+          // each card look like a form — reported as exactly that. The box is
+          // left to `hover:`/`focus:` rather than to a React flag, or
+          // `bg-surface` and the base `bg-transparent` would both apply and the
+          // winner would be stylesheet order.
+          className="w-full resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 hover:bg-slate-100 focus:border-violet-400 focus:bg-surface focus:ring-2 focus:ring-violet-100"
         />
         {dirty && (
           <button

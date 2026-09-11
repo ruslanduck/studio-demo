@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive as ArchiveIcon, AlertTriangle } from 'lucide-react'
+import { Archive as ArchiveIcon } from 'lucide-react'
 import { ITEM_KINDS } from '../data/inventory'
 import { useStore } from '../store'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
+import ErrorNote from './ErrorNote'
 import DateField from './DateField'
 import SelectField from './SelectField'
 import UnitRowsField, { blankUnitRow } from './UnitRowsField'
@@ -383,20 +384,11 @@ export default function AddInventoryModal({
             </div>
           )}
 
-          {createError && (
-            <div className="flex items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              {createError}
-            </div>
-          )}
         </div>
 
-        {archiveError && (
-          <div className="mx-5 mb-3 flex shrink-0 items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-            {archiveError}
-          </div>
-        )}
+        <ErrorNote>{createError}</ErrorNote>
+
+        <ErrorNote>{archiveError}</ErrorNote>
 
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 py-3">
           {isEdit && can(CAP.INVENTORY_DELETE) ? (
