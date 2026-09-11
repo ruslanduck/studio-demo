@@ -113,7 +113,7 @@ export default function TaxonomyModal({ open, onClose }) {
         {unfiled > 0 && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
             {unfiled} item{unfiled === 1 ? '' : 's'} {unfiled === 1 ? 'is' : 'are'} not filed under
-            any subcategory yet — use “File under…” in the inventory list to place them.
+            any subcategory yet.
           </p>
         )}
 

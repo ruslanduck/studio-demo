@@ -407,7 +407,7 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
                         {applied.applied.units === 1 ? '' : 's'} reserved
                         {applied.applied.kits > 0 &&
                           `, ${applied.applied.kits} kit${applied.applied.kits === 1 ? '' : 's'} staged`}
-                        . Edit anything below.
+                        .
                       </p>
                       <button
                         type="button"

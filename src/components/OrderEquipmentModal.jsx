@@ -746,7 +746,7 @@ export default function OrderEquipmentModal({
               />
               {applied && (
                 <div className="mt-2 rounded-lg bg-violet-50 px-3 py-2 text-xs text-violet-900 ring-1 ring-violet-200">
-                  <strong>{applied.name}</strong> applied. Edit anything below.
+                  <strong>{applied.name}</strong> applied.
                   {(applied.warnings?.length > 0 || applied.notes?.length > 0) && (
                     <ul className="mt-1 space-y-0.5 text-violet-700/90">
                       {[...(applied.warnings ?? []), ...(applied.notes ?? [])].map((w, i) => (

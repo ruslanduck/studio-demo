@@ -167,14 +167,15 @@ function LinkRow({ icon: Icon = Package, title, sub, right, onClick, tint }) {
   )
 }
 
-function Section({ title, count, children, hint }) {
+// No `hint` slot: the three that existed all explained what a click would do,
+// and a prop nothing passes reads as live plumbing.
+function Section({ title, count, children }) {
   return (
     <section className="px-4 py-3">
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
         {title}
         {count != null && count > 0 && ` (${count})`}
       </h4>
-      {hint && <p className="mb-2 text-xs text-slate-400">{hint}</p>}
       {children}
     </section>
   )
@@ -369,10 +370,7 @@ function OrderPeek({ id }) {
         </div>
       </Section>
 
-      <Section
-        title={`Equipment · ${estimate.pieces} pcs`}
-        hint="Open a line to see that item's units and history."
-      >
+      <Section title={`Equipment · ${estimate.pieces} pcs`}>
         {estimate.groups.length === 0 ? (
           <Empty text="Nothing added yet." />
         ) : (
@@ -520,11 +518,7 @@ function ItemPeek({ id, unitId }) {
       )}
 
       {isBarcoded && (
-        <Section
-          title="Units"
-          count={item.units.length}
-          hint="Open a unit that's out to jump to the job holding it."
-        >
+        <Section title="Units" count={item.units.length}>
           <div className="space-y-1.5">
             {item.units.map((u) => {
               const b = bookingForUnit(u.id)
@@ -686,11 +680,7 @@ function PersonPeek({ id }) {
         )}
       </Section>
 
-      <Section
-        title="Work history"
-        count={person.jobs?.length ?? 0}
-        hint="Shoots this person was crewed on."
-      >
+      <Section title="Work history" count={person.jobs?.length ?? 0}>
         {!person.jobs?.length ? (
           <Empty text="No jobs yet." />
         ) : (

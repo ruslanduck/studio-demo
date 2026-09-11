@@ -17,7 +17,8 @@ import { StickyNote } from 'lucide-react'
 // differs. The button is not a second code path: `save()` compares against the
 // last stored value and returns early, and a click always arrives AFTER the
 // blur it caused, so the button is a visible reassurance that no-ops. Escape
-// puts the stored text back.
+// puts the stored text back. None of that is written on screen — the Save
+// button IS the instruction, and "Saving…/Saved" is the result.
 export default function NoteField({
   // Identity of the record being edited. When it changes, the field re-seeds —
   // and flushes an unsaved draft first, so picking another row can't eat what
@@ -175,9 +176,6 @@ export default function NoteField({
         {status === 'saving' && <span className="text-slate-400">Saving…</span>}
         {status === 'saved' && <span className="text-emerald-600">Saved</span>}
         {status === 'error' && <span className="text-rose-600">{error}</span>}
-        {!status && dirty && canEdit && (
-          <span className="text-slate-400">Click away or ⌘↵ to save</span>
-        )}
       </span>
     </div>
   )
