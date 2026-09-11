@@ -2212,6 +2212,43 @@
 > ⚠️ My own measurement slip, worth remembering: `innerText` applies `text-transform`, so a check for
 > "The shoot" on a card whose heading is uppercased comes back FALSE and reads as "the card closed".
 > Use `textContent` when asserting that something is on screen.
+> **CHANGE — the status control SHOWS every state, so nothing has to explain it.** Reported against
+> the job form with a screenshot: a note under the Hold/Confirmed toggle read "Currently 'canceled' —
+> picking Hold or Confirmed replaces it", which reads as "the default status is canceled" — followed
+> by "сделать холд дефолтным".
+> Hold WAS already the default (`status: 'hold'` in the form's initial state, and `createOrder` writes
+> whatever it is handed). The real defect is that the toggle could only show TWO of the four states a
+> job can be in, so a job that was anywhere else left both segments dark and needed a sentence to
+> apologise for it — a control that cannot show where you already are reads as broken. The card's pill
+> dropdown had learnt this already; the form hadn't.
+> Now it renders `ORDER_STATUS_CHOICES` (plus the job's own value when that is a legacy `draft`), each
+> lit in its OWN pill classes from `orderStatus.js` — so the form, the card pill and the calendar menu
+> cannot disagree, and the segment is the statement the note used to make. ℹ️ Side effect worth having:
+> the old lit style was `bg-emerald-500 text-white`, one of the two 2.47-contrast spots this file has
+> been listing; the pill classes measure **6.78 dark / 5.02 light**.
+> **Creating offers only the two states a job ahead of you can be in, with Hold lit** — that is what
+> "Hold is the default" looks like on screen, and it is shown on create now (it used to be hidden
+> behind `isEdit`, which is how the default became invisible enough to be doubted). Picking Confirmed
+> at creation is safe: the two-step flow calls `setOrderLines` immediately after `createOrder`, and
+> that already syncs reservations.
+> Cut in the same pass, same class as the click-hints: the "Job name — **what are we shooting?**"
+> label suffix (and its echo in the validation message), and the call-time note placeholder's
+> "— where to arrive, what to bring…" tail.
+> ℹ️ **Three of the things the screenshot crossed out were already gone** — "Who is expected on set,
+> and when…", "When the shoot finishes…", "Must match the PO accounting issued…" — and the First
+> day / Last day pair is one "Shoot days" field now. The page had not been reloaded since those
+> deploys. Worth checking the CURRENT source against a screenshot before believing a report is about
+> live code.
+> Verified in local mode by measurement: the edit form reads Job name (no suffix) and Status with four
+> segments and no note; a job moved to **Canceled** from the card shows Canceled lit in rose (the
+> reported case), one click on Hold + Save wrote `hold` through and the card's pill agreed; a new job
+> shows Hold lit of two; the call-time row's placeholder is "Note"; at 375px the four segments are
+> 78px each with nothing clipped and no page overflow. Demo data reseeded (14 jobs / 11 shoots /
+> 0 activity).
+> ⚠️ The pane kept ONE console error from the moment between two of my edits (`ORDER_FLOW is not
+> defined` — the import landed in the next command). It survives a reload in the buffer, so it cannot
+> be dismissed as stale by assumption: the path that reads that binding is the CREATE form, and it
+> renders Hold/Confirmed after a full reload, which is the proof.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
