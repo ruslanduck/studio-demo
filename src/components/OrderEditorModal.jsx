@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Check, AlertTriangle, Info, Archive as ArchiveIcon, Boxes } from 'lucide-react'
+import { Check, AlertTriangle, Archive as ArchiveIcon, Boxes } from 'lucide-react'
 import Modal from './Modal'
-import DateField from './DateField'
+import DateRangeField from './DateRangeField'
 import SelectField from './SelectField'
 import ComboField from './ComboField'
 import { studioLabel } from '../data/studios'
-import { MAX_SET_DAYS, setSpanDays, spanLabel } from '../lib/setDays'
+import { MAX_SET_DAYS, setSpanDays } from '../lib/setDays'
 import { isValidTime, normalizeCallTimes, wrapBeforeFirstCall } from '../lib/callTimes'
 import CallTimesField from './CallTimesField'
 
@@ -102,13 +102,6 @@ export default function OrderEditorModal({
   // Picking a start pulls an empty or earlier end along with it, so the common
   // case (a one-day shoot) is one click and the range can never read backwards
   // just because the fields were filled in an awkward order.
-  const setStart = (startsOn) =>
-    setForm((f) => ({
-      ...f,
-      startsOn,
-      endsOn: !f.endsOn || f.endsOn < startsOn ? startsOn : f.endsOn,
-    }))
-
   const days = setSpanDays(form.startsOn, form.endsOn)
 
   async function submit(e) {
@@ -163,17 +156,6 @@ export default function OrderEditorModal({
     <Modal open={open} onClose={onClose} size="lg" title={isEdit ? 'Edit job' : 'New job'}>
       <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
-          {!isEdit && (
-            <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-800 ring-1 ring-amber-200">
-              <Info size={14} className="mt-0.5 shrink-0" />
-              <span>
-                The job starts on <strong>Hold</strong> and books the studio for
-                {days > 1 ? ` all ${days} days` : ' the day'}. Equipment comes next, in the
-                window that opens after this one.
-              </span>
-            </div>
-          )}
-
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
               <label className={label}>Job name — what are we shooting?</label>
@@ -227,39 +209,14 @@ export default function OrderEditorModal({
               Availability, the estimate's billable days, the packing sheet and
               the job search already read this window; the form is what used to
               force it shut on the day it opened. */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className={label}>First day</label>
-              <DateField
-                value={form.startsOn}
-                onChange={(e) => setStart(e.target.value)}
-                className={field}
-              />
-            </div>
-            <div>
-              <label className={label}>Last day</label>
-              <DateField
-                value={form.endsOn}
-                onChange={(e) => set({ endsOn: e.target.value })}
-                className={field}
-              />
-              <p
-                className={[
-                  'mt-1 text-[11px]',
-                  form.endsOn && form.startsOn && form.endsOn < form.startsOn
-                    ? 'font-medium text-rose-600'
-                    : 'text-slate-400',
-                ].join(' ')}
-              >
-                {!form.startsOn
-                  ? 'Same as the first day unless you say otherwise.'
-                  : form.endsOn && form.endsOn < form.startsOn
-                    ? 'That is before the first day.'
-                    : days > 1
-                      ? `${days} days · ${spanLabel(form.startsOn, form.endsOn)} — the studio and the gear are held for all of them.`
-                      : `One day · ${spanLabel(form.startsOn, form.endsOn)}`}
-              </p>
-            </div>
+          <div>
+            <label className={label}>Shoot days</label>
+            <DateRangeField
+              from={form.startsOn}
+              to={form.endsOn}
+              onChange={({ from, to }) => set({ startsOn: from, endsOn: to })}
+              className={field}
+            />
           </div>
 
           {/* The call sheet. A shoot has no single start time — the

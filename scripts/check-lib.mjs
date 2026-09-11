@@ -107,17 +107,17 @@ eq(orderSearch.brandsIn([]), [], 'no jobs, no brands')
 // view list "all shoots + style-outs" without a parallel entity.
 eq(
   orderSearch.jobTypesIn([]),
-  ['Editorial', 'PDP', 'Style-out'],
+  ['Editorial', 'PDP'],
   'the types the studio names are offered from day one',
 )
 eq(
   orderSearch.jobTypesIn([{ jobType: 'Lookbook' }]),
-  ['Editorial', 'PDP', 'Style-out', 'Lookbook'],
+  ['Editorial', 'PDP', 'Lookbook'],
   'a new type joins',
 )
 eq(
   orderSearch.jobTypesIn([{ jobType: 'PDP' }]),
-  ['Editorial', 'PDP', 'Style-out'],
+  ['Editorial', 'PDP'],
   'and a used default is not duplicated',
 )
 // the studio stays OUT of free text: a bare "2" would match every 2026 date

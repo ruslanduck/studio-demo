@@ -141,11 +141,10 @@ export function brandsIn(orders) {
 // Shoot types present, with the ones the studio names offered even before a job
 // uses them — otherwise the filter is empty on day one and reads as broken.
 //
-// A STYLE-OUT is one of these, not a separate kind of record: it books a studio
-// for a day, has a call sheet and pulls gear exactly like a shoot, so the day
-// view lists it beside them and the type is what tells them apart. Free text
-// still, so a fourth kind needs no code.
-export const JOB_TYPES = ['Editorial', 'PDP', 'Style-out']
+// The two the studio actually runs. FREE TEXT still — `jobTypesIn` merges these
+// with every type the register already carries, so a third kind needs no code
+// and a job that already says something else keeps saying it.
+export const JOB_TYPES = ['Editorial', 'PDP']
 
 export function jobTypesIn(orders) {
   const used = (orders ?? []).map((o) => o.jobType).filter(Boolean)

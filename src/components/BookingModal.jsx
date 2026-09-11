@@ -14,12 +14,12 @@ import { useStore, notArchived } from '../store'
 import { applyScenarioList } from '../lib/scenarios'
 import { availableCount, resolveUnitsForQuantities } from '../lib/availability'
 import { studioLabel } from '../data/studios'
-import { endsOnFor, spanSummary } from '../lib/setDays'
+import { endsOnFor } from '../lib/setDays'
 import { isValidTime, normalizeCallTimes, rolesFor } from '../lib/callTimes'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import Modal from './Modal'
-import DateField from './DateField'
+import DateRangeField from './DateRangeField'
 import CallTimesField from './CallTimesField'
 import KitStagingModal from './KitStagingModal'
 import SelectField from './SelectField'
@@ -137,11 +137,6 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
 
   const roleOptions = useMemo(() => rolesFor(allBookings), [allBookings])
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
-  // The last day follows the first while it is empty or would sit before it, so
-  // a one-day shoot stays one click and the range never reads backwards.
-  const setStart = (date) =>
-    setForm((f) => ({ ...f, date, endDate: !f.endDate || f.endDate < date ? date : f.endDate }))
-
   // Units of an item that this booking may reserve (free + its own), minus any
   // already claimed by a staged kit.
   function availCount(item) {
@@ -301,24 +296,14 @@ export default function BookingModal({ open, onClose, booking, prefill }) {
             {/* A shoot books whole days, from the first to the last. It used
                 to take one date plus a start and end time; the grid is
                 studio x day, so the times said nothing the range doesn't. */}
-            <div>
-              <label className={labelClass}>First day</label>
-              <DateField
-                value={form.date}
-                onChange={(e) => setStart(e.target.value)}
+            <div className="sm:col-span-2">
+              <label className={labelClass}>Shoot days</label>
+              <DateRangeField
+                from={form.date}
+                to={form.endDate}
+                onChange={({ from, to }) => setForm((f) => ({ ...f, date: from, endDate: to }))}
                 className={fieldClass}
               />
-            </div>
-            <div>
-              <label className={labelClass}>Last day</label>
-              <DateField
-                value={form.endDate}
-                onChange={set('endDate')}
-                className={fieldClass}
-              />
-              <p className="mt-1 text-[11px] text-slate-400">
-                {form.date ? spanSummary(form.date, form.endDate) : 'Same as the first day.'}
-              </p>
             </div>
           </div>
 

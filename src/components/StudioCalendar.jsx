@@ -906,7 +906,14 @@ function WeekView({
     <div
       className={`min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-surface shadow-sm ${flip}`}
     >
-      <div className="grid min-w-[760px] grid-cols-[56px_repeat(7,minmax(0,1fr))]">
+      {/* `min-h-full` + 1fr rows: the grid used to stop at the rows' own
+          92px minimum and leave the bottom half of the screen empty, however
+          many jobs a week held. The minimum stays, so a row still grows past
+          its share when a studio has a stack of jobs and the wrapper scrolls. */}
+      <div
+        className="grid min-h-full min-w-[760px] grid-cols-[56px_repeat(7,minmax(0,1fr))]"
+        style={{ gridTemplateRows: `auto repeat(${studios.length}, minmax(92px, 1fr))` }}
+      >
         {/* Header row */}
         <div className="sticky top-0 z-20 border-b border-r border-slate-200 bg-surface" />
         {days.map((day) => (
