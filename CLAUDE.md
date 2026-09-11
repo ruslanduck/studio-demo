@@ -1987,6 +1987,9 @@
 > goes for the light theme's own muted labels (`text-slate-400` on white, **2.63**, 282 uses): dark reads 6.78
 > there, and "fix the light theme too" is a separate decision.
 > ℹ️ The PDFs stay light in both themes: a pull sheet is printed on paper.
+> ℹ️ The LOGIN screen was the one surface the signed-in session could not reach; measured the next
+> day when prod's session had expired and it rendered on its own: **0 failures in dark** (its worst
+> is white on the brand button at 5.89), against light's usual 2.63 muted line.
 > ⚠️ Browser-tool lesson, twice over: a synthetic `change` on a MediaQueryList reaches only listeners on
 > THAT object, so my first "the device-follow is broken" reading was my own invalid test — patching
 > `matchMedia` and re-running the effect is what actually proves it (with System it attaches exactly ONE
@@ -1995,6 +1998,66 @@
 > own theme, so it cannot be used to test that at all. Screenshots were unavailable for this pass (the pane
 > draws nothing while Claude's window is behind another) — and a screenshot taken then returns a STALE frame
 > rather than failing, which is worth knowing before believing one.
+> **CHANGE — the note is ON the card and always writable, and a SORT that had been
+> reshuffling every list.** Reported with a screenshot of a person's card: "ноут через
+> редактирование не оч функционален … хорошо бы чтобы это поле было доступно в карточках и всегда
+> было редактируемым … это касается всех Note сущностей во всех разделах."
+> True as reported: a note appeared only once one existed, so an empty record gave no hint that a
+> note was possible, and writing one meant opening the record's full editor, finding the field and
+> saving the whole form — the most clicks for the quickest thought a crew has.
+> `src/components/NoteField.jsx` is ONE control for all **seven** note-bearing records — job,
+> inventory item, kit, scenario list, person, company and the shoot — on their full cards AND on the
+> peek cards. One component because a note must behave identically everywhere and seven copies of the
+> save/dirty/flush logic would drift.
+> It saves **on blur**, on **Cmd/Ctrl+Enter**, and from a **Save** button that appears while the text
+> differs. The button is not a second code path: `save()` compares against the last stored value, and
+> a click always arrives AFTER the blur it caused, so it no-ops — measured, blur + button produce
+> exactly ONE `item.updated` event. **Escape** puts the stored text back and does NOT close the card
+> behind it (`stopPropagation`, the SelectField precedent).
+> ⚠️ **The peek cards get the note too — the one thing they let you change.** They are read-only on
+> purpose (they own no edit state, and nesting a view's modals in them would put dialogs inside
+> dialogs), but a note carries its own save and is exactly the field you want where you are standing.
+> ⚠️ **The SHOOT's note was invisible.** `sets.notes` has always existed beside `orders.notes` — two
+> different columns, one belonging to the day and one to the job — and only the legacy booking editor
+> ever wrote it, with nothing displaying it. It is on the shoot's peek card now; verified the two do
+> not cross (writing one left the other untouched).
+> ⚠️ **A PRE-EXISTING BUG this surfaced, and the real reason the first version "lost" notes: the
+> app's sorts were not TOTAL.** `(a, b) => (a.date < b.date ? 1 : -1)` reads as "newest first" and is
+> a broken comparator — for two rows with the SAME date it answers -1 whichever way it is asked, i.e.
+> "a after b" AND "b after a" — so V8 swapped the pair on every sort. This store re-sorts on EVERY
+> write, so two jobs on one day changed places each time anything was saved, and a view whose
+> selection falls back to the first row (which every view does on a first visit) then showed a
+> DIFFERENT record after each save. INSTRUMENTING the field is what caught it — the log read
+> `run order-10 … reseed order-9 … run order-10 now:""`, i.e. the card had flipped under the field.
+> `src/lib/ordering.js` `newestFirst(field, tie)` breaks ties on the id, which is unique and never
+> changes; all **nine** occurrences now use it (store.js ×5, People ×2, repository, the usage seed).
+> **6 assertions (319 total)**, one of which pins the OLD comparator's own inconsistency as the thing
+> being fixed.
+> ⚠️ The other half of that failure was mine: the queued save read the draft when its TURN came, "so
+> a burst of edits collapses into one write". Across a record change the later draft belongs to a
+> DIFFERENT record — it wrote an empty note over the one just saved. The text and the record are
+> captured at the CALL now, and the result only touches this field's state while it is still on that
+> record. Switching rows flushes a dirty draft to the record it was typed on.
+> ⚠️ And the reverse of the stale-value trap, which this component lives with: every write ends in a
+> quiet `hydrate()` that hands out new objects, so `value` changes identity constantly. A naive
+> "sync props into state" effect would wipe what is being typed — the incoming value is adopted only
+> while the field is clean.
+> Each of the six full cards reads its store action ITSELF rather than taking a prop: the note's
+> write is that card's own business, and threading an action through every parent is how a shared
+> modal once lost a required prop and white-screened a view. Every write path was checked to be
+> partial-safe FIRST — `orderColumns` / `personColumns` / `companyColumns` and the kit / list /
+> booking patches all emit only the keys they are handed, and every local branch merges over the
+> record — so a `{ notes }` patch cannot blank a neighbouring field.
+> Verified in local mode by measurement, all seven records and both card kinds: the field is present
+> and empty on a record with no note; a two-line note round-trips through the store with its line
+> breaks; the item card logs the edit as "note"; switching jobs shows the other job's note and coming
+> back shows the saved one; the compact field on the item card is 36px against 56px elsewhere;
+> frozen-transition colours give text 14.62 light / 17.04 dark with a visible border in both; no
+> horizontal overflow at 1280 or 375. Demo data reseeded — the seed's own 4 company / 3 kit / 4 list
+> / 1 person notes are back and every test note is gone. 0 console errors on a clean load.
+> ⚠️ My own measurement error, for the second time in two days: reading a computed colour right after
+> toggling the theme class returned the INTERPOLATED value and reported the light theme as dark.
+> Freeze transitions before believing any colour.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
