@@ -152,7 +152,7 @@ export default function CallTimesField({
                       type="text"
                       value={r.note ?? ''}
                       onChange={(e) => patch(i, { note: e.target.value })}
-                      placeholder="Note — where to arrive, what to bring…"
+                      placeholder="Note"
                       className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
                     />
                     <button

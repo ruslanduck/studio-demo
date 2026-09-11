@@ -5,6 +5,12 @@ import DateRangeField from './DateRangeField'
 import SelectField from './SelectField'
 import ComboField from './ComboField'
 import { studioLabel } from '../data/studios'
+import {
+  ORDER_FLOW,
+  ORDER_STATUS,
+  ORDER_STATUS_CHOICES,
+  orderStatusMeta,
+} from '../data/orderStatus'
 import { MAX_SET_DAYS, setSpanDays } from '../lib/setDays'
 import { isValidTime, normalizeCallTimes, wrapBeforeFirstCall } from '../lib/callTimes'
 import CallTimesField from './CallTimesField'
@@ -106,7 +112,7 @@ export default function OrderEditorModal({
 
   async function submit(e) {
     e?.preventDefault()
-    if (!form.jobName.trim()) return setError('Give the job a name — what are we shooting?')
+    if (!form.jobName.trim()) return setError('Give the job a name.')
     if (!form.startsOn) return setError('Pick the start date.')
     // Clamping a backwards range silently would book days nobody asked for.
     if (form.endsOn && form.endsOn < form.startsOn)
@@ -148,6 +154,19 @@ export default function OrderEditorModal({
     onClose()
   }
 
+  // A NEW job can only be somewhere ahead of you, and it starts on Hold — the
+  // segment is lit from the form's own default, so the state is shown rather
+  // than explained. An EXISTING job offers every state it can be moved to, plus
+  // its own when that is a legacy value ('draft'): a control that cannot show
+  // where you already are reads as broken, which is exactly what the note it
+  // replaces was apologising for. Same list as the card's pill and the
+  // calendar's status menu.
+  const statusChoices = !isEdit
+    ? ORDER_FLOW
+    : ORDER_STATUS_CHOICES.includes(form.status)
+      ? ORDER_STATUS_CHOICES
+      : [form.status, ...ORDER_STATUS_CHOICES]
+
   const label = 'mb-1.5 block text-sm font-medium text-slate-700'
   const field =
     'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
@@ -158,7 +177,7 @@ export default function OrderEditorModal({
         <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
-              <label className={label}>Job name — what are we shooting?</label>
+              <label className={label}>Job name</label>
               <input
                 autoFocus
                 type="text"
@@ -305,34 +324,28 @@ export default function OrderEditorModal({
             />
           </div>
 
-          {isEdit && (
-            <div>
-              <label className={label}>Status</label>
-              <div className="flex rounded-lg border border-slate-300 p-0.5">
-                {[
-                  ['hold', 'Hold', 'bg-amber-400 text-amber-950'],
-                  ['confirmed', 'Confirmed', 'bg-emerald-500 text-white'],
-                ].map(([val, lbl, active]) => (
+          <div>
+            <label className={label}>Status</label>
+            <div className="flex rounded-lg border border-slate-300 p-0.5">
+              {statusChoices.map((value) => {
+                const meta = orderStatusMeta(value)
+                const on = form.status === value
+                return (
                   <button
-                    key={val}
+                    key={value}
                     type="button"
-                    onClick={() => set({ status: val })}
+                    onClick={() => set({ status: value })}
                     className={[
                       'flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition',
-                      form.status === val ? active : 'text-slate-600 hover:bg-slate-100',
+                      on ? [meta.pill, 'ring-1'].join(' ') : 'text-slate-600 hover:bg-slate-100',
                     ].join(' ')}
                   >
-                    {lbl}
+                    {ORDER_STATUS[value]?.label ?? value}
                   </button>
-                ))}
-              </div>
-              {!['hold', 'confirmed'].includes(form.status) && (
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Currently “{form.status}” — picking Hold or Confirmed replaces it.
-                </p>
-              )}
+                )
+              })}
             </div>
-          )}
+          </div>
 
           {error && (
             <div className="flex items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
