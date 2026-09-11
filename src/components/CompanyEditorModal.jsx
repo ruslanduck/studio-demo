@@ -182,9 +182,6 @@ export default function CompanyEditorModal({
 
             {managingTypes && (
               <div className="mt-2 space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                <p className="text-[11px] text-slate-500">
-                  Renaming relabels companies using it. Removing only takes it out of this list.
-                </p>
                 <ul className="space-y-1">
                   {companyTypes.filter((t) => !t.archivedAt).map((t) => (
                     <li key={t.id} className="flex items-center gap-2">

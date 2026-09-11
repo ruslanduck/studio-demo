@@ -124,9 +124,6 @@ export default function CallTimesField({
     <div className="space-y-3">
       <div>
         <label className={label}>Call times</label>
-        <p className="-mt-1 mb-2 text-[11px] text-slate-400">
-          Who is expected on set, and when. Add as many as the day needs — or none.
-        </p>
 
         {rows.length > 0 && (
           <ul className="mb-2 space-y-2">
@@ -209,11 +206,7 @@ export default function CallTimesField({
             <AlertTriangle size={12} />
             That is before the first call.
           </p>
-        ) : (
-          <p className="mt-1 text-[11px] text-slate-400">
-            When the shoot finishes. Leave it empty if it isn&apos;t settled yet.
-          </p>
-        )}
+        ) : null}
       </div>
     </div>
   )

@@ -252,7 +252,7 @@ export default function Archive() {
 
         <Section
           title="Inventory items"
-          hint="their copies come back with them"
+          hint="their units come back with them"
           rows={archivedItems.map((i) => (
             <Row
               key={i.id}

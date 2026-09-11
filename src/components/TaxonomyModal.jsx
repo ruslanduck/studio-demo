@@ -103,12 +103,6 @@ export default function TaxonomyModal({ open, onClose }) {
   return (
     <Modal open={open} onClose={onClose} title="Categories & subcategories" size="lg">
       <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-        <p className="text-xs text-slate-500">
-          Gear is filed under a <strong>subcategory</strong>; its category comes from that. A
-          category can be removed once it holds no stock and no subcategories; a subcategory once
-          it holds no stock.
-        </p>
-
         {error && (
           <div className="flex items-start gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -301,7 +295,7 @@ export default function TaxonomyModal({ open, onClose }) {
                 ) : (
                   cat.subs.length === 0 && (
                     <p className="text-[11px] text-slate-400">
-                      No subcategories — nothing can be filed here yet.
+                      No subcategories yet.
                     </p>
                   )
                 )}

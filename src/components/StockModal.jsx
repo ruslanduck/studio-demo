@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Minus, AlertTriangle, Info } from 'lucide-react'
+import { Plus, Minus, AlertTriangle } from 'lucide-react'
 import Modal from './Modal'
 
 // Move stock for a non-barcoded item, which has no unit rows to
@@ -45,10 +45,7 @@ export default function StockModal({ open, item, onClose, onSubmit }) {
     <Modal open={open} onClose={onClose} size="md" title="Stock">
       <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
-          <p className="text-sm text-slate-500">
-            <span className="font-medium text-slate-700">{item?.name}</span> is counted by quantity —
-            no barcodes, no per-unit rows.
-          </p>
+          <p className="text-sm font-medium text-slate-700">{item?.name}</p>
 
           <div className="flex rounded-lg border border-slate-300 p-0.5">
             {[
@@ -102,14 +99,6 @@ export default function StockModal({ open, item, onClose, onSubmit }) {
                 {tooMany ? '—' : next}
               </span>
             </div>
-          </div>
-
-          <div className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
-            <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
-            <span>
-              Recorded in this item&apos;s activity with your name and the time — that&apos;s the
-              difference from correcting the number under “Edit item”.
-            </span>
           </div>
 
           {/* Say WHY the button is dead. `error` is set in submit(), which a

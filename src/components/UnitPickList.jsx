@@ -96,7 +96,7 @@ export default function UnitPickList({
         <p className="px-3 py-3 text-center text-xs text-slate-400">
           {units.length === 0
             ? `No ${itemName} is free for these dates.`
-            : `No copy matches “${q.trim()}”.`}
+            : `No unit matches “${q.trim()}”.`}
         </p>
       ) : (
         <ul className="max-h-44 overflow-auto">
@@ -130,7 +130,7 @@ export default function UnitPickList({
     <div className="border-t border-slate-200 bg-slate-50/70">
       <div className="flex items-center justify-between px-3 pt-2 text-[11px] text-slate-500">
         <span>
-          {units.length} free {itemName} — pick the copy
+          {units.length} free {itemName} — pick one
         </span>
         <button
           type="button"

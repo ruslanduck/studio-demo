@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Info, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { MAX_UNIT_ROWS, barcodePreviews } from '../lib/unitRows'
 
 // ONE ROW PER COPY — the control for registering physical units, shared by
@@ -51,14 +51,6 @@ export default function UnitRowsField({
 
   return (
     <>
-      <div className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-600 ring-1 ring-slate-200">
-        <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
-        <span>
-          One row per copy. Leave a row empty and its barcode and serial are generated — that&apos;s
-          the case for a batch of identical gear. Type them in for a copy you have in hand.
-        </span>
-      </div>
-
       <div className="flex items-end gap-3">
         <div>
           <label className={LABEL}>How many?</label>
@@ -71,9 +63,6 @@ export default function UnitRowsField({
             className={[FIELD, 'w-24'].join(' ')}
           />
         </div>
-        <p className="pb-2.5 text-xs text-slate-400">
-          {rows.length === 1 ? '1 copy' : `${rows.length} copies`} will be registered.
-        </p>
       </div>
 
       <div className="space-y-2">
@@ -105,7 +94,7 @@ export default function UnitRowsField({
               <button
                 type="button"
                 onClick={() => onChange((cur) => cur.filter((_, idx) => idx !== i))}
-                title="Remove this copy"
+                title="Remove this unit"
                 className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-rose-600"
               >
                 <X size={14} />
@@ -122,7 +111,7 @@ export default function UnitRowsField({
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-violet-700 transition hover:bg-violet-50"
           >
             <Plus size={13} />
-            Add another copy
+            Add another unit
           </button>
         )}
       </div>

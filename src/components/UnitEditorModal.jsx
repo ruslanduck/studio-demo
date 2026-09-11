@@ -49,7 +49,7 @@ export default function UnitEditorModal({
       // Caught next to the field rather than after a round trip; the store
       // checks it too, and that one is the guarantee (lib/unitRows).
       const dup = duplicateTypedBarcode(rows)
-      if (dup) return setError(`#${dup} is listed twice — each copy needs its own barcode.`)
+      if (dup) return setError(`#${dup} is listed twice — each unit needs its own barcode.`)
     }
     setBusy(true)
     const res = isEdit
@@ -74,7 +74,7 @@ export default function UnitEditorModal({
       <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-4">
           <p className="text-sm text-slate-500">
-            {isEdit ? 'Correcting the identifiers on ' : 'Adding physical copies of '}
+            {isEdit ? 'Correcting the identifiers on ' : 'Adding units to '}
             <span className="font-medium text-slate-700">{itemName}</span>.
           </p>
 
@@ -121,16 +121,6 @@ export default function UnitEditorModal({
               placeholder={itemPlacement || 'e.g. Camera cage · Shelf A1'}
               className={field}
             />
-            <p className="mt-1 text-[11px] text-slate-400">
-              Where {isEdit ? 'this copy is' : rows.length === 1 ? 'it is' : 'they are'} kept when
-              in.{' '}
-              {!isEdit && rows.length > 1 && 'Applies to every copy above. '}
-              {itemPlacement
-                ? `Leave empty to use the item's — ${itemPlacement}.`
-                : 'The item has no storage location yet — set one under “Edit item” and every copy inherits it.'}{' '}
-              The table&apos;s Location column shows the job it&apos;s out on instead, which comes
-              from the orders.
-            </p>
           </div>
 
           {error && (
@@ -155,7 +145,7 @@ export default function UnitEditorModal({
             className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-strong disabled:opacity-50"
           >
             {isEdit ? <Check size={15} /> : <Plus size={15} />}
-            {isEdit ? 'Save unit' : rows.length === 1 ? 'Add copy' : `Add ${rows.length} copies`}
+            {isEdit ? 'Save unit' : rows.length === 1 ? 'Add unit' : `Add ${rows.length} units`}
           </button>
         </div>
       </form>

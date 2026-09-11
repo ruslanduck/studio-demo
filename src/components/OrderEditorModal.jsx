@@ -275,11 +275,8 @@ export default function OrderEditorModal({
               its shoot is written in the same action. */}
           {isEdit && !order?.setId ? (
             <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500 ring-1 ring-slate-200">
-              <p className="font-medium text-slate-700">No call sheet for this job</p>
-              <p className="mt-1">
-                Call times and the wrap belong to the shoot, and this job has no shoot booked — it
-                is a sub-rental raised against another job. Everything else here still saves.
-              </p>
+              <p className="font-medium text-slate-700">No call sheet</p>
+              <p className="mt-1">This job has no shoot booked.</p>
             </div>
           ) : (
             <div className="rounded-lg bg-surface p-3 ring-1 ring-slate-200">
@@ -349,9 +346,6 @@ export default function OrderEditorModal({
               placeholder="e.g. PO-4503"
               className={[field, 'font-mono'].join(' ')}
             />
-            <p className="mt-1 text-[11px] text-slate-400">
-              Must match the PO accounting issued — not generated.
-            </p>
           </div>
 
           {isEdit && (

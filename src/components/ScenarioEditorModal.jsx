@@ -183,9 +183,6 @@ export default function ScenarioEditorModal({
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Pull list ({form.entries.length})
               </span>
-              <span className="text-[11px] text-slate-400">
-                Kits stage their own slots · items pull by quantity
-              </span>
             </div>
 
             <ul className="space-y-1.5">

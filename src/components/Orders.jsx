@@ -1026,8 +1026,7 @@ function OrderDetail({
             </div>
           ) : (
             <p className="text-sm text-slate-400">
-              Nothing added yet — “Edit equipment” in the header assigns items, kits or a
-              scenario list.
+              Nothing added yet.
             </p>
           )}
           </div>
@@ -1088,7 +1087,7 @@ function OrderDetail({
                       about this sheet, not an explanation of the feature. */}
                   {estimate.lineCount > 0 && order.status !== 'confirmed' && !isClosedStatus(order.status) && (
                     <span className="text-xs text-amber-600">
-                      not confirmed — no copies reserved yet
+                      not confirmed — no units reserved yet
                     </span>
                   )}
                 </span>

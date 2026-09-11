@@ -310,7 +310,7 @@ export default function KitStagingModal({
     setScanError(null)
     setLastAction({
       tone: 'plain',
-      text: `#${f?.barcode} went back to stock — pick another copy for this slot.`,
+      text: `#${f?.barcode} went back to stock — pick another unit for this slot.`,
     })
   }
 
@@ -459,8 +459,7 @@ export default function KitStagingModal({
             <div className="min-w-0">
               <div className="truncate font-semibold text-violet-900">{kit.name}</div>
               <div className="text-xs text-violet-700/80">
-                Fixed slots are pinned automatically. Fill each generic slot by scanning a barcode
-                or choosing a free copy. This won’t change the kit itself.
+                Filling slots here doesn’t change the kit itself.
               </div>
             </div>
           </div>
@@ -519,9 +518,6 @@ export default function KitStagingModal({
               Assign
             </button>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
-            A scan fills whichever slot expects that item.
-          </p>
           {scanError && (
             <div className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-rose-600">
               <AlertTriangle size={13} />
@@ -594,8 +590,7 @@ export default function KitStagingModal({
         {needCount > 0 ? (
           <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
             <AlertTriangle size={13} />
-            {needCount} slot{needCount === 1 ? '' : 's'} still need a unit — scan a barcode, choose a
-            copy, or remove the slot before adding.
+            {needCount} slot{needCount === 1 ? '' : 's'} still need a unit.
           </div>
         ) : (
           fills.length > 0 && (
@@ -664,7 +659,7 @@ export default function KitStagingModal({
                   {/* Right side: state */}
                   {f.counted ? (
                     <span className="shrink-0 text-right text-[11px] text-slate-400">
-                      counted stock · no copy to pick
+                      counted stock · no unit to pick
                     </span>
                   ) : filled ? (
                     <div className="flex shrink-0 flex-col items-end">
@@ -708,7 +703,7 @@ export default function KitStagingModal({
                           else openUnitPicker(f.key)
                         }}
                         disabled={free === 0}
-                        title="Show the copies that are free for these dates and pick one"
+                        title="Show the units free for these dates and pick one"
                         className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Choose unit
@@ -723,7 +718,7 @@ export default function KitStagingModal({
                             setEditing({ key: f.key, value: f.barcode ?? '', error: null })
                             setReplacing(null)
                           }}
-                          title="Correct this copy's barcode in stock (a worn label) — not a way to swap units; use Replace for that"
+                          title="Correct this unit's barcode in stock (a worn label) — not a way to swap units; use Replace for that"
                           className="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                         >
                           <Pencil size={14} />
@@ -908,7 +903,7 @@ export default function KitStagingModal({
         {unitPicker && !unitPicker.slotKey && (
           <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
             <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Add {inventory.find((i) => i.id === unitPicker.itemId)?.name} — pick a copy
+              Add {inventory.find((i) => i.id === unitPicker.itemId)?.name} — pick a unit
             </div>
             <UnitPickList
               bare

@@ -83,7 +83,7 @@ export default function Login() {
           </button>
 
           <p className="mt-4 text-center text-xs text-slate-400">
-            Access is provided by the studio. Ask the equipment team for an account.
+            Ask the equipment team for an account.
           </p>
         </form>
       </div>

@@ -265,9 +265,6 @@ export default function PersonEditorModal({
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Profile
               </span>
-              <span className="text-[11px] text-slate-400">
-                Website, Instagram or a CV — whichever they have
-              </span>
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-2">

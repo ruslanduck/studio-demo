@@ -20,11 +20,6 @@ const MAX_QTY = 500
 // A sentinel option value, not an id: picking it opens the inline creator.
 const NEW_SUB = '__new_subcategory__'
 
-const KIND_HELP = {
-  barcoded: 'Each unit tracked by barcode & serial.',
-  non_barcoded: 'Counted by quantity only (e.g. 50 J-hooks, gaffer tape).',
-}
-
 const BLANK = {
   name: '',
   kind: 'barcoded',
@@ -138,7 +133,7 @@ export default function AddInventoryModal({
       // Caught next to the field; the store checks it too and that one is the
       // guarantee (lib/unitRows).
       const dup = duplicateTypedBarcode(unitRows)
-      if (dup) return setCreateError(`#${dup} is listed twice — each copy needs its own barcode.`)
+      if (dup) return setCreateError(`#${dup} is listed twice — each unit needs its own barcode.`)
     }
     const price = form.replacementPrice.trim()
     const base = {
@@ -231,9 +226,9 @@ export default function AddInventoryModal({
                 </button>
               ))}
             </div>
-            <p className="mt-1.5 text-xs text-slate-400">
-              {isEdit ? "Type can't be changed after creation." : KIND_HELP[form.kind]}
-            </p>
+            {isEdit && (
+              <p className="mt-1.5 text-xs text-slate-400">Type can&apos;t be changed after creation.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -308,13 +303,12 @@ export default function AddInventoryModal({
                   )}
                 </div>
               ) : (
-                <p className="mt-1 text-[11px] text-slate-400">
-                  {filed
-                    ? 'Its category comes from the subcategory.'
-                    : item?.category
-                      ? `Imported as “${item.category}”${item.subcategory ? ` / ${item.subcategory}` : ''} — pick where it belongs.`
-                      : 'Stock can be registered before it is filed.'}
-                </p>
+                !filed &&
+                item?.category && (
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {`Imported as “${item.category}”${item.subcategory ? ` / ${item.subcategory}` : ''} — pick where it belongs.`}
+                  </p>
+                )
               )}
             </div>
             <div>
@@ -330,11 +324,6 @@ export default function AddInventoryModal({
             <div>
               <label className={label}>Storage location</label>
               <input type="text" value={form.placement} onChange={set('placement')} placeholder="e.g. Grip room · Shelf B3" className={field} />
-              {isBarcoded && (
-                <p className="mt-1.5 text-xs text-slate-400">
-                  Units inherit it unless a copy has its own.
-                </p>
-              )}
             </div>
             <div>
               <label className={label}>Purchase price</label>
@@ -368,9 +357,6 @@ export default function AddInventoryModal({
                 {showQty ? (
                   <>
                     <input type="number" min={isEdit ? '0' : '1'} max={MAX_QTY} value={form.quantity} onChange={set('quantity')} className={field} />
-                    <p className="mt-1.5 text-xs text-slate-400">
-                      Stored as a count — no per-unit barcodes.
-                    </p>
                   </>
                 ) : (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
@@ -387,7 +373,7 @@ export default function AddInventoryModal({
               "Add unit" uses, so the question is asked one way. */}
           {creatingUnits && (
             <div className="space-y-3 rounded-xl border border-slate-200 p-3">
-              <p className="text-sm font-medium text-slate-700">Its copies</p>
+              <p className="text-sm font-medium text-slate-700">Its units</p>
               <UnitRowsField
                 rows={unitRows}
                 onChange={setUnitRows}
@@ -417,7 +403,7 @@ export default function AddInventoryModal({
             confirmArchive ? (
               <span className="flex items-center gap-2 text-xs">
                 <span className="text-slate-600">
-                  Archive it? It and all its copies leave the app.
+                  Archive it? It and all its units leave the app.
                 </span>
                 <button
                   type="button"

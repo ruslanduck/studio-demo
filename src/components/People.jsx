@@ -698,7 +698,7 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpen
             </div>
           ) : (
             <p className="text-sm text-slate-400">
-              No website, Instagram or CV on file — not everyone has one.
+              No website, Instagram or CV on file.
             </p>
           )}
         </section>
@@ -719,9 +719,6 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpen
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
             Work history{person.jobs.length > 0 && ` (${person.jobs.length})`}
           </h4>
-          <p className="mb-2 text-xs text-slate-400">
-            Shoots this person was crewed on.
-          </p>
           <JobList
             jobs={person.jobs}
             emptyText="No jobs yet."

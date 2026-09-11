@@ -87,10 +87,9 @@ export default function PackingChecklistModal({
               <div className="truncate font-semibold text-slate-900">
                 {order.jobName ?? order.setTitle ?? 'Job'}
               </div>
-              <div className="mt-0.5 text-xs text-slate-500">
-                {order.poNumber ? `PO ${order.poNumber} · ` : ''}
-                One row per barcoded copy — tick it once it's in the case.
-              </div>
+              {order.poNumber && (
+                <div className="mt-0.5 text-xs text-slate-500">PO {order.poNumber}</div>
+              )}
             </div>
             <div className="shrink-0 text-center text-xs">
               <div className="text-base font-semibold text-slate-900">
@@ -197,7 +196,7 @@ export default function PackingChecklistModal({
 
       <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 px-5 py-3">
         <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
-          <PackageCheck size={14} /> Ticks save automatically, signed as {myInitials}.
+          <PackageCheck size={14} /> Signed as {myInitials}.
         </span>
         <button
           type="button"

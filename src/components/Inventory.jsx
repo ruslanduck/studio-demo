@@ -1197,7 +1197,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
               onClick={isBarcoded ? onAddUnit : onAddStock}
               title={
                 isBarcoded
-                  ? 'Register another physical copy of this item'
+                  ? 'Register another unit of this item'
                   : 'Stock received or gone out — logged with who and when'
               }
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-strong"
@@ -1373,7 +1373,7 @@ function UnitDetail({ item, query, canEdit, onEdit, canToggleOwnership, onToggle
                           setConfirmDeleteId(null)
                           onDeleteUnit(unit)
                         }}
-                        title="Archives the copy — the register keeps its barcode and history"
+                        title="Archives the unit — the register keeps its barcode and history"
                         className="rounded-md bg-danger px-2 py-1 font-medium text-white transition hover:bg-danger-strong"
                       >
                         Write off
@@ -1523,11 +1523,6 @@ function NonBarcodedBody({ item, onShowWorkHistory }) {
           <div className="text-4xl font-semibold text-slate-900">{itemCount(item)}</div>
           <div className="mt-1 text-xs uppercase tracking-wide text-slate-400">on hand</div>
         </div>
-        <p className="max-w-xs text-sm text-slate-500">
-          Non-barcoded — counted by quantity, no per-unit tracking. Stock in and out is recorded with
-          who and when; usage is aggregated across jobs. There&apos;s no day-by-day availability
-          calendar for counted stock: nothing is reserved copy by copy, so a job takes from the pile.
-        </p>
       </div>
 
       <div className="mt-5 flex items-center justify-between">
@@ -1857,9 +1852,6 @@ function ScenarioDetail({ list, inventory, kits, canManage, onEdit, onSelectItem
         <div className="mb-2 flex items-center justify-between px-1">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Pull list
-          </span>
-          <span className="text-xs text-slate-400">
-            Pick this list in a new booking to add it all at once
           </span>
         </div>
         <ul className="space-y-1.5">

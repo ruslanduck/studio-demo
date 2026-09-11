@@ -540,7 +540,7 @@ ok(
   )
   eq(
     unitRows.resolveUnitCodes([{ barcode: '0900' }, { barcode: '0900' }], { taken }).error,
-    '#0900 is listed twice — each copy needs its own barcode.',
+    '#0900 is listed twice — each unit needs its own barcode.',
     'two rows claiming one barcode are refused',
   )
   ok(!unitRows.resolveUnitCodes([{ barcode: '0900' }, {}], { taken }).error,

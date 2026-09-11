@@ -493,7 +493,7 @@ export default function OrderEquipmentModal({
       }
       return next
     })
-    setScanNote({ bad: false, text: `#${code} → ${item.name} · copy pinned` })
+    setScanNote({ bad: false, text: `#${code} → ${item.name} · unit pinned` })
   }
 
   // A brand-new item type, created here and added straight to the order. The
@@ -1035,7 +1035,7 @@ export default function OrderEquipmentModal({
                           are resolved when the order is confirmed. */}
                       {!isSub && item?.kind === 'barcoded' && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6">
-                          <span className="text-[11px] text-slate-400">Copies</span>
+                          <span className="text-[11px] text-slate-400">Units</span>
                           {(l.units ?? []).map((u) => (
                             <span
                               key={u.unitId}
@@ -1045,7 +1045,7 @@ export default function OrderEquipmentModal({
                               <button
                                 type="button"
                                 onClick={() => unpinUnit(i, u.unitId)}
-                                title="Back to any free copy"
+                                title="Back to any free unit"
                                 className="rounded text-violet-400 transition hover:text-rose-500"
                               >
                                 <X size={11} />
@@ -1057,7 +1057,7 @@ export default function OrderEquipmentModal({
                               className="text-[11px] text-slate-400"
                               title="Resolved from what's free when the job is confirmed"
                             >
-                              {l.quantity - (l.units ?? []).length} × any free copy
+                              {l.quantity - (l.units ?? []).length} × any free unit
                             </span>
                           )}
                           <button
@@ -1066,7 +1066,7 @@ export default function OrderEquipmentModal({
                             className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-violet-600 transition hover:bg-violet-50"
                           >
                             <ScanLine size={11} />
-                            {copyPicker === i ? 'Close' : 'Choose / scan a copy'}
+                            {copyPicker === i ? 'Close' : 'Choose / scan a unit'}
                           </button>
                         </div>
                       )}
