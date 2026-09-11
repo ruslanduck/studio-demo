@@ -2071,6 +2071,44 @@
 > `src/lib/patch.js` `pickPatch(source, map)` is the rule written once — `undefined` leaves a column
 > alone, null or '' clears it — with 6 assertions (**325 total**). The item form's own saves are
 > byte-identical through it (every key it sends is present), so nothing that worked changes.
+> **UI PASS — the interface stopped explaining itself, and a physical piece is a UNIT.** Two reports
+> against a screenshot of the Add-units window: "убрать комменты со всех сущностей там где это не
+> уместно, потому что слишком много данных и текста … оно будто документация какая-то а не интерфейс",
+> and "почему у нас везде называются они теперь copy? давай унифицируем до unit".
+> Both fair, and the first is measurable: **42 blocks of literal small-print prose across the
+> components, 2855 characters — now 26 and 1358.** Half the prose gone, and it was the half that
+> taught the model rather than doing any work.
+> **The rule applied to each block: does this say something the screen doesn't?** Cut: the boxed
+> "One row per copy. Leave a row empty and its barcode and serial are generated…" (the greyed previews
+> already show the exact codes a blank row will take) and "N copies will be registered" (the number is
+> in the field beside it); four sentences under Storage location about inheritance and about a
+> different column in a different table; "Each unit tracked by barcode & serial" under a toggle whose
+> buttons read Barcoded / Non-barcoded — that note survives only in EDIT mode, where it explains a
+> disabled control; "Its category comes from the subcategory"; "Stock can be registered before it is
+> filed"; the Categories intro restating removal rules that are REPORTED with real counts the moment a
+> removal is blocked; the Stock box explaining how it differs from editing the number; "Who is expected
+> on set, and when…" under a field labelled Call times; "Must match the PO accounting issued";
+> "Renaming relabels companies using it"; "Shoots this person was crewed on" under a heading that reads
+> Work history; and the three-sentence paragraph beside a counted item's on-hand number.
+> **What stayed, deliberately:** validation that prevents silent loss ("this row won't be saved"), a
+> blocked action's REASON, the consequence of a destructive click ("It leaves the pool for every job
+> until it's marked back"), the FIXED/GENERIC legend, and empty states that say what to do next. Those
+> are work, not documentation. ⚠️ This reverses a habit several entries in this file were proud of —
+> the app SAYING what a write did. The line is now: say it when it is about to happen or has just
+> happened, never as standing prose next to a field.
+> **One word for a physical piece: UNIT.** "Copy" had become a second name for the same thing, against
+> the `units` table, the UNIT column, "+ Add unit", `UnitEditorModal` and every other label. 26
+> user-facing strings renamed ("Its copies" → "Its units", "Add copy" → "Add unit", "Choose / scan a
+> copy", "N × any free copy", the Copies row label, the tooltips); `document.body.innerText` now
+> matches /copy|copies/ **zero** times on every screen. Code identifiers and comments keep their
+> wording — nobody reads those, and renaming them is diff noise.
+> ⚠️ The test suite caught the rename, which is what it is for: an assertion pinned the old
+> "each copy needs its own barcode" message (**325 assertions**).
+> Verified by reading the modals back out of the DOM: Add units is now "Adding units to X · How many? ·
+> BARCODE SERIAL · Add another unit · Storage location"; Add inventory item is labels and fields with no
+> prose at all; the job editor has no paragraphs under Call times, Shoot wrap time or PO; kit staging
+> reads "Filling slots here doesn't change the kit itself · 4 slots still need a unit". Orphaned by the
+> cuts and removed: `KIND_HELP` and two now-unused `Info` imports. 0 console errors on a clean load.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
