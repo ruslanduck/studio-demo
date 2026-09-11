@@ -129,7 +129,7 @@ export function stepTime(hhmm, deltaMinutes, fallback = '08:00') {
 // started and abandoned, and storing it would put a blank line on the call
 // sheet. Sorted by time, then by the order they were typed.
 export function normalizeCallTimes(rows = []) {
-  return (rows || [])
+  const clean = (rows || [])
     .map((r, i) => {
       const roles = [...new Set((r?.roles || []).map((x) => String(x).trim()).filter(Boolean))]
       return {
@@ -142,7 +142,28 @@ export function normalizeCallTimes(rows = []) {
     })
     .filter((r) => r.roles.length > 0 && isValidTime(r.time))
     .sort((a, b) => a.time.localeCompare(b.time) || a.position - b.position)
-    .map((r, i) => ({ ...r, position: i }))
+
+  // Two rows saying the same thing at the same time are ONE call. The sheet is
+  // read by time — that is why roles is a list in the first place — so a second
+  // "08:15 Producer" line adds nothing and reads as a rendering fault (it was
+  // reported as exactly that). Their roles are unioned.
+  //
+  // Rows that share a time but carry DIFFERENT notes stay apart: the note is
+  // what tells them apart ("through the freight door" vs "park on 9th"), and
+  // folding them together would strand it on a role it was never about.
+  const merged = []
+  const byKey = new Map()
+  for (const r of clean) {
+    const key = `${r.time}\u0000${r.note ?? ''}`
+    const seen = byKey.get(key)
+    if (!seen) {
+      byKey.set(key, r)
+      merged.push(r)
+      continue
+    }
+    for (const role of r.roles) if (!seen.roles.includes(role)) seen.roles.push(role)
+  }
+  return merged.map((r, i) => ({ ...r, position: i }))
 }
 
 // "Photographer, Digital tech" — the roles of one call, as a human reads them.

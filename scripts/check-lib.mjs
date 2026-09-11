@@ -296,6 +296,38 @@ eq(setDays.spanSummary('2026-09-09', '2026-09-09'), 'Sep 9', 'and says nothing e
   )
   eq(callTimes.rolesLabel(clean[1]), 'Model, Stylist', 'roles read as a list')
 }
+{
+  // Reported from a job card: "08:15 Producer" printed twice. Two rows saying
+  // the same thing at one time are one call.
+  const dupes = callTimes.normalizeCallTimes([
+    { roles: ['Producer'], time: '08:15' },
+    { roles: ['Producer'], time: '08:15' },
+  ])
+  eq(dupes.length, 1, 'the same call typed twice is one line')
+  eq(dupes[0].roles, ['Producer'], 'and it keeps its role')
+
+  const sameTime = callTimes.normalizeCallTimes([
+    { roles: ['Model'], time: '10:00' },
+    { roles: ['Stylist', 'Model'], time: '10:00' },
+  ])
+  eq(sameTime.length, 1, 'one time, one line')
+  eq(sameTime[0].roles, ['Model', 'Stylist'], 'with the roles unioned, not repeated')
+
+  const noted = callTimes.normalizeCallTimes([
+    { roles: ['Crew'], time: '06:45', note: 'freight door' },
+    { roles: ['Client'], time: '06:45', note: 'park on 9th' },
+  ])
+  eq(noted.length, 2, 'but two different notes at one time stay two lines')
+  eq(noted.map((r) => r.position), [0, 1], 'and both keep a position')
+  eq(
+    callTimes.earliestCall([
+      { roles: ['Producer'], time: '08:15' },
+      { roles: ['Producer'], time: '08:15' },
+    ]),
+    '08:15',
+    'the chip still reads the first call',
+  )
+}
 eq(callTimes.normalizeCallTimes([]), [], 'no call times is a valid shoot')
 eq(callTimes.normalizeCallTimes(), [], 'and so is nothing at all')
 eq(callTimes.earliestCall([]), null, 'nothing to show on the chip')

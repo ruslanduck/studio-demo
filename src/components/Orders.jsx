@@ -810,10 +810,7 @@ function OrderDetail({
           {/* The call sheet. Empty is a real answer — a shoot nobody has
               scheduled yet — so it says so instead of showing nothing. */}
           <Row icon={Clock3} label="Call times">
-            <CallSheetList callTimes={booking?.callTimes} />
-          </Row>
-          <Row icon={Clock3} label="Wrap">
-            {booking?.wrapTime || 'not set'}
+            <CallSheetList callTimes={booking?.callTimes} wrapTime={booking?.wrapTime} />
           </Row>
           <Row icon={Layers} label="Set">
             {order.setLabel || <span className="text-slate-400">not named</span>}
