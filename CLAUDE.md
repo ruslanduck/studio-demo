@@ -2109,6 +2109,54 @@
 > prose at all; the job editor has no paragraphs under Call times, Shoot wrap time or PO; kit staging
 > reads "Filling slots here doesn't change the kit itself · 4 slots still need a unit". Orphaned by the
 > cuts and removed: `KIND_HELP` and two now-unused `Info` imports. 0 console errors on a clean load.
+> **CHANGE — one from–to field for a shoot's days, two job types, and a week grid that fills the
+> screen.** Four reports against the job form and the calendar, plus one question answered by
+> measurement.
+> **(1) The New-job banner is gone** ("The job starts on Hold and books the studio for the day.
+> Equipment comes next…"): the status dropdown says Hold, the button says "Select equipment" and the
+> date field says how many days — three facts the banner repeated in prose, the same class the text
+> pass cut.
+> **(2) ONE field for the days.** `src/components/DateRangeField.jsx` replaces the First day / Last
+> day pair in the job form AND the legacy shoot editor. The trigger reads "Sep 21 – 23 · 3 days" or
+> "Sep 11 · one day"; the popover is DateField's own calendar with range selection — the FIRST click
+> sets a one-day shoot (complete and valid on its own, so closing right there keeps it) and the second
+> stretches it. Typing survives the move: both ISO ends sit at the top of the popover, visible
+> together instead of in two separate fields. Same popover contract as every other one here (portal,
+> `position: fixed`, outside-click, Escape with `stopPropagation`, re-placed on a **document** scroll).
+> The control cannot emit a backwards pair — the grid orders the two clicks itself and the typed
+> inputs are normalised on the way out — which is what let the form drop `setStart` (it existed only
+> to keep the two fields in order) and the entire "that is before the first day" branch.
+> ⚠️ **EIGHTH instance of the stale-value trap, designed out rather than found.** Two clicks before a
+> re-render would both read the range captured by the render that created the handler, and the second
+> would RESTART the range instead of completing it. The live range is held in a REF that the props
+> feed. Measured: two clicks in ONE tick give "Sep 7 – 9 · 3 days", not "Sep 9 · one day". A second
+> click BEFORE the first swaps the ends (22 then 19 → "Sep 19 – 22").
+> **(3) Two job types, not three.** `Style-out` was MY assumption when the day view was built, and
+> this file flagged it as the thing to correct if the studio's model differed — it does. `JOB_TYPES`
+> is Editorial / PDP again; still free text, still merged with whatever the register carries, so a job
+> already carrying another type keeps it. Two assertions updated with it.
+> **(4) The week grid fills the screen.** It stopped at its rows' own 92px minimum and left the bottom
+> of the page empty however many jobs a week held. `min-h-full` +
+> `gridTemplateRows: auto repeat(N, minmax(92px, 1fr))`. Measured at 1440×940: rows 92 → **119px**,
+> the grid bottoms out 1px short of its wrapper (the border) instead of ~160px short; at 1440×520 the
+> rows fall back to 92px and the wrapper SCROLLS, so a short window or a stack of jobs still works.
+> No horizontal overflow; month and day views untouched.
+> ℹ️ **Asked and answered: a multi-day job holds its gear on EVERY day of the span.** Measured rather
+> than reasoned — the seeded 3-day job's units each carry ONE reservation `2026-09-07 → 2026-09-09`,
+> `isUnitFree` refuses them on all three days and the day before is free. A job created through the
+> new field wrote `2026-09-21 → 2026-09-23` on both the order and its shoot. The model was already
+> there (`set_units.reserved_from/reserved_to`, `overlaps`, `covers`); this just confirms it end to
+> end. ⚠️ A job on HOLD still reserves nothing, which is why a freshly created one shows its units as
+> free — that is the reservation model, not a gap.
+> ⚠️ **TOOLING LESSON that nearly cost a wrong conclusion:** `await import('/studio-demo/src/store.js')`
+> in the Vite dev server hands back a **SECOND store instance** — its own state, rehydrating from the
+> same localStorage. Writes made through it never reach the running app, which looked exactly like
+> "archiving an order no longer takes its shoot off the calendar" (the chips stayed, a fabricated
+> booking never appeared). Drive the app through its UI; use a dynamic import only to READ pure
+> modules. "Reload seed" put the demo back to 14 orders / 11 shoots / 44 items.
+> ℹ️ The legacy `BookingModal` got the same field, but the seed has no order-less shoot to open it
+> with (archiving an order now takes its shoot down too), so that one is covered by the build, the
+> lint and `audit:jsx` rather than by a click.
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
