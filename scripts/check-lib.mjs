@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 const load = (p) => import(pathToFileURL(resolve(p)).href)
-const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows, theme] =
+const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packing, itemAvail, years, orderStatus, setDays, callTimes, taxonomy, inventoryData, unitRows, theme, ordering] =
   await Promise.all([
     load('src/lib/activity.js'),
     load('src/lib/barcode.js'),
@@ -33,6 +33,7 @@ const [activity, barcode, orderSearch, estimate, estimatePdf, packingPdf, packin
     load('src/data/inventory.js'),
     load('src/lib/unitRows.js'),
     load('src/lib/theme.js'),
+    load('src/lib/ordering.js'),
   ])
 
 let n = 0
@@ -635,6 +636,34 @@ ok(
   eq(new Set(theme.THEME_ORDER).size, 3, 'three distinct states')
   ok(theme.THEME_ORDER.every((t) => theme.THEME_LABEL[t]), 'each one has a label to show')
   ok(theme.isTheme('dark') && !theme.isTheme('darkish'), 'and the guard is exact')
+}
+
+// ---------------------------------------------------------------------------
+// lib/ordering — a comparator that is TOTAL, so a list cannot reshuffle.
+{
+  const rows = [
+    { id: 'b', on: '2026-07-16' },
+    { id: 'a', on: '2026-07-16' },
+    { id: 'c', on: '2026-07-20' },
+  ]
+  const newest = ordering.newestFirst('on')
+  const once = [...rows].sort(newest).map((r) => r.id).join('')
+  const twice = [...rows].sort(newest).sort(newest).map((r) => r.id).join('')
+  eq(once, 'cab', 'newest first, and equal dates fall back to the id')
+  eq(twice, once, 'sorting an already-sorted list changes nothing')
+  // The bug this replaced: `(a, b) => (a.on < b.on ? 1 : -1)` answers -1 both
+  // ways for an equal pair, so every re-sort swapped it — and this store
+  // re-sorts on every write.
+  const broken = (a, b) => (a.on < b.on ? 1 : -1)
+  ok(
+    broken(rows[0], rows[1]) === broken(rows[1], rows[0]),
+    'the old comparator claims BOTH orders for one pair, which is what swapped them',
+  )
+  eq(newest(rows[0], rows[1]) + newest(rows[1], rows[0]), 0, 'the new one is antisymmetric')
+  eq([...rows].sort(ordering.oldestFirst('on')).map((r) => r.id).join(''), 'bac', 'and it reverses cleanly')
+  // A missing field must not throw or reorder randomly.
+  const partial = [{ id: 'x' }, { id: 'y', on: '2026-01-01' }]
+  eq([...partial].sort(newest).map((r) => r.id).join(''), 'yx', 'a row with no date sorts last, deterministically')
 }
 
 console.log(`OK — ${n} assertions passed`)

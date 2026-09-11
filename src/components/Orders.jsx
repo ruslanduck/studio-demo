@@ -17,7 +17,6 @@ import {
   Layers,
   Lock,
   Tag,
-  StickyNote,
   AlertTriangle,
 } from 'lucide-react'
 import { useStore, notArchived, capacityError } from '../store'
@@ -51,6 +50,7 @@ import { orderFeed } from '../lib/activity'
 import OrderEquipmentModal from './OrderEquipmentModal'
 import PackingChecklistModal from './PackingChecklistModal'
 import SelectField from './SelectField'
+import NoteField from './NoteField'
 import FilterBar, { FILTER_FIELD } from './FilterBar'
 import { buildEstimate, money } from '../lib/estimate'
 import { downloadEstimatePdf } from '../lib/estimatePdf'
@@ -698,6 +698,10 @@ function OrderDetail({
   reserveNote,
 }) {
   const peek = useStore((s) => s.peek)
+  // Read from the store rather than taking a prop: the note's write is this
+  // card's own business, and threading an action through every parent is how a
+  // shared modal once lost a required prop and white-screened a view.
+  const updateOrder = useStore((s) => s.updateOrder)
   const { events: activityEvents, loading: activityLoading } = useActivity({ orderId: order.id })
   // Resolve the typed photographer name to a real person so it can be opened.
   const peopleList = useStore((s) => s.people)
@@ -860,14 +864,19 @@ function OrderDetail({
               </PeekLink>
             </Row>
           )}
-          {/* The note only appears when there IS one — an empty row labelled
-              "Note" on every job would be noise on most of them.
-              `whitespace-pre-line` keeps the crew's own line breaks. */}
-          {order.notes && (
-            <Row icon={StickyNote} label="Note">
-              <span className="whitespace-pre-line">{order.notes}</span>
-            </Row>
-          )}
+        </section>
+
+        {/* The note is written HERE, not in the editor. It used to appear only
+            when one already existed, so an empty job gave no hint that a note
+            was possible and writing one meant opening the whole form. */}
+        <section>
+          <NoteField
+            recordId={order.id}
+            value={order.notes}
+            canEdit={canManage}
+            onSave={(notes) => updateOrder(order.id, { notes })}
+            placeholder="Anything the crew should know about this job…"
+          />
         </section>
 
         {/* 5.2 who raised it + who last touched the gear (the attribution block) */}

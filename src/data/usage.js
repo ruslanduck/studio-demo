@@ -5,6 +5,8 @@
 // is used 1–2 at a time; non-barcoded stock is drawn down in bulk
 // (that's what powers "N J-hooks used this year").
 
+import { newestFirst } from '../lib/ordering'
+
 // (jobTitle, studioId) pool — believable studio jobs the gear gets used on.
 const JOBS = [
   ['20260624_AT_MAIN_SepBOM_Missy_OMSet1', '1'],
@@ -73,7 +75,7 @@ export function generateUsage(today, isoFor) {
       const used = new Date(today.getTime() - dayOffset * 86400000)
       events.push({ jobTitle: job[0], studioId: job[1], quantity, usedOn: isoFor(used) })
     }
-    events.sort((a, b) => (a.usedOn < b.usedOn ? 1 : -1))
+    events.sort(newestFirst('usedOn', 'orderId'))
     byItem[itemId] = events
   })
   return byItem

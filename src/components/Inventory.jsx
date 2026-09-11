@@ -19,6 +19,7 @@ import ActivityList from './ActivityList'
 import ItemAvailability from './ItemAvailability'
 import SelectField from './SelectField'
 import TaxonomyModal from './TaxonomyModal'
+import NoteField from './NoteField'
 import {
   UNASSIGNED,
   categoryOf,
@@ -1463,6 +1464,8 @@ function ItemDetailsGrid({ item }) {
   // passing collections through the tree is how `companies={companies}`
   // white-screened a whole view.
   const taxonomy = useStore((s) => s.taxonomy)
+  const updateInventoryItem = useStore((s) => s.updateInventoryItem)
+  const can = useCan()
   const filedPath = subcategoryPath(subcategoryById(taxonomy, item.subcategoryId), taxonomy)
   const price =
     item.replacementPrice == null
@@ -1482,8 +1485,8 @@ function ItemDetailsGrid({ item }) {
     ['Purchase date', item.purchaseDate],
   ]
   // The note is prose, so it gets its own row under the grid rather than a
-  // third-of-a-column cell, and only when there is one.
-  const note = String(item.notes ?? '').trim()
+  // third-of-a-column cell — and it is always there, because writing one is the
+  // point.
   return (
     <div className="shrink-0 border-b border-slate-200">
     <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 px-5 py-3 sm:grid-cols-3">
@@ -1496,12 +1499,16 @@ function ItemDetailsGrid({ item }) {
         </div>
       ))}
     </div>
-      {note && (
-        <div className="px-5 pb-3">
-          <div className="text-[11px] uppercase tracking-wide text-slate-400">Note</div>
-          <p className="whitespace-pre-line text-sm text-slate-700">{note}</p>
-        </div>
-      )}
+      <div className="px-5 pb-3">
+        <NoteField
+          recordId={item.id}
+          value={item.notes}
+          canEdit={can(CAP.INVENTORY_EDIT)}
+          onSave={(notes) => updateInventoryItem(item.id, { notes })}
+          placeholder="Anything worth knowing about this gear…"
+          compact
+        />
+      </div>
     </div>
   )
 }
@@ -1631,6 +1638,7 @@ function KitList({ kits, selectedId, query, onSelect }) {
 // Kit detail — the kit's composition (its slots) + each component's live
 // availability. Clicking a component jumps to that item in the Items tab.
 function KitDetail({ kit, inventory, canManage, onEdit, onSelectItem }) {
+  const updateKit = useStore((s) => s.updateKit)
   return (
     <>
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
@@ -1660,11 +1668,16 @@ function KitDetail({ kit, inventory, canManage, onEdit, onSelectItem }) {
         )}
       </div>
 
-      {kit.notes && (
-        <p className="shrink-0 border-b border-slate-200 px-5 py-3 text-sm text-slate-600">
-          {kit.notes}
-        </p>
-      )}
+      <div className="shrink-0 border-b border-slate-200 px-5 py-3">
+        <NoteField
+          recordId={kit.id}
+          value={kit.notes}
+          canEdit={canManage}
+          onSave={(notes) => updateKit(kit.id, { notes })}
+          placeholder="What this kit is for, what to watch out for…"
+          compact
+        />
+      </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-3">
         <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -1796,6 +1809,7 @@ function ScenarioListPane({ lists, selectedId, query, onSelect }) {
 // Scenario-list detail — everything the list pulls, with live availability.
 // Kit lines jump to the Kits tab; item lines jump to the item.
 function ScenarioDetail({ list, inventory, kits, canManage, onEdit, onSelectItem, onSelectKit }) {
+  const updateScenario = useStore((s) => s.updateScenario)
   const totals = listTotals(list, kits)
   return (
     <>
@@ -1828,11 +1842,16 @@ function ScenarioDetail({ list, inventory, kits, canManage, onEdit, onSelectItem
         )}
       </div>
 
-      {list.notes && (
-        <p className="shrink-0 border-b border-slate-200 px-5 py-3 text-sm text-slate-600">
-          {list.notes}
-        </p>
-      )}
+      <div className="shrink-0 border-b border-slate-200 px-5 py-3">
+        <NoteField
+          recordId={list.id}
+          value={list.notes}
+          canEdit={canManage}
+          onSave={(notes) => updateScenario(list.id, { notes })}
+          placeholder="What kind of shoot this list is for…"
+          compact
+        />
+      </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-3">
         <div className="mb-2 flex items-center justify-between px-1">

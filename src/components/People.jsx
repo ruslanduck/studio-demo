@@ -25,11 +25,13 @@ import { usePersisted } from '../lib/usePersisted'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
+import { newestFirst } from '../lib/ordering'
 import { PEOPLE_CATEGORIES } from '../data/people'
 import { orderStatusMeta } from '../data/orderStatus'
 import PersonEditorModal from './PersonEditorModal'
 import CompanyEditorModal from './CompanyEditorModal'
 import SelectField from './SelectField'
+import NoteField from './NoteField'
 import { usingSupabase } from '../data/repository'
 import { uploadCv } from '../data/repository'
 
@@ -552,6 +554,7 @@ function CompanyList({ companies, people, selectedId, query, onSelect }) {
 // A person's card: contact info, the company hyperlink (4.1), profile links (4.2)
 // and the jobs they worked.
 function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpenJob }) {
+  const updatePerson = useStore((s) => s.updatePerson)
   const hasProfile = person.website || person.instagram || person.cvFilename
 
   // A person isn't linked to an order directly (an order belongs to the job);
@@ -700,14 +703,15 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpen
           )}
         </section>
 
-        {person.notes && (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Notes
-            </h4>
-            <p className="text-sm text-slate-600">{person.notes}</p>
-          </section>
-        )}
+        <section>
+          <NoteField
+            recordId={person.id}
+            value={person.notes}
+            canEdit={canManage}
+            onSave={(notes) => updatePerson(person.id, { notes })}
+            placeholder="Rates, preferences, who introduced them…"
+          />
+        </section>
 
         {/* Work history — the shoots they were crewed on; each row opens the
             job's order (or the calendar when the shoot has none). */}
@@ -735,6 +739,7 @@ function PersonDetail({ person, orders, canManage, onEdit, onOpenCompany, onOpen
 // People, and work history — orders in both directions, the gear we currently
 // hold from them as a vendor, and the jobs its people worked.
 function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, onOpenPerson, onOpenJob, onOpenOrder }) {
+  const updateCompany = useStore((s) => s.updateCompany)
   const peek = useStore((s) => s.peek)
   const staff = people.filter((p) => p.companyId === company.id)
   // Same fold as the person card: a job row carries its order.
@@ -753,7 +758,7 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
         seen.add(key)
         return true
       })
-      .sort((a, b) => (a.date < b.date ? 1 : -1))
+      .sort(newestFirst('date', 'setId'))
   }, [staff])
 
   // 4.5 — orders in either direction, newest first.
@@ -761,7 +766,7 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
     () =>
       (orders || [])
         .filter((o) => o.companyId === company.id)
-        .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1)),
+        .sort(newestFirst('orderedAt')),
     [orders, company.id],
   )
 
@@ -817,11 +822,16 @@ function CompanyDetail({ company, people, orders, inventory, canManage, onEdit, 
         )}
       </div>
 
-      {company.notes && (
-        <p className="shrink-0 border-b border-slate-200 px-5 py-3 text-sm text-slate-600">
-          {company.notes}
-        </p>
-      )}
+      <div className="shrink-0 border-b border-slate-200 px-5 py-3">
+        <NoteField
+          recordId={company.id}
+          value={company.notes}
+          canEdit={canManage}
+          onSave={(notes) => updateCompany(company.id, { notes })}
+          placeholder="Terms, who to call, how they like to be booked…"
+          compact
+        />
+      </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
         {/* 4.3 — how to reach them */}

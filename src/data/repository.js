@@ -8,6 +8,7 @@
 // Shapes returned here match what the UI already expects (see CLAUDE.md data
 // models), so switching the source is transparent to components.
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { newestFirst } from '../lib/ordering'
 import { studioLabel, studioColor } from './studios'
 import { createUnits } from './inventory'
 import { normalizeCallTimes, toHHMM } from '../lib/callTimes'
@@ -1762,7 +1763,7 @@ export async function getPeople() {
         status: r.set.status,
         role: r.role,
       }))
-      .sort((a, b) => (a.date < b.date ? 1 : -1)),
+      .sort(newestFirst('date', 'setId')),
     ...archiveFields(p),
   }))
 }

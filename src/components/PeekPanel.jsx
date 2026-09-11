@@ -20,6 +20,8 @@ import {
 } from 'lucide-react'
 import { categoryLabel } from '../lib/taxonomy'
 import { useStore } from '../store'
+import { useCan } from '../lib/useCan'
+import { CAP } from '../lib/permissions'
 import { studioLabel } from '../data/studios'
 import { orderStatusMeta } from '../data/orderStatus'
 import { buildEstimate, money } from '../lib/estimate'
@@ -27,6 +29,7 @@ import { itemCount, kindLabel } from '../data/inventory'
 import { availableCount } from '../lib/availability'
 import { spanSummary } from '../lib/setDays'
 import { rolesLabel } from '../lib/callTimes'
+import NoteField from './NoteField'
 import ActivityList from './ActivityList'
 import { useActivity } from '../lib/useActivity'
 import { orderFeed } from '../lib/activity'
@@ -177,6 +180,27 @@ function Section({ title, count, children, hint }) {
   )
 }
 
+// The note is the ONE thing a peek card lets you change. These cards are
+// read-only on purpose — they own no edit state and nesting a view's modals
+// inside them would put dialogs inside dialogs — but a note carries its own
+// save and is exactly the field you want where you are standing, rather than
+// two clicks away in a form. Its heading matches Section's, so the card keeps
+// its rhythm.
+function PeekNote({ recordId, value, cap, onSave, placeholder }) {
+  const can = useCan()
+  return (
+    <section className="px-4 py-3">
+      <NoteField
+        recordId={recordId}
+        value={value}
+        canEdit={can(cap)}
+        onSave={onSave}
+        placeholder={placeholder}
+      />
+    </section>
+  )
+}
+
 function Field({ icon: Icon, label, children }) {
   return (
     <div className="flex items-start gap-2 text-sm">
@@ -245,6 +269,7 @@ function PeekBody({ target }) {
 
 function OrderPeek({ id }) {
   const orders = useStore((s) => s.orders)
+  const updateOrder = useStore((s) => s.updateOrder)
   const inventory = useStore((s) => s.inventory)
   const kits = useStore((s) => s.kits)
   const bookings = useStore((s) => s.bookings)
@@ -292,12 +317,6 @@ function OrderPeek({ id }) {
           <Field label="Set">{order.setLabel || '—'}</Field>
           <Field label="Brand">{order.brand || '—'}</Field>
           <Field label="Type">{order.jobType || '—'}</Field>
-          {/* Only when there is one, and the crew's own line breaks kept. */}
-          {order.notes && (
-            <Field label="Note">
-              <span className="whitespace-pre-line">{order.notes}</span>
-            </Field>
-          )}
           <Field label="Photographer">
             {order.photographer ? (
               photographer ? (
@@ -384,6 +403,14 @@ function OrderPeek({ id }) {
         )}
       </Section>
 
+      <PeekNote
+        recordId={order.id}
+        value={order.notes}
+        cap={CAP.ORDER_MANAGE}
+        onSave={(notes) => updateOrder(order.id, { notes })}
+        placeholder="Anything the crew should know about this job…"
+      />
+
       <Section title="Estimate">
         <div className="flex items-end justify-between rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200">
           <div className="text-xs text-slate-500">
@@ -428,6 +455,7 @@ function OrderActivity({ orderId, eqBy, eqAt }) {
 
 function ItemPeek({ id, unitId }) {
   const inventory = useStore((s) => s.inventory)
+  const updateInventoryItem = useStore((s) => s.updateInventoryItem)
   const taxonomy = useStore((s) => s.taxonomy)
   const bookings = useStore((s) => s.bookings)
   const orders = useStore((s) => s.orders)
@@ -479,11 +507,6 @@ function ItemPeek({ id, unitId }) {
             {item.assetType && <Field label="Asset type">{item.assetType}</Field>}
             {item.placement && <Field label="Storage location">{item.placement}</Field>}
             {item.dayRate != null && <Field label="Day rate">{money(item.dayRate)}/day</Field>}
-            {item.notes && (
-              <Field label="Note">
-                <span className="whitespace-pre-line">{item.notes}</span>
-              </Field>
-            )}
           </div>
         </Section>
       )}
@@ -540,6 +563,14 @@ function ItemPeek({ id, unitId }) {
         </Section>
       )}
 
+      <PeekNote
+        recordId={item.id}
+        value={item.notes}
+        cap={CAP.INVENTORY_EDIT}
+        onSave={(notes) => updateInventoryItem(item.id, { notes })}
+        placeholder="Anything worth knowing about this gear…"
+      />
+
       <ItemActivitySection itemId={item.id} unitIds={(item.units || []).map((u) => u.id)} />
 
       <Section title="On jobs" count={usedByOrders.length}>
@@ -585,6 +616,7 @@ function ItemActivitySection({ itemId, unitIds }) {
 
 function PersonPeek({ id }) {
   const people = useStore((s) => s.people)
+  const updatePerson = useStore((s) => s.updatePerson)
   const orders = useStore((s) => s.orders)
   const peek = useStore((s) => s.peek)
   const focusPeople = useStore((s) => s.focusPeople)
@@ -619,6 +651,14 @@ function PersonPeek({ id }) {
           </>
         }
         onOpenFull={() => focusPeople({ personId: person.id })}
+      />
+
+      <PeekNote
+        recordId={person.id}
+        value={person.notes}
+        cap={CAP.PERSON_MANAGE}
+        onSave={(notes) => updatePerson(person.id, { notes })}
+        placeholder="Rates, preferences, who introduced them…"
       />
 
       <Section title="Contact">
@@ -677,6 +717,7 @@ function PersonPeek({ id }) {
 
 function CompanyPeek({ id }) {
   const companies = useStore((s) => s.companies)
+  const updateCompany = useStore((s) => s.updateCompany)
   const people = useStore((s) => s.people)
   const orders = useStore((s) => s.orders)
   const inventory = useStore((s) => s.inventory)
@@ -747,6 +788,14 @@ function CompanyPeek({ id }) {
         </Section>
       )}
 
+      <PeekNote
+        recordId={company.id}
+        value={company.notes}
+        cap={CAP.COMPANY_MANAGE}
+        onSave={(notes) => updateCompany(company.id, { notes })}
+        placeholder="Terms, who to call, how they like to be booked…"
+      />
+
       <Section title="Contacts" count={staff.length}>
         {staff.length === 0 ? (
           <Empty text="No contacts on file." />
@@ -812,6 +861,7 @@ function CompanyPeek({ id }) {
 
 function JobPeek({ id }) {
   const bookings = useStore((s) => s.bookings)
+  const updateBooking = useStore((s) => s.updateBooking)
   const orders = useStore((s) => s.orders)
   const people = useStore((s) => s.people)
   const inventory = useStore((s) => s.inventory)
@@ -895,6 +945,18 @@ function JobPeek({ id }) {
           <Empty text="No call times set for this shoot." />
         )}
       </Section>
+
+      {/* ⚠️ This is the SHOOT's note (`sets.notes`), not the job's — two
+          different columns that have always existed side by side. It was
+          written only by the legacy booking editor and displayed nowhere, so
+          anything typed there was invisible from this card. */}
+      <PeekNote
+        recordId={booking.id}
+        value={booking.notes}
+        cap={CAP.BOOKING_EDIT}
+        onSave={(notes) => updateBooking(booking.id, { notes })}
+        placeholder="Anything about the day itself — access, parking, the lift…"
+      />
 
       <Section title="Crew">
         {crew.length === 0 ? (

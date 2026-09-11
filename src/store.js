@@ -89,6 +89,7 @@ import { reservedUnitsForOrder, overlaps } from './lib/availability'
 import { coversDay, endsOnFor, firstFullDay, setSpanDays } from './lib/setDays'
 import { normalizeCallTimes } from './lib/callTimes'
 import { resolveUnitCodes } from './lib/unitRows'
+import { newestFirst } from './lib/ordering'
 import { THEME_SYSTEM, isTheme } from './lib/theme'
 import {
   categoryNameError,
@@ -356,7 +357,7 @@ function buildSeedData() {
   // kit units are pre-claimed so a loose line never grabs a unit pinned to a kit.
   const reservedBookings = reservationsFromOrders(bookings, orders, inventory, fixedUnitIdsOf(kits))
   const reservedInventory = withReservations(inventory, reservedBookings)
-  orders.sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
+  orders.sort(newestFirst('orderedAt'))
 
   // The taxonomy, derived from the register's own text by the SAME rule the SQL
   // migration applies to the real database (lib/taxonomy `taxonomyFromItems`),
@@ -592,7 +593,7 @@ function resolvePerson(person, companies, bookings) {
         : null
     })
     .filter(Boolean)
-    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .sort(newestFirst('date'))
   return {
     id: person.id,
     name: person.name,
@@ -1658,8 +1659,8 @@ export const useStore = create(
               ? item
               : {
                   ...item,
-                  usage: [event, ...(item.usage || [])].sort((a, b) =>
-                    a.usedOn < b.usedOn ? 1 : -1,
+                  usage: [event, ...(item.usage || [])].sort(
+                    newestFirst('usedOn', 'orderId'),
                   ),
                 },
           ),
@@ -2725,7 +2726,7 @@ export const useStore = create(
         const nextOrders = [
           ...state.orders,
           resolveOrder({ ...order, endsOn, id, setId, setTitle: jobName.trim() }, state.companies),
-        ].sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
+        ].sort(newestFirst('orderedAt'))
         // A new order is a Hold (reserves nothing), but recompute anyway so the
         // one path stays correct if it ever arrives confirmed.
         const nextBookings = reservationsFromOrders(
@@ -2861,7 +2862,7 @@ export const useStore = create(
         logStatus(statusMoved && isClosedStatus(changes.status) ? { released: held } : null)
         const orders = state.orders
           .map((o) => (o.id === id ? resolveOrder({ ...o, ...changes, id }, state.companies) : o))
-          .sort((a, b) => (a.orderedAt < b.orderedAt ? 1 : -1))
+          .sort(newestFirst('orderedAt'))
         // The Set mirrors the order's job name, studio and working window.
         const target = orders.find((o) => o.id === id)
         const mirrored = state.bookings.map((b) =>
