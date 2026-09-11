@@ -2249,6 +2249,45 @@
 > defined` — the import landed in the next command). It survives a reload in the buffer, so it cannot
 > be dismissed as stale by assumption: the path that reads that binding is the CREATE form, and it
 > renders Hold/Confirmed after a full reload, which is the proof.
+> **CHANGE — a refusal is PINNED where it can be seen, plus two Categories fixes and an unboxed
+> note.** Four reports against the Categories window and a note field.
+> **(1) Errors, everywhere.** "когда я пытаюсь удалить то, что нельзя удалять, выскакивает ошибка, но
+> сверху и я ее не вижу пока не пролистаю наверх … это касается всех репортов об ошибках". True and
+> general: every modal rendered its refusal INSIDE its scroll container — Categories at the top of a
+> long list whose × can be anywhere in it, the rest at the bottom of a form you may be reading the top
+> of. A message nobody reads is the same as no message.
+> `src/components/ErrorNote.jsx` renders it OUTSIDE the scroll container, between the content and the
+> footer. The panel is a flex column with a capped height (`max-h-[88vh]`), so a `shrink-0` row there
+> is on screen at EVERY scroll position, right above the button that was just pressed — and in the same
+> place in all nine windows (Categories, job, equipment, unit, add-inventory ×2, company, kit, person,
+> scenario), so the crew learns where a problem appears once. `AddInventoryModal` had already solved
+> this by hand for its archive refusal — that one was the precedent, now the shared component.
+> Measured: with the Categories list scrolled to the bottom (scrollTop 473 of 473), the refusal sits at
+> y=751 in a 910px viewport with the list NOT scrolled by it; scrolled back to 0, same y. Contrast
+> 11.09 dark / 5.49 light. At 375px it wraps to two lines, still fully on screen, no overflow.
+> **(2) "New category" moved to the TOP** of the window — it sat under the whole tree, which on a
+> 17-category register means scrolling past everything to add one. The empty state no longer says "Add
+> the first one below".
+> **(3) The note field lost its frame** ("убери эту коемочку вокруг нотес выглядит не очень"): a dashed
+> box on every one of the SEVEN records it appears on made each card look like a form. At rest it is
+> now text on the card (transparent border AND background, measured), with the box appearing on
+> `hover:`/`focus:`.
+> ⚠️ Doing that with a React flag was wrong and the CSSOM said so: `focused ? 'bg-surface' : ''` leaves
+> BOTH `bg-transparent` (base) and `bg-surface` applied, so the winner is stylesheet order, not intent.
+> The `focused` state is gone entirely — `focus:` already expresses it, and a variant beats a plain
+> utility by construction. Verified the four utilities are really compiled by walking
+> `document.styleSheets` (⚠️ recursively — Tailwind v4 nests utilities inside `@layer`, so a top-level
+> scan finds nothing and reads as "the class does not exist").
+> **(4) The comments were already gone.** The screenshot's intro ("Gear is filed under a subcategory…")
+> and the unfiled banner's "use 'File under…' in the inventory list" tail had both been cut earlier —
+> the page had not been reloaded. **Second report in a row against a stale bundle**: check the current
+> source before treating a screenshot as live code. What remains in that window is the COUNT of unfiled
+> items, which is a fact, not an explanation.
+> Verified in local mode: Categories opens with the create row first, then the count, then the tree;
+> a blocked × on "Furniture still holds 4 items in 3 subcategories" shows pinned at the bottom of the
+> list and at the top; the job editor's "Give the job a name." appears pinned while the form is
+> scrolled to 0; nine windows carry the component in the same slot. Demo data untouched (14 jobs /
+> 44 items / 7 categories / 27 subcategories).
 > Ship each section end-to-end (migration → verify on Supabase → commit → push → confirm prod).
 > Note: migrations 2.6 `repairs` (`20260725120000`), 2.7 `item_usage` (`20260725130000`), 3.1 `kit_slots`
 > (`20260726120000`), 3.3 slot types (`20260727120000`), 3.5 scenario lists (`20260728120000`),
