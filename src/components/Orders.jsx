@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { useStore, notArchived, capacityError } from '../store'
 import { setSpanDays } from '../lib/setDays'
-import { rolesFor, rolesLabel } from '../lib/callTimes'
+import { rolesFor } from '../lib/callTimes'
 import { usePersisted } from '../lib/usePersisted'
 import { useCan } from '../lib/useCan'
 import { CAP } from '../lib/permissions'
@@ -50,6 +50,7 @@ import { orderFeed } from '../lib/activity'
 import OrderEquipmentModal from './OrderEquipmentModal'
 import PackingChecklistModal from './PackingChecklistModal'
 import SelectField from './SelectField'
+import CallSheetList from './CallSheetList'
 import NoteField from './NoteField'
 import FilterBar, { FILTER_FIELD } from './FilterBar'
 import { buildEstimate, money } from '../lib/estimate'
@@ -809,19 +810,7 @@ function OrderDetail({
           {/* The call sheet. Empty is a real answer — a shoot nobody has
               scheduled yet — so it says so instead of showing nothing. */}
           <Row icon={Clock3} label="Call times">
-            {booking?.callTimes?.length ? (
-              <span className="inline-flex flex-col gap-0.5">
-                {booking.callTimes.map((c, i) => (
-                  <span key={c.id || i}>
-                    <span className="font-medium tabular-nums">{c.time}</span>{' '}
-                    <span className="text-slate-600">{rolesLabel(c)}</span>
-                    {c.note && <span className="text-slate-400"> · {c.note}</span>}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              'not set'
-            )}
+            <CallSheetList callTimes={booking?.callTimes} />
           </Row>
           <Row icon={Clock3} label="Wrap">
             {booking?.wrapTime || 'not set'}
